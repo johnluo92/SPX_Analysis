@@ -9,6 +9,6 @@ SPX's chart has a monte carlo simulation that is currently commented out but the
 
 The other chart is for the VIX, an industry standard volatility reading based on the options chains of the SPX index. It too refreshes but the there is no simulation, instead it shows the current reading in the grand scheme of constantly-refreshing dataset (daily closing). It presents a normal distribution to help with understanding the current level vs on a gaussian, albeit positively skewed.
 
-![download](https://user-images.githubusercontent.com/7178449/235339827-34b4cbd9-9a4f-4018-b3b4-f3d4ab229347.png)
+![VIX_Distribution](https://user-images.githubusercontent.com/7178449/235383039-05324519-150f-41ee-ac8b-cd5afb84b081.png)
 
  Franklin D. Roosevelt: "Nothing to Fear but Fear Itself"
