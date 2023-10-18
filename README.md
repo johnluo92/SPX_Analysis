@@ -12,3 +12,13 @@ The other chart is for the VIX, an industry standard volatility reading based on
 ![VIX_Distribution](https://user-images.githubusercontent.com/7178449/235383039-05324519-150f-41ee-ac8b-cd5afb84b081.png)
 
  Franklin D. Roosevelt: "Nothing to Fear but Fear Itself"
+
+The below is the import and plot jupyter note, simple yet elegant. It plots 4 types of data:
+- the expected 10 year inflation
+- the expected 10 year real interest rate
+- the total of the above 2 rates
+- and the current fed funds rate
+
+what this shows is the Fed wants to close the gap between the 10 year projected inflation and the real rate, potentially keeping rates higher to allow rate rate to shoot past inflation expectations to bring down current economic activities shaped around expectations of real interest rate returns. A lot is happening in the world at the moment, and the risk free has already closed a lot ground with the effr.
+
+![image](https://github.com/johnluo92/SPX_Analysis/assets/7178449/76c667e2-8d6d-4a20-aa59-16c6a378f0d6)
