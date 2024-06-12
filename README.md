@@ -21,4 +21,4 @@ The below is the import and plot jupyter note, simple yet elegant. It plots 4 ty
 
 what this shows is the Fed wants to close the gap between the 10 year projected inflation and the real rate, potentially keeping rates higher to allow rate rate to shoot past inflation expectations to bring down current economic activities shaped around expectations of real interest rate returns. A lot is happening in the world at the moment, and the risk free has already closed a lot ground with the effr.
 
-![image](https://github.com/johnluo92/SPX_Analysis/assets/7178449/76c667e2-8d6d-4a20-aa59-16c6a378f0d6)
+![interest_rate_dynamics](https://github.com/johnluo92/SPX_Analysis/assets/7178449/9e8005d1-dec5-47b7-ab18-a2dbd9a7ad92)
