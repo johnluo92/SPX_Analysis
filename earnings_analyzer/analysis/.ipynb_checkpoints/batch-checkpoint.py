@@ -67,7 +67,7 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         print("\n⚠️  No valid results")
         return None
     
-    df = _create_results_dataframe(results)
+    df = _create_results_dataframe(results, tickers)
     _print_results_table(df)
     _print_insights(df)
     
@@ -107,7 +107,7 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
 def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                            max_workers, fetch_summary, iv_summary):
     """Process tickers in parallel"""
-    results = []
+    results = {}  # Changed to dict to preserve order
     cache = load_cache()
     yf_client = YahooFinanceClient()
     
@@ -131,7 +131,7 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                     if fetch_iv:
                         _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
                     
-                    results.append(summary)
+                    results[ticker] = summary  # Store with ticker as key
                     if from_cache:
                         fetch_summary['cached'].append(ticker)
                     else:
@@ -142,8 +142,8 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                 print(f"\n❌ Error processing {ticker}: {e}")
                 fetch_summary['failed'].append(ticker)
     
-    return results
-
+    # Restore original order
+    return [results[ticker] for ticker in tickers if ticker in results]
 
 def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
     """Fetch and add IV data to summary"""
@@ -300,11 +300,12 @@ def _print_insights(df):
     print(f"\n💡 Remember: Past patterns ≠ Future results. IV context shows current opportunity cost.")
 
 
-def _create_results_dataframe(results):
+def _create_results_dataframe(results, tickers):
     """Create formatted results dataframe"""
     df = pd.DataFrame(results)
     
-    # Calculate derived columns
+    # DON'T add any sorting here - parallel function already preserves order
+    
     df['45d_width'] = df.apply(lambda x: round(x['strike_width'] * np.sqrt(45/90), 1), axis=1)
     
     df['45_break_fmt'] = df.apply(
@@ -319,17 +320,5 @@ def _create_results_dataframe(results):
     df['strategy_display'] = df['strategy'].apply(lambda x: 
         x.replace('BIAS↑', 'BIAS↑').replace('BIAS↓', 'BIAS↓') if 'BIAS' in x else x
     )
-    
-    # SORT BY STRATEGY QUALITY
-    def strategy_rank(s):
-        if 'IC90' in s and '⚠' not in s: return 0  # Best: IC90 symmetric
-        if 'IC90⚠' in s: return 1                   # Good: IC90 asymmetric
-        if 'IC45' in s and '⚠' not in s: return 2   # Good: IC45 symmetric
-        if 'IC45⚠' in s: return 3                   # OK: IC45 asymmetric
-        if 'BIAS' in s: return 4                    # Directional edge
-        return 5                                     # SKIP (no edge)
-    
-    df['_rank'] = df['strategy'].apply(strategy_rank)
-    df = df.sort_values('_rank').drop('_rank', axis=1)
     
     return df
