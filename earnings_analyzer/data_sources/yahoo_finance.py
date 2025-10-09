@@ -12,6 +12,7 @@ except ImportError:
     YFINANCE_AVAILABLE = False
 
 from ..config import REQUEST_TIMEOUT, IV_TARGET_DTE
+from ..cache import get_cached_iv, cache_iv_data, is_market_hours
 
 
 class YahooFinanceClient:
@@ -53,10 +54,32 @@ class YahooFinanceClient:
         """
         Fetch current implied volatility from options chain
         Returns ATM IV for expiration closest to target DTE
+        
+        Now with intelligent caching:
+        - Checks cache first
+        - Returns cached data if from same trading day
+        - Fetches fresh and caches during market hours
+        - Uses cache after hours to avoid stale Yahoo data
         """
         if not YFINANCE_AVAILABLE:
             return None
         
+        # Check cache first
+        cached = get_cached_iv(ticker)
+        if cached is not None:
+            # Cache is valid (same trading day)
+            return cached
+        
+        # No valid cache - need to fetch fresh
+        # Only fetch during market hours to avoid stale data
+        market_status = is_market_hours()
+
+        if not market_status['is_open']:
+            # After hours - no cache available, return None
+            # This prevents using stale Yahoo data
+            return None
+        
+        # Market is open - fetch fresh IV
         try:
             stock = yf.Ticker(ticker)
             
@@ -96,12 +119,17 @@ class YahooFinanceClient:
             iv_pct = atm_call['impliedVolatility'] * 100
             actual_dte = (datetime.strptime(target_exp, '%Y-%m-%d') - today).days
             
-            return {
+            iv_data = {
                 'iv': round(iv_pct, 1),
                 'dte': actual_dte,
                 'strike': atm_call['strike'],
                 'expiration': target_exp
             }
+            
+            # Cache the fresh data
+            cache_iv_data(ticker, iv_data)
+            
+            return iv_data
         
         except Exception:
             if retry_count > 0:

@@ -11,8 +11,9 @@ ALPHAVANTAGE_KEYS = [
     "EXMUX4OSACRK51NZ"
 ]
 
-CACHE_FILE = "earnings_cache.json"
-RATE_LIMIT_FILE = "rate_limits.json"
+CACHE_FILE = "cache/earnings_cache.json"
+RATE_LIMIT_FILE = "cache/rate_limits.json"
+IV_CACHE_FILE = "cache/iv_cache.json"
 
 DEFAULT_LOOKBACK_QUARTERS = 24
 MIN_QUARTERS_REQUIRED = 10

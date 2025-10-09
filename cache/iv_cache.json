@@ -1,0 +1,314 @@
+{
+  "AAPL": {
+    "iv": 26.5,
+    "dte": 45,
+    "strike": 150.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:30:22.549153",
+    "market_date": "2025-10-09"
+  },
+  "DAL": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.709370",
+    "market_date": "2025-10-09"
+  },
+  "PEP": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.710128",
+    "market_date": "2025-10-09"
+  },
+  "FAST": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.710690",
+    "market_date": "2025-10-09"
+  },
+  "BLK": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.711205",
+    "market_date": "2025-10-09"
+  },
+  "C": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.711678",
+    "market_date": "2025-10-09"
+  },
+  "DPZ": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.712143",
+    "market_date": "2025-10-09"
+  },
+  "GS": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.712654",
+    "market_date": "2025-10-09"
+  },
+  "JNJ": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.713217",
+    "market_date": "2025-10-09"
+  },
+  "JPM": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.713790",
+    "market_date": "2025-10-09"
+  },
+  "WFC": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.714194",
+    "market_date": "2025-10-09"
+  },
+  "OMC": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.714819",
+    "market_date": "2025-10-09"
+  },
+  "ABT": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.715235",
+    "market_date": "2025-10-09"
+  },
+  "BAC": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.715854",
+    "market_date": "2025-10-09"
+  },
+  "CFG": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.716331",
+    "market_date": "2025-10-09"
+  },
+  "MS": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.716902",
+    "market_date": "2025-10-09"
+  },
+  "PGR": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.717930",
+    "market_date": "2025-10-09"
+  },
+  "PLD": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.718440",
+    "market_date": "2025-10-09"
+  },
+  "PNC": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.719140",
+    "market_date": "2025-10-09"
+  },
+  "SYF": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.719790",
+    "market_date": "2025-10-09"
+  },
+  "JBHT": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.720421",
+    "market_date": "2025-10-09"
+  },
+  "UAL": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.721084",
+    "market_date": "2025-10-09"
+  },
+  "BK": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.721521",
+    "market_date": "2025-10-09"
+  },
+  "KEY": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.722117",
+    "market_date": "2025-10-09"
+  },
+  "MMC": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.722635",
+    "market_date": "2025-10-09"
+  },
+  "MTB": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.723202",
+    "market_date": "2025-10-09"
+  },
+  "SCHW": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.723752",
+    "market_date": "2025-10-09"
+  },
+  "SNA": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.724335",
+    "market_date": "2025-10-09"
+  },
+  "TRV": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.724948",
+    "market_date": "2025-10-09"
+  },
+  "USB": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.725440",
+    "market_date": "2025-10-09"
+  },
+  "CSX": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.725871",
+    "market_date": "2025-10-09"
+  },
+  "AXP": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.726499",
+    "market_date": "2025-10-09"
+  },
+  "FITB": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.726982",
+    "market_date": "2025-10-09"
+  },
+  "HBAN": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.727418",
+    "market_date": "2025-10-09"
+  },
+  "RF": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.727916",
+    "market_date": "2025-10-09"
+  },
+  "SLB": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.728599",
+    "market_date": "2025-10-09"
+  },
+  "STT": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.729731",
+    "market_date": "2025-10-09"
+  },
+  "TFC": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.730500",
+    "market_date": "2025-10-09"
+  },
+  "STLD": {
+    "iv": 30.0,
+    "dte": 45,
+    "strike": 100.0,
+    "expiration": "2025-11-22",
+    "fetched_at": "2025-10-09T02:36:47.731137",
+    "market_date": "2025-10-09"
+  }
+}
