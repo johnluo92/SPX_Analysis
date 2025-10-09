@@ -1,0 +1,22 @@
+earnings_analyzer/
+├── __init__.py
+├── config.py              # Configuration & constants
+├── cache.py               # Caching & rate limit persistence
+├── data_sources/
+│   ├── __init__.py
+│   ├── alpha_vantage.py   # Earnings data fetching
+│   ├── yahoo_finance.py   # Price data & IV fetching
+├── calculations/
+│   ├── __init__.py
+│   ├── volatility.py      # HVol, IV, strike width calculations
+│   ├── statistics.py      # Containment, bias, drift stats
+│   ├── strategy.py        # Strategy determination logic
+├── analysis/
+│   ├── __init__.py
+│   ├── single.py          # Single ticker analysis
+│   ├── batch.py           # Batch processing & parallel execution
+├── output/
+│   ├── __init__.py
+│   ├── formatters.py      # Display formatting helpers
+│   ├── reports.py         # Report generation
+└── main.py                # CLI entry point
