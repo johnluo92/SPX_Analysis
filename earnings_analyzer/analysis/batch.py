@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 
 from ..config import DEFAULT_LOOKBACK_QUARTERS, REQUEST_DELAY, ALPHAVANTAGE_KEYS
 from ..cache import load_cache, load_rate_limits, is_market_hours
@@ -29,20 +28,16 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     Returns:
         DataFrame with analysis results
     """
-    start_time = time.time()
-    
     print("\n" + "="*75)
-    print(f"EARNINGS CONTAINMENT ANALYZER - v2.4")
+    print(f"EARNINGS CONTAINMENT ANALYZER - v2.5")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
     
     if fetch_iv:
         market_status = is_market_hours()
-        
         if market_status['is_open']:
             print(f"Current IV from Yahoo Finance (15-20min delayed)")
         else:
-            print(f"⚠️  IV from cache (market closed)")
-            print(f"   Last updated: {market_status['time_str']} on {market_status['day_name']}")
+            print(f"⚠️  IV from cache (market closed) - for reference only")
     
     if parallel:
         print(f"Parallel processing: {max_workers} workers")
@@ -57,7 +52,9 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     
     results = []
     fetch_summary = {'cached': [], 'api': [], 'failed': []}
-    iv_summary = {'success': [], 'failed': [], 'cached_count': 0, 'fresh_count': 0}
+    iv_summary = {'success': [], 'failed': []}
+    
+    start_time = time.time()
     
     if parallel:
         results = _batch_analyze_parallel(
@@ -70,10 +67,11 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
             fetch_summary, iv_summary
         )
     
+    elapsed_time = time.time() - start_time
+    
     print("\r" + " " * 80 + "\r", end='')
     
-    elapsed = time.time() - start_time
-    _print_fetch_summary(fetch_summary, iv_summary, fetch_iv, elapsed, len(tickers))
+    _print_fetch_summary(fetch_summary, iv_summary, fetch_iv, elapsed_time, len(tickers))
     
     if not results:
         print("\n⚠️  No valid results")
@@ -118,21 +116,23 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
 
 def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                            max_workers, fetch_summary, iv_summary):
-    """Process tickers in parallel while preserving order"""
-    results_dict = {}
+    """Process tickers in parallel"""
     cache = load_cache()
     yf_client = YahooFinanceClient()
     
+    # Submit all tasks and preserve order mapping
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit with index to maintain order
         future_to_ticker = {
-            executor.submit(analyze_ticker, ticker, lookback_quarters, False, debug): (i, ticker)
-            for i, ticker in enumerate(tickers)
+            executor.submit(analyze_ticker, ticker, lookback_quarters, False, debug): ticker
+            for ticker in tickers
         }
         
+        # Track results by ticker for ordering
+        results_dict = {}
         completed = 0
+        
         for future in as_completed(future_to_ticker):
-            idx, ticker = future_to_ticker[future]
+            ticker = future_to_ticker[future]
             completed += 1
             print(f"\r[{completed}/{len(tickers)}] Processing {ticker}...", end='', flush=True)
             
@@ -144,9 +144,7 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                     if fetch_iv:
                         _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
                     
-                    # Store with original index
-                    results_dict[idx] = summary
-                    
+                    results_dict[ticker] = summary
                     if from_cache:
                         fetch_summary['cached'].append(ticker)
                     else:
@@ -157,9 +155,8 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                 print(f"\n❌ Error processing {ticker}: {e}")
                 fetch_summary['failed'].append(ticker)
     
-    # Sort by original index and return as list
-    results = [results_dict[i] for i in sorted(results_dict.keys())]
-    
+    # Reconstruct results in original input order
+    results = [results_dict[ticker] for ticker in tickers if ticker in results_dict]
     return results
 
 
@@ -172,12 +169,6 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
         iv_premium = ((iv_data['iv'] - summary['hvol']) / summary['hvol']) * 100
         summary['iv_premium'] = round(iv_premium, 1)
         iv_summary['success'].append(ticker)
-        
-        # Track if cached or fresh
-        if iv_data.get('cached', False):
-            iv_summary['cached_count'] += 1
-        else:
-            iv_summary['fresh_count'] += 1
     else:
         summary['current_iv'] = None
         summary['iv_dte'] = None
@@ -185,9 +176,9 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
         iv_summary['failed'].append(ticker)
 
 
-def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv, elapsed, total_tickers):
-    """Print fetch summary with timing"""
-    print(f"\n📊 FETCH SUMMARY ({elapsed:.1f}s)")
+def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv, elapsed_time, total_tickers):
+    """Print fetch summary with performance metrics"""
+    print(f"\n📊 FETCH SUMMARY ({elapsed_time:.1f}s)")
     print(f"{'='*75}")
     if fetch_summary['cached']:
         cached_list = ', '.join(fetch_summary['cached'][:5])
@@ -197,28 +188,26 @@ def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv, elapsed, total_tic
     if fetch_summary['api']:
         print(f"✓ Earnings API ({len(fetch_summary['api'])}): {', '.join(fetch_summary['api'])}")
     if fetch_iv:
-        total_iv_success = len(iv_summary['success'])
-        if total_iv_success > 0:
-            cache_info = ""
-            if iv_summary['cached_count'] > 0 and iv_summary['fresh_count'] > 0:
-                cache_info = f" ({iv_summary['cached_count']} cached, {iv_summary['fresh_count']} fresh)"
-            elif iv_summary['cached_count'] > 0:
-                cache_info = f" (all cached)"
-            elif iv_summary['fresh_count'] > 0:
-                cache_info = f" (all fresh)"
-            
+        if iv_summary['success']:
             iv_list = ', '.join(iv_summary['success'][:5])
             if len(iv_summary['success']) > 5:
                 iv_list += '...'
-            print(f"✓ IV Retrieved ({total_iv_success}){cache_info}: {iv_list}")
-        
+            
+            # Check if all from cache
+            market_status = is_market_hours()
+            if market_status['is_open']:
+                cache_note = "(live)"
+            else:
+                cache_note = "(all from cache)"
+            
+            print(f"✓ IV Retrieved ({len(iv_summary['success'])}) {cache_note}: {iv_list}")
         if iv_summary['failed']:
             print(f"✗ IV Failed ({len(iv_summary['failed'])}): {', '.join(iv_summary['failed'])}")
     if fetch_summary['failed']:
         print(f"✗ Analysis Failed ({len(fetch_summary['failed'])}): {', '.join(fetch_summary['failed'])}")
     
-    # Performance metrics
-    tickers_per_sec = total_tickers / elapsed if elapsed > 0 else 0
+    # Performance metric
+    tickers_per_sec = total_tickers / elapsed_time if elapsed_time > 0 else 0
     print(f"\n⚡ Performance: {tickers_per_sec:.1f} tickers/sec")
 
 
@@ -269,8 +258,8 @@ def _print_results_table(df):
     }
     
     if 'current_iv' in df.columns and df['current_iv'].notna().any():
-        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "N/A")
-        display_cols['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "N/A")
+        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
+        display_cols['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
         display_cols['|'] = '|'
     
     display_cols.update({
@@ -299,21 +288,7 @@ def _print_insights(df):
     
     print(f"\n📊 Pattern Summary: {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
     
-    if 'iv_premium' in df.columns and df['iv_premium'].notna().any():
-        elevated = df[df['iv_premium'] >= 15].sort_values('iv_premium', ascending=False)
-        depressed = df[df['iv_premium'] <= -15].sort_values('iv_premium')
-        
-        print(f"\n💰 IV Landscape:")
-        if not elevated.empty:
-            tickers_str = ', '.join([f"{row['ticker']}(+{row['iv_premium']:.0f}%)" for _, row in elevated.head(5).iterrows()])
-            print(f"  Rich Premium (≥15%): {tickers_str}")
-        if not depressed.empty:
-            tickers_str = ', '.join([f"{row['ticker']}({row['iv_premium']:.0f}%)" for _, row in depressed.head(3).iterrows()])
-            print(f"  Thin Premium (≤-15%): {tickers_str}")
-        
-        normal_count = len(df[(df['iv_premium'] > -15) & (df['iv_premium'] < 15)])
-        if normal_count > 0:
-            print(f"  Normal Range: {normal_count} tickers")
+    # IV Landscape section REMOVED - IV columns remain in table for reference
     
     ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
     ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
@@ -335,4 +310,4 @@ def _print_insights(df):
             direction = "↑" if row['90d_overall_bias'] >= 70 else "↓"
             print(f"  {row['ticker']}: {row['90d_overall_bias']:.0f}% bias {direction}, {row['90_break_fmt']} breaks, {row['90d_drift']:+.1f}% drift")
     
-    print(f"\n💡 Remember: Past patterns ≠ Future results. IV context shows current opportunity cost.")
+    print(f"\n💡 Remember: Past patterns ≠ Future results. Use IV columns for current context.")
