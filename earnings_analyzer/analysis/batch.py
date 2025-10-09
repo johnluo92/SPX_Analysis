@@ -1,9 +1,10 @@
-"""Batch processing with parallel execution"""
+"""Batch processing with optimized parallel execution"""
 import time
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 from ..config import DEFAULT_LOOKBACK_QUARTERS, REQUEST_DELAY, ALPHAVANTAGE_KEYS
 from ..cache import load_cache, load_rate_limits
@@ -23,7 +24,7 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         debug: Print debug information
         fetch_iv: Fetch current IV data
         parallel: Use parallel processing
-        max_workers: Number of parallel workers
+        max_workers: Number of parallel workers (4-8 recommended)
     
     Returns:
         DataFrame with analysis results
@@ -32,7 +33,16 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     print(f"EARNINGS CONTAINMENT ANALYZER - v2.3")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
     if fetch_iv:
-        print(f"Current IV from Yahoo Finance (15-20min delayed)")
+        # Check market hours
+        from datetime import datetime
+        now = datetime.now()
+        is_market_open = (now.weekday() < 5 and 9 <= now.hour < 16)
+        
+        if is_market_open:
+            print(f"Current IV from Yahoo Finance (live market data)")
+        else:
+            print(f"⚠️  IV from Yahoo Finance (STALE - market closed)")
+            print(f"   Fetched at {now.strftime('%H:%M')} on {now.strftime('%A')}")
     if parallel:
         print(f"Parallel processing: {max_workers} workers")
     print("="*75)
@@ -44,24 +54,31 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     else:
         print(f"\n✓ All {len(ALPHAVANTAGE_KEYS)} API keys available")
     
+    # Pre-load cache once
+    cache = load_cache()
+    
     results = []
     fetch_summary = {'cached': [], 'api': [], 'failed': []}
     iv_summary = {'success': [], 'failed': []}
     
+    start_time = time.time()
+    
     if parallel:
         results = _batch_analyze_parallel(
             tickers, lookback_quarters, debug, fetch_iv, 
-            max_workers, fetch_summary, iv_summary
+            max_workers, fetch_summary, iv_summary, cache
         )
     else:
         results = _batch_analyze_serial(
             tickers, lookback_quarters, debug, fetch_iv,
-            fetch_summary, iv_summary
+            fetch_summary, iv_summary, cache
         )
+    
+    elapsed = time.time() - start_time
     
     print("\r" + " " * 80 + "\r", end='')
     
-    _print_fetch_summary(fetch_summary, iv_summary, fetch_iv)
+    _print_fetch_summary(fetch_summary, iv_summary, fetch_iv, elapsed)
     
     if not results:
         print("\n⚠️  No valid results")
@@ -75,10 +92,9 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
 
 
 def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv, 
-                          fetch_summary, iv_summary):
+                          fetch_summary, iv_summary, cache):
     """Process tickers serially"""
     results = []
-    cache = load_cache()
     yf_client = YahooFinanceClient()
     
     for i, ticker in enumerate(tickers, 1):
@@ -99,54 +115,93 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
         else:
             fetch_summary['failed'].append(ticker)
         
-        time.sleep(REQUEST_DELAY)
+        if not from_cache and i < len(tickers):
+            time.sleep(REQUEST_DELAY)
     
     return results
 
 
 def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
-                           max_workers, fetch_summary, iv_summary):
-    """Process tickers in parallel"""
+                           max_workers, fetch_summary, iv_summary, cache):
+    """Process tickers in parallel with proper resource management"""
     results = []
-    cache = load_cache()
+    
+    # Create a single YF client to share across threads (thread-safe)
     yf_client = YahooFinanceClient()
     
+    # Thread-safe locks for shared data structures
+    results_lock = Lock()
+    fetch_lock = Lock()
+    iv_lock = Lock()
+    
+    def process_ticker(ticker):
+        """Worker function for parallel processing"""
+        try:
+            from_cache = ticker in cache
+            summary, status = analyze_ticker(ticker, lookback_quarters, verbose=False, debug=debug)
+            
+            if summary:
+                if fetch_iv:
+                    iv_data = yf_client.get_current_iv(ticker)
+                    if iv_data:
+                        summary['current_iv'] = iv_data['iv']
+                        summary['iv_dte'] = iv_data['dte']
+                        iv_premium = ((iv_data['iv'] - summary['hvol']) / summary['hvol']) * 100
+                        summary['iv_premium'] = round(iv_premium, 1)
+                        
+                        with iv_lock:
+                            iv_summary['success'].append(ticker)
+                    else:
+                        summary['current_iv'] = None
+                        summary['iv_dte'] = None
+                        summary['iv_premium'] = None
+                        
+                        with iv_lock:
+                            iv_summary['failed'].append(ticker)
+                
+                with results_lock:
+                    results.append(summary)
+                
+                with fetch_lock:
+                    if from_cache:
+                        fetch_summary['cached'].append(ticker)
+                    else:
+                        fetch_summary['api'].append(ticker)
+                
+                return True
+            else:
+                with fetch_lock:
+                    fetch_summary['failed'].append(ticker)
+                return False
+                
+        except Exception as e:
+            if debug:
+                print(f"\n❌ Error processing {ticker}: {e}")
+            with fetch_lock:
+                fetch_summary['failed'].append(ticker)
+            return False
+    
+    # Execute in parallel
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_ticker = {
-            executor.submit(analyze_ticker, ticker, lookback_quarters, False, debug): ticker
-            for ticker in tickers
-        }
+        future_to_ticker = {executor.submit(process_ticker, ticker): ticker for ticker in tickers}
         
         completed = 0
         for future in as_completed(future_to_ticker):
             ticker = future_to_ticker[future]
             completed += 1
-            print(f"\r[{completed}/{len(tickers)}] Processing {ticker}...", end='', flush=True)
+            print(f"\r[{completed}/{len(tickers)}] Completed {ticker}...", end='', flush=True)
             
             try:
-                summary, status = future.result()
-                from_cache = ticker in cache
-                
-                if summary:
-                    if fetch_iv:
-                        _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
-                    
-                    results.append(summary)
-                    if from_cache:
-                        fetch_summary['cached'].append(ticker)
-                    else:
-                        fetch_summary['api'].append(ticker)
-                else:
-                    fetch_summary['failed'].append(ticker)
+                future.result()  # This will raise any exception that occurred
             except Exception as e:
-                print(f"\n❌ Error processing {ticker}: {e}")
-                fetch_summary['failed'].append(ticker)
+                if debug:
+                    print(f"\n❌ Unexpected error for {ticker}: {e}")
     
     return results
 
 
 def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
-    """Fetch and add IV data to summary"""
+    """Fetch and add IV data to summary (for serial processing)"""
     iv_data = yf_client.get_current_iv(ticker)
     if iv_data:
         summary['current_iv'] = iv_data['iv']
@@ -161,9 +216,9 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
         iv_summary['failed'].append(ticker)
 
 
-def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv):
-    """Print fetch summary"""
-    print(f"\n📊 FETCH SUMMARY")
+def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv, elapsed):
+    """Print fetch summary with timing"""
+    print(f"\n📊 FETCH SUMMARY ({elapsed:.1f}s)")
     print(f"{'='*75}")
     if fetch_summary['cached']:
         cached_list = ', '.join(fetch_summary['cached'][:5])
@@ -182,6 +237,12 @@ def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv):
             print(f"✗ IV Failed ({len(iv_summary['failed'])}): {', '.join(iv_summary['failed'])}")
     if fetch_summary['failed']:
         print(f"✗ Analysis Failed ({len(fetch_summary['failed'])}): {', '.join(fetch_summary['failed'])}")
+    
+    # Performance metrics
+    if len(fetch_summary['api']) + len(fetch_summary['cached']) > 0:
+        total_processed = len(fetch_summary['api']) + len(fetch_summary['cached'])
+        rate = total_processed / elapsed if elapsed > 0 else 0
+        print(f"\n⚡ Performance: {rate:.1f} tickers/sec")
 
 
 def _format_break_ratio(up_breaks, down_breaks, break_bias):
@@ -231,8 +292,8 @@ def _print_results_table(df):
     }
     
     if 'current_iv' in df.columns and df['current_iv'].notna().any():
-        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
-        display_cols['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
+        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "N/A")
+        display_cols['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "N/A")
         display_cols['|'] = '|'
     
     display_cols.update({

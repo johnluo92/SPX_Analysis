@@ -1,0 +1,18 @@
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Output files
+earnings_cache.json
+rate_limits.json
+*.csv
+earnings_results*.csv
+
+# OS
+.DS_Store
