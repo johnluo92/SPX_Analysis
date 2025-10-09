@@ -29,7 +29,7 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         DataFrame with analysis results
     """
     print("\n" + "="*75)
-    print(f"EARNINGS CONTAINMENT ANALYZER - v2.7")
+    print(f"EARNINGS CONTAINMENT ANALYZER - v2.5 (HVol Backtest)")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
     if fetch_iv:
         print(f"Current IV from Yahoo Finance (15-20min delayed)")
@@ -151,7 +151,7 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
     if iv_data:
         summary['current_iv'] = iv_data['iv']
         summary['iv_dte'] = iv_data['dte']
-        iv_premium = ((iv_data['iv'] - summary['rvol_45']) / summary['rvol_45']) * 100
+        iv_premium = ((iv_data['iv'] - summary['hvol']) / summary['hvol']) * 100
         summary['iv_premium'] = round(iv_premium, 1)
         iv_summary['success'].append(ticker)
     else:
@@ -201,6 +201,8 @@ def _create_results_dataframe(results):
     """Create formatted results dataframe"""
     df = pd.DataFrame(results)
     
+    df['45d_width'] = df.apply(lambda x: round(x['strike_width'] * np.sqrt(45/90), 1), axis=1)
+    
     df['45_break_fmt'] = df.apply(
         lambda x: _format_break_ratio(x['45d_breaks_up'], x['45d_breaks_dn'], x['45d_break_bias']), 
         axis=1
@@ -225,17 +227,15 @@ def _print_results_table(df):
     
     display_cols = {
         'Ticker': df['ticker'],
-        'RVol45': df['rvol_45'].astype(int),
-        'RVol90': df['rvol_90'].astype(int),
+        'HVol%': df['hvol'].astype(int),
     }
     
     if 'current_iv' in df.columns and df['current_iv'].notna().any():
-        display_cols['IV45'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
-        display_cols['IVP45'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
+        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
+        display_cols['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
         display_cols['|'] = '|'
     
     display_cols.update({
-        '45D%': df['45d_contain'].astype(int),
         '90D%': df['90d_contain'].astype(int),
         '90Bias': df['90d_overall_bias'].astype(int),
         '90Break': df['90_break_fmt'],
@@ -261,6 +261,22 @@ def _print_insights(df):
     
     print(f"\n📊 Pattern Summary: {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
     
+    if 'iv_premium' in df.columns and df['iv_premium'].notna().any():
+        elevated = df[df['iv_premium'] >= 15].sort_values('iv_premium', ascending=False)
+        depressed = df[df['iv_premium'] <= -15].sort_values('iv_premium')
+        
+        print(f"\n💰 IV Landscape:")
+        if not elevated.empty:
+            tickers_str = ', '.join([f"{row['ticker']}(+{row['iv_premium']:.0f}%)" for _, row in elevated.head(5).iterrows()])
+            print(f"  Rich Premium (≥15%): {tickers_str}")
+        if not depressed.empty:
+            tickers_str = ', '.join([f"{row['ticker']}({row['iv_premium']:.0f}%)" for _, row in depressed.head(3).iterrows()])
+            print(f"  Thin Premium (≤-15%): {tickers_str}")
+        
+        normal_count = len(df[(df['iv_premium'] > -15) & (df['iv_premium'] < 15)])
+        if normal_count > 0:
+            print(f"  Normal Range: {normal_count} tickers")
+    
     ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
     ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
     
@@ -282,3 +298,38 @@ def _print_insights(df):
             print(f"  {row['ticker']}: {row['90d_overall_bias']:.0f}% bias {direction}, {row['90_break_fmt']} breaks, {row['90d_drift']:+.1f}% drift")
     
     print(f"\n💡 Remember: Past patterns ≠ Future results. IV context shows current opportunity cost.")
+
+
+def _create_results_dataframe(results):
+    """Create formatted results dataframe"""
+    df = pd.DataFrame(results)
+    
+    # Calculate derived columns
+    df['45d_width'] = df.apply(lambda x: round(x['strike_width'] * np.sqrt(45/90), 1), axis=1)
+    
+    df['45_break_fmt'] = df.apply(
+        lambda x: _format_break_ratio(x['45d_breaks_up'], x['45d_breaks_dn'], x['45d_break_bias']), 
+        axis=1
+    )
+    df['90_break_fmt'] = df.apply(
+        lambda x: _format_break_ratio(x['90d_breaks_up'], x['90d_breaks_dn'], x['90d_break_bias']), 
+        axis=1
+    )
+    
+    df['strategy_display'] = df['strategy'].apply(lambda x: 
+        x.replace('BIAS↑', 'BIAS↑').replace('BIAS↓', 'BIAS↓') if 'BIAS' in x else x
+    )
+    
+    # SORT BY STRATEGY QUALITY
+    def strategy_rank(s):
+        if 'IC90' in s and '⚠' not in s: return 0  # Best: IC90 symmetric
+        if 'IC90⚠' in s: return 1                   # Good: IC90 asymmetric
+        if 'IC45' in s and '⚠' not in s: return 2   # Good: IC45 symmetric
+        if 'IC45⚠' in s: return 3                   # OK: IC45 asymmetric
+        if 'BIAS' in s: return 4                    # Directional edge
+        return 5                                     # SKIP (no edge)
+    
+    df['_rank'] = df['strategy'].apply(strategy_rank)
+    df = df.sort_values('_rank').drop('_rank', axis=1)
+    
+    return df
