@@ -9,7 +9,6 @@ __pycache__/
 *.pyc
 
 # Output files
-earnings_cache.json
 rate_limits.json
 *.csv
 earnings_results*.csv
