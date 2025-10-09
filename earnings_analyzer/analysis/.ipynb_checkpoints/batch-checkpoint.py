@@ -1,4 +1,4 @@
-"""Batch processing with parallel execution - v2.7 LOO"""
+"""Batch processing with parallel execution"""
 import time
 import pandas as pd
 import numpy as np
@@ -31,7 +31,6 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     print("\n" + "="*75)
     print(f"EARNINGS CONTAINMENT ANALYZER - v2.7")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
-    print(f"Strike Method: Leave-One-Out Cross-Validation (75th percentile)")
     if fetch_iv:
         print(f"Current IV from Yahoo Finance (15-20min delayed)")
     if parallel:
@@ -150,16 +149,15 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
     """Fetch and add IV data to summary"""
     iv_data = yf_client.get_current_iv(ticker)
     if iv_data:
-        summary['iv45'] = iv_data['iv']
+        summary['current_iv'] = iv_data['iv']
         summary['iv_dte'] = iv_data['dte']
-        # Calculate IV premium vs RVol45 (not HVol)
-        iv_premium_45 = ((iv_data['iv'] - summary['rvol_45']) / summary['rvol_45']) * 100
-        summary['ivprem45'] = round(iv_premium_45, 1)
+        iv_premium = ((iv_data['iv'] - summary['rvol_45']) / summary['rvol_45']) * 100
+        summary['iv_premium'] = round(iv_premium, 1)
         iv_summary['success'].append(ticker)
     else:
-        summary['iv45'] = None
+        summary['current_iv'] = None
         summary['iv_dte'] = None
-        summary['ivprem45'] = None
+        summary['iv_premium'] = None
         iv_summary['failed'].append(ticker)
 
 
@@ -221,21 +219,19 @@ def _create_results_dataframe(results):
 
 def _print_results_table(df):
     """Print results table"""
-    print(f"\n{'='*130}")
-    print("BACKTEST RESULTS (Leave-One-Out Validation)")
-    print("="*130)
+    print(f"\n{'='*110}")
+    print("BACKTEST RESULTS")
+    print("="*110)
     
     display_cols = {
         'Ticker': df['ticker'],
         'RVol45': df['rvol_45'].astype(int),
         'RVol90': df['rvol_90'].astype(int),
-        'Width45': df['strike_width_45'].astype(int),
-        'Width90': df['strike_width_90'].astype(int),
     }
     
-    if 'iv45' in df.columns and df['iv45'].notna().any():
-        display_cols['IV45'] = df['iv45'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
-        display_cols['IVP45'] = df['ivprem45'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
+    if 'current_iv' in df.columns and df['current_iv'].notna().any():
+        display_cols['IV45'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
+        display_cols['IVP45'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
         display_cols['|'] = '|'
     
     display_cols.update({
@@ -254,9 +250,9 @@ def _print_results_table(df):
 
 def _print_insights(df):
     """Print key takeaways and insights"""
-    print(f"\n{'='*130}")
+    print(f"\n{'='*110}")
     print("KEY TAKEAWAYS:")
-    print("="*130)
+    print("="*110)
     
     ic_count = len(df[df['strategy'].str.contains('IC', na=False)])
     bias_up_count = len(df[df['strategy'].str.contains('BIAS↑', na=False)])
@@ -264,22 +260,6 @@ def _print_insights(df):
     skip_count = len(df[df['strategy'] == 'SKIP'])
     
     print(f"\n📊 Pattern Summary: {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
-    
-    if 'ivprem45' in df.columns and df['ivprem45'].notna().any():
-        elevated = df[df['ivprem45'] >= 15].sort_values('ivprem45', ascending=False)
-        depressed = df[df['ivprem45'] <= -15].sort_values('ivprem45')
-        
-        print(f"\n💰 IV Landscape:")
-        if not elevated.empty:
-            tickers_str = ', '.join([f"{row['ticker']}(+{row['ivprem45']:.0f}%)" for _, row in elevated.head(5).iterrows()])
-            print(f"  Rich Premium (≥15%): {tickers_str}")
-        if not depressed.empty:
-            tickers_str = ', '.join([f"{row['ticker']}({row['ivprem45']:.0f}%)" for _, row in depressed.head(3).iterrows()])
-            print(f"  Thin Premium (≤-15%): {tickers_str}")
-        
-        normal_count = len(df[(df['ivprem45'] > -15) & (df['ivprem45'] < 15)])
-        if normal_count > 0:
-            print(f"  Normal Range: {normal_count} tickers")
     
     ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
     ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
@@ -301,4 +281,4 @@ def _print_insights(df):
             direction = "↑" if row['90d_overall_bias'] >= 70 else "↓"
             print(f"  {row['ticker']}: {row['90d_overall_bias']:.0f}% bias {direction}, {row['90_break_fmt']} breaks, {row['90d_drift']:+.1f}% drift")
     
-    print(f"\n💡 LOO = Each test uses only past data (no circular logic). IV premium vs realized post-earnings vol.")
+    print(f"\n💡 Remember: Past patterns ≠ Future results. IV context shows current opportunity cost.")
