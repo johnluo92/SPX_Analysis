@@ -221,9 +221,9 @@ def _create_results_dataframe(results):
 
 def _print_results_table(df):
     """Print results table"""
-    print(f"\n{'='*110}")
+    print(f"\n{'='*120}")
     print("BACKTEST RESULTS")
-    print("="*110)
+    print("="*120)
     
     display_cols = {
         'Ticker': df['ticker'],
@@ -236,6 +236,7 @@ def _print_results_table(df):
         display_cols['|'] = '|'
     
     display_cols.update({
+        '45D%': df['45d_contain'].astype(int),
         '90D%': df['90d_contain'].astype(int),
         '90Bias': df['90d_overall_bias'].astype(int),
         '90Break': df['90_break_fmt'],
