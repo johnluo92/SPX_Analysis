@@ -67,8 +67,9 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         print("\n⚠️  No valid results")
         return None
     
-    df = _create_results_dataframe(results, tickers)
+    df = _create_results_dataframe(results)
     _print_results_table(df)
+    _print_pattern_legend()
     _print_insights(df)
     
     return df
@@ -107,7 +108,7 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
 def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                            max_workers, fetch_summary, iv_summary):
     """Process tickers in parallel"""
-    results = {}  # Changed to dict to preserve order
+    results = []
     cache = load_cache()
     yf_client = YahooFinanceClient()
     
@@ -131,7 +132,7 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                     if fetch_iv:
                         _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
                     
-                    results[ticker] = summary  # Store with ticker as key
+                    results.append(summary)
                     if from_cache:
                         fetch_summary['cached'].append(ticker)
                     else:
@@ -142,8 +143,8 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                 print(f"\n❌ Error processing {ticker}: {e}")
                 fetch_summary['failed'].append(ticker)
     
-    # Restore original order
-    return [results[ticker] for ticker in tickers if ticker in results]
+    return results
+
 
 def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
     """Fetch and add IV data to summary"""
@@ -212,38 +213,31 @@ def _create_results_dataframe(results):
         axis=1
     )
     
-    df['strategy_display'] = df['strategy'].apply(lambda x: 
-        x.replace('BIAS↑', 'BIAS↑').replace('BIAS↓', 'BIAS↓') if 'BIAS' in x else x
-    )
+    # Preserve the strategy string as-is (includes edge count)
+    df['strategy_display'] = df['strategy']
     
     return df
 
 
 def _print_results_table(df):
-    """Print results table with graceful IV handling"""
-    print(f"\n{'='*110}")
+    """Print results table"""
+    print(f"\n{'='*145}")
     print("BACKTEST RESULTS")
-    print("="*110)
+    print("="*145)
     
     display_cols = {
         'Ticker': df['ticker'],
         'HVol%': df['hvol'].astype(int),
     }
     
-    # Only show IV columns if we have valid data for at least one ticker
-    has_valid_iv = ('current_iv' in df.columns and 
-                    df['current_iv'].notna().any() and 
-                    (df['current_iv'] > 0).any())
-    
-    if has_valid_iv:
-        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) and x > 0 else "N/A")
+    if 'current_iv' in df.columns and df['current_iv'].notna().any():
+        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
         display_cols['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
         display_cols['|'] = '|'
-    else:
-        # No valid IV data - add a note
-        print("⚠️  IV data unavailable (after hours or data fetch failed) - using cached HVol only\n")
     
     display_cols.update({
+        '45D%': df['45d_contain'].astype(int),
+        '45Break': df['45_break_fmt'],
         '90D%': df['90d_contain'].astype(int),
         '90Bias': df['90d_overall_bias'].astype(int),
         '90Break': df['90_break_fmt'],
@@ -254,11 +248,13 @@ def _print_results_table(df):
     
     display_df = pd.DataFrame(display_cols)
     print(display_df.to_string(index=False))
-    
-    # Add disclaimer about pattern interpretation
-    print(f"\n{'='*110}")
+
+
+def _print_pattern_legend():
+    """Print pattern interpretation legend"""
+    print(f"\n{'='*145}")
     print("PATTERN LEGEND:")
-    print("="*110)
+    print("="*145)
     print("• IC45/IC90: Mean reversion containment windows (45-day/90-day)")
     print("• BIAS↑/BIAS↓: Directional edge (always based on 90-day thresholds)")
     print("• ⚠↑/⚠↓: Asymmetric break risk (watch for skewed movement)")
@@ -268,25 +264,20 @@ def _print_results_table(df):
 
 def _print_insights(df):
     """Print key takeaways and insights"""
-    print(f"\n{'='*110}")
+    print(f"\n{'='*145}")
     print("KEY TAKEAWAYS:")
-    print("="*110)
+    print("="*145)
     
     ic_count = len(df[df['strategy'].str.contains('IC', na=False)])
     bias_up_count = len(df[df['strategy'].str.contains('BIAS↑', na=False)])
     bias_down_count = len(df[df['strategy'].str.contains('BIAS↓', na=False)])
-    skip_count = len(df[df['strategy'] == 'SKIP [0 edges]'])
+    skip_count = len(df[df['strategy'] == 'SKIP'])
     
     print(f"\n📊 Pattern Summary: {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
     
-    # Only show IV landscape if we have valid data
-    has_valid_iv = ('iv_premium' in df.columns and 
-                    df['iv_premium'].notna().any() and 
-                    (df['current_iv'] > 0).any())
-    
-    if has_valid_iv:
-        elevated = df[(df['iv_premium'] >= 15) & (df['current_iv'] > 0)].sort_values('iv_premium', ascending=False)
-        depressed = df[(df['iv_premium'] <= -15) & (df['current_iv'] > 0)].sort_values('iv_premium')
+    if 'iv_premium' in df.columns and df['iv_premium'].notna().any():
+        elevated = df[df['iv_premium'] >= 15].sort_values('iv_premium', ascending=False)
+        depressed = df[df['iv_premium'] <= -15].sort_values('iv_premium')
         
         print(f"\n💰 IV Landscape:")
         if not elevated.empty:
@@ -296,11 +287,9 @@ def _print_insights(df):
             tickers_str = ', '.join([f"{row['ticker']}({row['iv_premium']:.0f}%)" for _, row in depressed.head(3).iterrows()])
             print(f"  Thin Premium (≤-15%): {tickers_str}")
         
-        normal_count = len(df[(df['iv_premium'] > -15) & (df['iv_premium'] < 15) & (df['current_iv'] > 0)])
+        normal_count = len(df[(df['iv_premium'] > -15) & (df['iv_premium'] < 15)])
         if normal_count > 0:
             print(f"  Normal Range: {normal_count} tickers")
-    else:
-        print(f"\n💰 IV Landscape: Not available (after hours or fetch failed - refer to cached IV data if needed)")
     
     ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
     ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
@@ -323,27 +312,3 @@ def _print_insights(df):
             print(f"  {row['ticker']}: {row['90d_overall_bias']:.0f}% bias {direction}, {row['90_break_fmt']} breaks, {row['90d_drift']:+.1f}% drift")
     
     print(f"\n💡 Remember: Past patterns ≠ Future results. IV context shows current opportunity cost.")
-
-
-def _create_results_dataframe(results, tickers):
-    """Create formatted results dataframe"""
-    df = pd.DataFrame(results)
-    
-    # DON'T add any sorting here - parallel function already preserves order
-    
-    df['45d_width'] = df.apply(lambda x: round(x['strike_width'] * np.sqrt(45/90), 1), axis=1)
-    
-    df['45_break_fmt'] = df.apply(
-        lambda x: _format_break_ratio(x['45d_breaks_up'], x['45d_breaks_dn'], x['45d_break_bias']), 
-        axis=1
-    )
-    df['90_break_fmt'] = df.apply(
-        lambda x: _format_break_ratio(x['90d_breaks_up'], x['90d_breaks_dn'], x['90d_break_bias']), 
-        axis=1
-    )
-    
-    df['strategy_display'] = df['strategy'].apply(lambda x: 
-        x.replace('BIAS↑', 'BIAS↑').replace('BIAS↓', 'BIAS↓') if 'BIAS' in x else x
-    )
-    
-    return df
