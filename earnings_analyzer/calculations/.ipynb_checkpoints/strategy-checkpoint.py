@@ -22,38 +22,44 @@ def determine_strategy(stats_45: Dict, stats_90: Dict) -> str:
     Returns:
         Strategy recommendation string
     """
-    rec_parts = []
+    ic_recommendations = []
     bias_reasons = []
     
-    # Check 90D containment
-    ic90_qualified = stats_90['containment'] >= CONTAINMENT_THRESHOLD
-    if ic90_qualified:
-        break_ratio_90 = max(stats_90['breaks_up'], stats_90['breaks_down']) / (
+    # Check 90-day containment
+    if stats_90['containment'] >= CONTAINMENT_THRESHOLD:
+        break_ratio = max(stats_90['breaks_up'], stats_90['breaks_down']) / (
             min(stats_90['breaks_up'], stats_90['breaks_down']) + 1
         )
         
-        if break_ratio_90 < BREAK_RATIO_THRESHOLD:
-            rec_parts.append("IC90")
+        if break_ratio < BREAK_RATIO_THRESHOLD:
+            ic_recommendations.append("IC90")
         elif stats_90['break_bias'] >= BREAK_BIAS_THRESHOLD:
-            rec_parts.append("IC90⚠↑")
+            ic_recommendations.append("IC90⚠↑")
+        elif stats_90['break_bias'] <= (100 - BREAK_BIAS_THRESHOLD):
+            ic_recommendations.append("IC90⚠↓")
         else:
-            rec_parts.append("IC90⚠↓")
+            ic_recommendations.append("IC90")
     
-    # Check 45D containment (independent of 90D result)
-    ic45_qualified = stats_45['containment'] >= CONTAINMENT_THRESHOLD
-    if ic45_qualified:
-        break_ratio_45 = max(stats_45['breaks_up'], stats_45['breaks_down']) / (
+    # Check 45-day containment
+    if stats_45['containment'] >= CONTAINMENT_THRESHOLD:
+        break_ratio = max(stats_45['breaks_up'], stats_45['breaks_down']) / (
             min(stats_45['breaks_up'], stats_45['breaks_down']) + 1
         )
         
-        if break_ratio_45 < BREAK_RATIO_THRESHOLD:
-            rec_parts.append("IC45")
+        if break_ratio < BREAK_RATIO_THRESHOLD:
+            ic_recommendations.append("IC45")
         elif stats_45['break_bias'] >= BREAK_BIAS_THRESHOLD:
-            rec_parts.append("IC45⚠↑")
+            ic_recommendations.append("IC45⚠↑")
+        elif stats_45['break_bias'] <= (100 - BREAK_BIAS_THRESHOLD):
+            ic_recommendations.append("IC45⚠↓")
         else:
-            rec_parts.append("IC45⚠↓")
+            ic_recommendations.append("IC45")
     
-    # Check for directional bias (runs regardless of IC qualification)
+    # If any IC pattern found, return it
+    if ic_recommendations:
+        return " + ".join(ic_recommendations)
+    
+    # No IC pattern - check for directional bias
     has_upward_edge = False
     has_downward_edge = False
     
@@ -65,7 +71,11 @@ def determine_strategy(stats_45: Dict, stats_90: Dict) -> str:
         has_upward_edge = True
         bias_reasons.append(f"{stats_90['breaks_up']}:{stats_90['breaks_down']}↑ breaks")
     
-    if stats_90['avg_move_pct'] >= DRIFT_THRESHOLD:
+    # Use relative drift (adaptive to volatility)
+    if stats_90['drift_vs_width'] >= 20:
+        has_upward_edge = True
+        bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
+    elif stats_90['avg_move_pct'] >= DRIFT_THRESHOLD:
         has_upward_edge = True
         bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
     
@@ -77,17 +87,18 @@ def determine_strategy(stats_45: Dict, stats_90: Dict) -> str:
         has_downward_edge = True
         bias_reasons.append(f"{stats_90['breaks_up']}:{stats_90['breaks_down']}↓ breaks")
     
-    if stats_90['avg_move_pct'] <= -DRIFT_THRESHOLD:
+    if stats_90['drift_vs_width'] <= -20:
+        has_downward_edge = True
+        bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
+    elif stats_90['avg_move_pct'] <= -DRIFT_THRESHOLD:
         has_downward_edge = True
         bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
     
-    # Add bias to recommendations
     if has_upward_edge:
         reason_str = ", ".join(bias_reasons)
-        rec_parts.append(f"BIAS↑ ({reason_str})")
+        return f"BIAS↑ ({reason_str})"
     elif has_downward_edge:
         reason_str = ", ".join(bias_reasons)
-        rec_parts.append(f"BIAS↓ ({reason_str})")
+        return f"BIAS↓ ({reason_str})"
     
-    # Return combined strategy or SKIP
-    return " + ".join(rec_parts) if rec_parts else "SKIP"
+    return "SKIP"

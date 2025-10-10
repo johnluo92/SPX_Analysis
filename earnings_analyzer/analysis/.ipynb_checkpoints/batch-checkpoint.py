@@ -220,7 +220,7 @@ def _create_results_dataframe(results):
 
 
 def _print_results_table(df):
-    """Print results table"""
+    """Print results table with 45D break data"""
     print(f"\n{'='*120}")
     print("BACKTEST RESULTS")
     print("="*120)
@@ -237,6 +237,7 @@ def _print_results_table(df):
     
     display_cols.update({
         '45D%': df['45d_contain'].astype(int),
+        '45Break': df['45_break_fmt'],
         '90D%': df['90d_contain'].astype(int),
         '90Bias': df['90d_overall_bias'].astype(int),
         '90Break': df['90_break_fmt'],
