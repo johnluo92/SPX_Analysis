@@ -14,6 +14,7 @@ from ..config import (
 def determine_strategy(stats_45: Dict, stats_90: Dict) -> str:
     """
     Determine trading strategy based on containment and directional patterns
+    All conditions are independent and can stack
     
     Args:
         stats_45: 45-day statistics
@@ -22,47 +23,44 @@ def determine_strategy(stats_45: Dict, stats_90: Dict) -> str:
     Returns:
         Strategy recommendation string
     """
-    ic_recommendations = []
-    bias_reasons = []
+    recommendations = []
     
-    # Check 90-day containment
+    # === CHECK 90-DAY CONTAINMENT ===
     if stats_90['containment'] >= CONTAINMENT_THRESHOLD:
         break_ratio = max(stats_90['breaks_up'], stats_90['breaks_down']) / (
             min(stats_90['breaks_up'], stats_90['breaks_down']) + 1
         )
         
         if break_ratio < BREAK_RATIO_THRESHOLD:
-            ic_recommendations.append("IC90")
+            recommendations.append("IC90")
         elif stats_90['break_bias'] >= BREAK_BIAS_THRESHOLD:
-            ic_recommendations.append("IC90⚠↑")
+            recommendations.append("IC90⚠↑")
         elif stats_90['break_bias'] <= (100 - BREAK_BIAS_THRESHOLD):
-            ic_recommendations.append("IC90⚠↓")
+            recommendations.append("IC90⚠↓")
         else:
-            ic_recommendations.append("IC90")
+            recommendations.append("IC90")
     
-    # Check 45-day containment
+    # === CHECK 45-DAY CONTAINMENT ===
     if stats_45['containment'] >= CONTAINMENT_THRESHOLD:
         break_ratio = max(stats_45['breaks_up'], stats_45['breaks_down']) / (
             min(stats_45['breaks_up'], stats_45['breaks_down']) + 1
         )
         
         if break_ratio < BREAK_RATIO_THRESHOLD:
-            ic_recommendations.append("IC45")
+            recommendations.append("IC45")
         elif stats_45['break_bias'] >= BREAK_BIAS_THRESHOLD:
-            ic_recommendations.append("IC45⚠↑")
+            recommendations.append("IC45⚠↑")
         elif stats_45['break_bias'] <= (100 - BREAK_BIAS_THRESHOLD):
-            ic_recommendations.append("IC45⚠↓")
+            recommendations.append("IC45⚠↓")
         else:
-            ic_recommendations.append("IC45")
+            recommendations.append("IC45")
     
-    # If any IC pattern found, return it
-    if ic_recommendations:
-        return " + ".join(ic_recommendations)
-    
-    # No IC pattern - check for directional bias
+    # === CHECK DIRECTIONAL BIAS (ALWAYS) ===
+    bias_reasons = []
     has_upward_edge = False
     has_downward_edge = False
     
+    # UPWARD BIAS CHECKS
     if stats_90['overall_bias'] >= UPWARD_BIAS_THRESHOLD:
         has_upward_edge = True
         bias_reasons.append(f"{stats_90['overall_bias']:.0f}% bias")
@@ -79,6 +77,7 @@ def determine_strategy(stats_45: Dict, stats_90: Dict) -> str:
         has_upward_edge = True
         bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
     
+    # DOWNWARD BIAS CHECKS
     if stats_90['overall_bias'] <= DOWNWARD_BIAS_THRESHOLD:
         has_downward_edge = True
         bias_reasons.append(f"{stats_90['overall_bias']:.0f}% bias")
@@ -94,11 +93,13 @@ def determine_strategy(stats_45: Dict, stats_90: Dict) -> str:
         has_downward_edge = True
         bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
     
+    # ADD BIAS TO RECOMMENDATIONS
     if has_upward_edge:
         reason_str = ", ".join(bias_reasons)
-        return f"BIAS↑ ({reason_str})"
+        recommendations.append(f"BIAS↑ ({reason_str})")
     elif has_downward_edge:
         reason_str = ", ".join(bias_reasons)
-        return f"BIAS↓ ({reason_str})"
+        recommendations.append(f"BIAS↓ ({reason_str})")
     
-    return "SKIP"
+    # === RETURN ALL RECOMMENDATIONS OR SKIP ===
+    return " + ".join(recommendations) if recommendations else "SKIP"
