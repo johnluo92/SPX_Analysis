@@ -29,7 +29,7 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         DataFrame with analysis results
     """
     print("\n" + "="*75)
-    print(f"EARNINGS CONTAINMENT ANALYZER - v2.5 (HVol Backtest)")
+    print(f"EARNINGS CONTAINMENT ANALYZER - v2.3")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
     if fetch_iv:
         print(f"Current IV from Yahoo Finance (15-20min delayed)")
@@ -69,7 +69,6 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     
     df = _create_results_dataframe(results)
     _print_results_table(df)
-    _print_pattern_legend()
     _print_insights(df)
     
     return df
@@ -89,6 +88,9 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
         summary, status = analyze_ticker(ticker, lookback_quarters, verbose=False, debug=debug)
         
         if summary:
+            # CRITICAL: Preserve input order
+            summary['_order'] = i
+            
             if fetch_iv:
                 _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
             
@@ -112,6 +114,9 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
     cache = load_cache()
     yf_client = YahooFinanceClient()
     
+    # CRITICAL: Create order mapping BEFORE parallel execution
+    ticker_order = {ticker: i for i, ticker in enumerate(tickers, 1)}
+    
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_ticker = {
             executor.submit(analyze_ticker, ticker, lookback_quarters, False, debug): ticker
@@ -129,6 +134,9 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                 from_cache = ticker in cache
                 
                 if summary:
+                    # CRITICAL: Preserve input order using pre-built map
+                    summary['_order'] = ticker_order[ticker]
+                    
                     if fetch_iv:
                         _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
                     
@@ -202,6 +210,11 @@ def _create_results_dataframe(results):
     """Create formatted results dataframe"""
     df = pd.DataFrame(results)
     
+    # CRITICAL: Sort by input order, then remove helper column
+    if '_order' in df.columns:
+        df = df.sort_values('_order').reset_index(drop=True)
+        df = df.drop('_order', axis=1)
+    
     df['45d_width'] = df.apply(lambda x: round(x['strike_width'] * np.sqrt(45/90), 1), axis=1)
     
     df['45_break_fmt'] = df.apply(
@@ -213,8 +226,9 @@ def _create_results_dataframe(results):
         axis=1
     )
     
-    # Preserve the strategy string as-is (includes edge count)
-    df['strategy_display'] = df['strategy']
+    df['strategy_display'] = df['strategy'].apply(lambda x: 
+        x.replace('BIAS↑', 'BIAS↑').replace('BIAS↓', 'BIAS↓') if 'BIAS' in x else x
+    )
     
     return df
 
@@ -248,18 +262,6 @@ def _print_results_table(df):
     
     display_df = pd.DataFrame(display_cols)
     print(display_df.to_string(index=False))
-
-
-def _print_pattern_legend():
-    """Print pattern interpretation legend"""
-    print(f"\n{'='*145}")
-    print("PATTERN LEGEND:")
-    print("="*145)
-    print("• IC45/IC90: Mean reversion containment windows (45-day/90-day)")
-    print("• BIAS↑/BIAS↓: Directional edge (always based on 90-day thresholds)")
-    print("• ⚠↑/⚠↓: Asymmetric break risk (watch for skewed movement)")
-    print("• Edge count: Number of independent 90-day patterns detected")
-    print("• All bias metrics (%, breaks, drift) reference 90-day analysis")
 
 
 def _print_insights(df):
