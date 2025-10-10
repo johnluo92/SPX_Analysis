@@ -220,24 +220,30 @@ def _create_results_dataframe(results):
 
 
 def _print_results_table(df):
-    """Print results table with 45D break data"""
-    print(f"\n{'='*120}")
+    """Print results table with graceful IV handling"""
+    print(f"\n{'='*110}")
     print("BACKTEST RESULTS")
-    print("="*120)
+    print("="*110)
     
     display_cols = {
         'Ticker': df['ticker'],
         'HVol%': df['hvol'].astype(int),
     }
     
-    if 'current_iv' in df.columns and df['current_iv'].notna().any():
-        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
+    # Only show IV columns if we have valid data for at least one ticker
+    has_valid_iv = ('current_iv' in df.columns and 
+                    df['current_iv'].notna().any() and 
+                    (df['current_iv'] > 0).any())
+    
+    if has_valid_iv:
+        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) and x > 0 else "N/A")
         display_cols['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
         display_cols['|'] = '|'
+    else:
+        # No valid IV data - add a note
+        print("⚠️  IV data unavailable (after hours or data fetch failed) - using cached HVol only\n")
     
     display_cols.update({
-        '45D%': df['45d_contain'].astype(int),
-        '45Break': df['45_break_fmt'],
         '90D%': df['90d_contain'].astype(int),
         '90Bias': df['90d_overall_bias'].astype(int),
         '90Break': df['90_break_fmt'],
@@ -248,6 +254,16 @@ def _print_results_table(df):
     
     display_df = pd.DataFrame(display_cols)
     print(display_df.to_string(index=False))
+    
+    # Add disclaimer about pattern interpretation
+    print(f"\n{'='*110}")
+    print("PATTERN LEGEND:")
+    print("="*110)
+    print("• IC45/IC90: Mean reversion containment windows (45-day/90-day)")
+    print("• BIAS↑/BIAS↓: Directional edge (always based on 90-day thresholds)")
+    print("• ⚠↑/⚠↓: Asymmetric break risk (watch for skewed movement)")
+    print("• Edge count: Number of independent 90-day patterns detected")
+    print("• All bias metrics (%, breaks, drift) reference 90-day analysis")
 
 
 def _print_insights(df):
@@ -259,13 +275,18 @@ def _print_insights(df):
     ic_count = len(df[df['strategy'].str.contains('IC', na=False)])
     bias_up_count = len(df[df['strategy'].str.contains('BIAS↑', na=False)])
     bias_down_count = len(df[df['strategy'].str.contains('BIAS↓', na=False)])
-    skip_count = len(df[df['strategy'] == 'SKIP'])
+    skip_count = len(df[df['strategy'] == 'SKIP [0 edges]'])
     
     print(f"\n📊 Pattern Summary: {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
     
-    if 'iv_premium' in df.columns and df['iv_premium'].notna().any():
-        elevated = df[df['iv_premium'] >= 15].sort_values('iv_premium', ascending=False)
-        depressed = df[df['iv_premium'] <= -15].sort_values('iv_premium')
+    # Only show IV landscape if we have valid data
+    has_valid_iv = ('iv_premium' in df.columns and 
+                    df['iv_premium'].notna().any() and 
+                    (df['current_iv'] > 0).any())
+    
+    if has_valid_iv:
+        elevated = df[(df['iv_premium'] >= 15) & (df['current_iv'] > 0)].sort_values('iv_premium', ascending=False)
+        depressed = df[(df['iv_premium'] <= -15) & (df['current_iv'] > 0)].sort_values('iv_premium')
         
         print(f"\n💰 IV Landscape:")
         if not elevated.empty:
@@ -275,9 +296,11 @@ def _print_insights(df):
             tickers_str = ', '.join([f"{row['ticker']}({row['iv_premium']:.0f}%)" for _, row in depressed.head(3).iterrows()])
             print(f"  Thin Premium (≤-15%): {tickers_str}")
         
-        normal_count = len(df[(df['iv_premium'] > -15) & (df['iv_premium'] < 15)])
+        normal_count = len(df[(df['iv_premium'] > -15) & (df['iv_premium'] < 15) & (df['current_iv'] > 0)])
         if normal_count > 0:
             print(f"  Normal Range: {normal_count} tickers")
+    else:
+        print(f"\n💰 IV Landscape: Not available (after hours or fetch failed - refer to cached IV data if needed)")
     
     ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
     ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
