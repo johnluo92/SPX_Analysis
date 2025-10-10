@@ -1,5 +1,5 @@
-"""Strategy determination logic - Dual pattern detection"""
-from typing import Dict, List
+"""Strategy determination logic"""
+from typing import Dict
 
 from ..config import (
     CONTAINMENT_THRESHOLD,
@@ -14,97 +14,80 @@ from ..config import (
 def determine_strategy(stats_45: Dict, stats_90: Dict) -> str:
     """
     Determine trading strategy based on containment and directional patterns
-    Can identify BOTH containment and bias patterns simultaneously
     
     Args:
         stats_45: 45-day statistics
         stats_90: 90-day statistics
     
     Returns:
-        Strategy recommendation string (can include multiple patterns)
+        Strategy recommendation string
     """
-    patterns = []
+    rec_parts = []
+    bias_reasons = []
     
-    # ========================================
-    # STEP 1: Check for Containment Patterns
-    # ========================================
-    containment_pattern = None
-    
-    if stats_90['containment'] >= CONTAINMENT_THRESHOLD:
-        break_ratio = max(stats_90['breaks_up'], stats_90['breaks_down']) / (
+    # Check 90D containment
+    ic90_qualified = stats_90['containment'] >= CONTAINMENT_THRESHOLD
+    if ic90_qualified:
+        break_ratio_90 = max(stats_90['breaks_up'], stats_90['breaks_down']) / (
             min(stats_90['breaks_up'], stats_90['breaks_down']) + 1
         )
         
-        if break_ratio < BREAK_RATIO_THRESHOLD:
-            containment_pattern = "IC90"
+        if break_ratio_90 < BREAK_RATIO_THRESHOLD:
+            rec_parts.append("IC90")
         elif stats_90['break_bias'] >= BREAK_BIAS_THRESHOLD:
-            containment_pattern = "IC90⚠↑"
+            rec_parts.append("IC90⚠↑")
         else:
-            containment_pattern = "IC90⚠↓"
-            
-    elif stats_45['containment'] >= CONTAINMENT_THRESHOLD:
-        break_ratio = max(stats_45['breaks_up'], stats_45['breaks_down']) / (
+            rec_parts.append("IC90⚠↓")
+    
+    # Check 45D containment (independent of 90D result)
+    ic45_qualified = stats_45['containment'] >= CONTAINMENT_THRESHOLD
+    if ic45_qualified:
+        break_ratio_45 = max(stats_45['breaks_up'], stats_45['breaks_down']) / (
             min(stats_45['breaks_up'], stats_45['breaks_down']) + 1
         )
         
-        if break_ratio < BREAK_RATIO_THRESHOLD:
-            containment_pattern = "IC45"
+        if break_ratio_45 < BREAK_RATIO_THRESHOLD:
+            rec_parts.append("IC45")
         elif stats_45['break_bias'] >= BREAK_BIAS_THRESHOLD:
-            containment_pattern = "IC45⚠↑"
+            rec_parts.append("IC45⚠↑")
         else:
-            containment_pattern = "IC45⚠↓"
+            rec_parts.append("IC45⚠↓")
     
-    # ========================================
-    # STEP 2: Check for Directional Bias
-    # ========================================
-    bias_signals = []
+    # Check for directional bias (runs regardless of IC qualification)
     has_upward_edge = False
     has_downward_edge = False
     
-    # Upward bias signals
     if stats_90['overall_bias'] >= UPWARD_BIAS_THRESHOLD:
         has_upward_edge = True
-        bias_signals.append(f"{stats_90['overall_bias']:.0f}% bias")
+        bias_reasons.append(f"{stats_90['overall_bias']:.0f}% bias")
     
     if stats_90['breaks_up'] >= stats_90['breaks_down'] * 1.5 and stats_90['breaks_up'] >= 2:
         has_upward_edge = True
-        bias_signals.append(f"{stats_90['breaks_up']}:{stats_90['breaks_down']}↑ breaks")
+        bias_reasons.append(f"{stats_90['breaks_up']}:{stats_90['breaks_down']}↑ breaks")
     
     if stats_90['avg_move_pct'] >= DRIFT_THRESHOLD:
         has_upward_edge = True
-        bias_signals.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
+        bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
     
-    # Downward bias signals
     if stats_90['overall_bias'] <= DOWNWARD_BIAS_THRESHOLD:
         has_downward_edge = True
-        bias_signals.append(f"{stats_90['overall_bias']:.0f}% bias")
+        bias_reasons.append(f"{stats_90['overall_bias']:.0f}% bias")
     
     if stats_90['breaks_down'] >= stats_90['breaks_up'] * 1.5 and stats_90['breaks_down'] >= 2:
         has_downward_edge = True
-        bias_signals.append(f"{stats_90['breaks_up']}:{stats_90['breaks_down']}↓ breaks")
+        bias_reasons.append(f"{stats_90['breaks_up']}:{stats_90['breaks_down']}↓ breaks")
     
     if stats_90['avg_move_pct'] <= -DRIFT_THRESHOLD:
         has_downward_edge = True
-        bias_signals.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
+        bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
     
-    # ========================================
-    # STEP 3: Combine Patterns
-    # ========================================
-    
-    # Add containment pattern first (if exists)
-    if containment_pattern:
-        patterns.append(containment_pattern)
-    
-    # Add directional bias (if exists)
+    # Add bias to recommendations
     if has_upward_edge:
-        reason_str = ", ".join(bias_signals)
-        patterns.append(f"BIAS↑ ({reason_str})")
+        reason_str = ", ".join(bias_reasons)
+        rec_parts.append(f"BIAS↑ ({reason_str})")
     elif has_downward_edge:
-        reason_str = ", ".join(bias_signals)
-        patterns.append(f"BIAS↓ ({reason_str})")
+        reason_str = ", ".join(bias_reasons)
+        rec_parts.append(f"BIAS↓ ({reason_str})")
     
-    # Return combined pattern or SKIP
-    if patterns:
-        return " + ".join(patterns)
-    else:
-        return "SKIP"
+    # Return combined strategy or SKIP
+    return " + ".join(rec_parts) if rec_parts else "SKIP"
