@@ -36,11 +36,43 @@ def get_volatility_tier(hvol: float) -> float:
     return VOLATILITY_TIERS[-1][1]
 
 
-def calculate_strike_width(hvol: float, dte: int) -> float:
-    """Calculate strike width for given DTE using HVol"""
-    strike_std = get_volatility_tier(hvol)
+def get_volatility_tier_from_rvol(rvol: float) -> float:
+    """
+    Map realized volatility to strike width multiplier
+    Uses same thresholds as HVol tiers for consistency
+    
+    Args:
+        rvol: Realized volatility (as decimal, e.g., 0.28)
+    
+    Returns:
+        Strike width multiplier (1.0, 1.2, 1.4, or 1.5)
+    """
+    rvol_pct = rvol * 100
+    
+    for threshold, multiplier in VOLATILITY_TIERS:
+        if rvol_pct < threshold:
+            return multiplier
+    
+    return VOLATILITY_TIERS[-1][1]
+
+
+def calculate_strike_width(hvol: float, dte: int, tier_multiplier: Optional[float] = None) -> float:
+    """
+    Calculate strike width for given DTE
+    
+    Args:
+        hvol: Historical volatility (as decimal, e.g., 0.28)
+        dte: Days to expiration
+        tier_multiplier: Pre-calculated tier from RVol (optional, defaults to HVol-based tier)
+    
+    Returns:
+        Strike width percentage
+    """
+    if tier_multiplier is None:
+        tier_multiplier = get_volatility_tier(hvol)
+    
     dte_factor = np.sqrt(dte / 365)
-    return hvol * dte_factor * strike_std * 100
+    return hvol * dte_factor * tier_multiplier * 100
 
 
 def find_nearest_price(price_data: pd.DataFrame, target_date: datetime) -> Tuple[Optional[float], Optional[datetime]]:

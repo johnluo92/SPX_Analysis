@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 
 from ..config import DEFAULT_LOOKBACK_QUARTERS, REQUEST_DELAY, ALPHAVANTAGE_KEYS
 from ..cache import load_cache, load_rate_limits
@@ -30,17 +29,10 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         DataFrame with analysis results
     """
     print("\n" + "="*75)
-    print(f"EARNINGS CONTAINMENT ANALYZER - v2.3")
+    print(f"EARNINGS CONTAINMENT ANALYZER - v2.7")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
-    
-    # Get IV fetch time if applicable
     if fetch_iv:
-        iv_fetch_time = _get_iv_fetch_time()
-        if iv_fetch_time:
-            print(f"Current IV (fetched: {iv_fetch_time})")
-        else:
-            print(f"Current IV from Yahoo Finance (15-20min delayed)")
-    
+        print(f"Current IV from Yahoo Finance (15-20min delayed)")
     if parallel:
         print(f"Parallel processing: {max_workers} workers")
     print("="*75)
@@ -82,33 +74,6 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     return df
 
 
-def _get_iv_fetch_time() -> Optional[str]:
-    """Get formatted fetch time from most recent IV cache entry"""
-    try:
-        yf_client = YahooFinanceClient()
-        cache = yf_client._load_iv_cache()
-        
-        if not cache:
-            return None
-        
-        # Find most recent fetch time across all tickers
-        most_recent = None
-        for ticker_data in cache.values():
-            if 'fetched_at' in ticker_data:
-                fetched_dt = datetime.fromisoformat(ticker_data['fetched_at'])
-                if most_recent is None or fetched_dt > most_recent:
-                    most_recent = fetched_dt
-        
-        if most_recent:
-            # Format as "2:15 PM ET" or "10:30 AM ET"
-            time_str = most_recent.strftime("%-I:%M %p ET")
-            return time_str
-        
-        return None
-    except:
-        return None
-
-
 def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv, 
                           fetch_summary, iv_summary):
     """Process tickers serially"""
@@ -126,8 +91,6 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
             if fetch_iv:
                 _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
             
-            # Add ticker_order to preserve input order
-            summary['ticker_order'] = i
             results.append(summary)
             if from_cache:
                 fetch_summary['cached'].append(ticker)
@@ -147,9 +110,6 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
     results = []
     cache = load_cache()
     yf_client = YahooFinanceClient()
-    
-    # Create ticker order mapping
-    ticker_order = {ticker: i for i, ticker in enumerate(tickers, 1)}
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_ticker = {
@@ -171,8 +131,6 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                     if fetch_iv:
                         _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
                     
-                    # Add ticker_order to preserve input order
-                    summary['ticker_order'] = ticker_order[ticker]
                     results.append(summary)
                     if from_cache:
                         fetch_summary['cached'].append(ticker)
@@ -193,13 +151,14 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
     if iv_data:
         summary['current_iv'] = iv_data['iv']
         summary['iv_dte'] = iv_data['dte']
-        iv_premium = ((iv_data['iv'] - summary['hvol']) / summary['hvol']) * 100
-        summary['iv_premium'] = round(iv_premium, 1)
+        # Compare IV to 45d earnings RVol (apples to apples)
+        iv_elevation = ((iv_data['iv'] - summary['avg_rvol_45d']) / summary['avg_rvol_45d']) * 100
+        summary['iv_elevation'] = round(iv_elevation, 1)
         iv_summary['success'].append(ticker)
     else:
         summary['current_iv'] = None
         summary['iv_dte'] = None
-        summary['iv_premium'] = None
+        summary['iv_elevation'] = None
         iv_summary['failed'].append(ticker)
 
 
@@ -243,9 +202,6 @@ def _create_results_dataframe(results):
     """Create formatted results dataframe"""
     df = pd.DataFrame(results)
     
-    # Sort by ticker_order to preserve input order
-    df = df.sort_values('ticker_order').reset_index(drop=True)
-    
     df['45d_width'] = df.apply(lambda x: round(x['strike_width'] * np.sqrt(45/90), 1), axis=1)
     
     df['45_break_fmt'] = df.apply(
@@ -266,42 +222,39 @@ def _create_results_dataframe(results):
 
 def _print_results_table(df):
     """Print results table"""
-    print(f"\n{'='*145}")
+    print(f"\n{'='*110}")
     print("BACKTEST RESULTS")
-    print("="*145)
+    print("="*110)
     
-    # CRITICAL: DO NOT CHANGE THIS ORDER LOGIC
-    # DataFrame must be sorted by ticker_order BEFORE creating display columns
-    # Creating a new DataFrame from dict will NOT preserve the order
-    
-    # Build display columns directly on the sorted dataframe
-    display_df = pd.DataFrame()
-    display_df['Ticker'] = df['ticker']
-    display_df['HVol%'] = df['hvol'].astype(int)
+    display_cols = {
+        'Ticker': df['ticker'],
+        'HVol%': df['hvol'].astype(int),
+    }
     
     if 'current_iv' in df.columns and df['current_iv'].notna().any():
-        display_df['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
-        display_df['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
-        display_df['|'] = '|'
+        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
+        display_cols['RVol45'] = df['avg_rvol_45d'].apply(lambda x: f"{int(x)}")
+        display_cols['IVvsRV'] = df['iv_elevation'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
+        display_cols['|'] = '|'
     
-    display_df['90D%'] = df['90d_contain'].astype(int)
-    display_df['90Bias'] = df['90d_overall_bias'].astype(int)
-    display_df['90Break'] = df['90_break_fmt']
-    display_df['90Drift'] = df['90d_drift'].apply(lambda x: f"{x:+.1f}%")
-    display_df[' | '] = '|'
-    display_df['45D%'] = df['45d_contain'].astype(int)
-    display_df['45Break'] = df['45_break_fmt']
-    display_df['  |  '] = '|'
-    display_df['Pattern'] = df['strategy_display']
+    display_cols.update({
+        '90D%': df['90d_contain'].astype(int),
+        '90Bias': df['90d_overall_bias'].astype(int),
+        '90Break': df['90_break_fmt'],
+        '90Drift': df['90d_drift'].apply(lambda x: f"{x:+.1f}%"),
+        ' | ': '|',
+        'Pattern': df['strategy_display']
+    })
     
+    display_df = pd.DataFrame(display_cols)
     print(display_df.to_string(index=False))
 
 
 def _print_insights(df):
     """Print key takeaways and insights"""
-    print(f"\n{'='*145}")
+    print(f"\n{'='*110}")
     print("KEY TAKEAWAYS:")
-    print("="*145)
+    print("="*110)
     
     ic_count = len(df[df['strategy'].str.contains('IC', na=False)])
     bias_up_count = len(df[df['strategy'].str.contains('BIAS↑', na=False)])
@@ -310,19 +263,19 @@ def _print_insights(df):
     
     print(f"\n📊 Pattern Summary: {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
     
-    if 'iv_premium' in df.columns and df['iv_premium'].notna().any():
-        elevated = df[df['iv_premium'] >= 15].sort_values('iv_premium', ascending=False)
-        depressed = df[df['iv_premium'] <= -15].sort_values('iv_premium')
+    if 'iv_elevation' in df.columns and df['iv_elevation'].notna().any():
+        elevated = df[df['iv_elevation'] >= 15].sort_values('iv_elevation', ascending=False)
+        depressed = df[df['iv_elevation'] <= -15].sort_values('iv_elevation')
         
-        print(f"\n💰 IV Landscape:")
+        print(f"\n💰 IV vs Earnings RVol:")
         if not elevated.empty:
-            tickers_str = ', '.join([f"{row['ticker']}(+{row['iv_premium']:.0f}%)" for _, row in elevated.head(5).iterrows()])
-            print(f"  Rich Premium (≥15%): {tickers_str}")
+            tickers_str = ', '.join([f"{row['ticker']}(+{row['iv_elevation']:.0f}%)" for _, row in elevated.head(5).iterrows()])
+            print(f"  Elevated (≥15%): {tickers_str}")
         if not depressed.empty:
-            tickers_str = ', '.join([f"{row['ticker']}({row['iv_premium']:.0f}%)" for _, row in depressed.head(3).iterrows()])
-            print(f"  Thin Premium (≤-15%): {tickers_str}")
+            tickers_str = ', '.join([f"{row['ticker']}({row['iv_elevation']:.0f}%)" for _, row in depressed.head(3).iterrows()])
+            print(f"  Depressed (≤-15%): {tickers_str}")
         
-        normal_count = len(df[(df['iv_premium'] > -15) & (df['iv_premium'] < 15)])
+        normal_count = len(df[(df['iv_elevation'] > -15) & (df['iv_elevation'] < 15)])
         if normal_count > 0:
             print(f"  Normal Range: {normal_count} tickers")
     
@@ -346,4 +299,4 @@ def _print_insights(df):
             direction = "↑" if row['90d_overall_bias'] >= 70 else "↓"
             print(f"  {row['ticker']}: {row['90d_overall_bias']:.0f}% bias {direction}, {row['90_break_fmt']} breaks, {row['90d_drift']:+.1f}% drift")
     
-    print(f"\n💡 Remember: Past patterns ≠ Future results. IV context shows current opportunity cost.")
+    print(f"\n💡 Remember: Past patterns ≠ Future results. IV vs RVol shows current opportunity cost.")
