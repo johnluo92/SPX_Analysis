@@ -29,7 +29,7 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         DataFrame with analysis results
     """
     print("\n" + "="*75)
-    print(f"EARNINGS CONTAINMENT ANALYZER - v2.7")
+    print(f"EARNINGS CONTAINMENT ANALYZER - v2.8")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
     if fetch_iv:
         print(f"Current IV from Yahoo Finance (15-20min delayed)")
@@ -106,20 +106,21 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
 
 def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                            max_workers, fetch_summary, iv_summary):
-    """Process tickers in parallel"""
-    results = []
+    """Process tickers in parallel while preserving order"""
+    results_dict = {}
     cache = load_cache()
     yf_client = YahooFinanceClient()
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit with index to maintain order
         future_to_ticker = {
-            executor.submit(analyze_ticker, ticker, lookback_quarters, False, debug): ticker
-            for ticker in tickers
+            executor.submit(analyze_ticker, ticker, lookback_quarters, False, debug): (i, ticker)
+            for i, ticker in enumerate(tickers)
         }
         
         completed = 0
         for future in as_completed(future_to_ticker):
-            ticker = future_to_ticker[future]
+            idx, ticker = future_to_ticker[future]
             completed += 1
             print(f"\r[{completed}/{len(tickers)}] Processing {ticker}...", end='', flush=True)
             
@@ -131,7 +132,9 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                     if fetch_iv:
                         _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
                     
-                    results.append(summary)
+                    # Store with original index
+                    results_dict[idx] = summary
+                    
                     if from_cache:
                         fetch_summary['cached'].append(ticker)
                     else:
@@ -142,6 +145,9 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                 print(f"\n❌ Error processing {ticker}: {e}")
                 fetch_summary['failed'].append(ticker)
     
+    # Sort by original index and return as list
+    results = [results_dict[i] for i in sorted(results_dict.keys())]
+    
     return results
 
 
@@ -151,9 +157,12 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
     if iv_data:
         summary['current_iv'] = iv_data['iv']
         summary['iv_dte'] = iv_data['dte']
-        # Compare IV to 45d earnings RVol (apples to apples)
-        iv_elevation = ((iv_data['iv'] - summary['avg_rvol_45d']) / summary['avg_rvol_45d']) * 100
-        summary['iv_elevation'] = round(iv_elevation, 1)
+        # Changed: IV elevation vs RVol45d (apples-to-apples comparison)
+        if 'rvol_45d' in summary and summary['rvol_45d'] is not None:
+            iv_elevation = ((iv_data['iv'] - summary['rvol_45d']) / summary['rvol_45d']) * 100
+            summary['iv_elevation'] = round(iv_elevation, 1)
+        else:
+            summary['iv_elevation'] = None
         iv_summary['success'].append(ticker)
     else:
         summary['current_iv'] = None
@@ -202,8 +211,7 @@ def _create_results_dataframe(results):
     """Create formatted results dataframe"""
     df = pd.DataFrame(results)
     
-    df['45d_width'] = df.apply(lambda x: round(x['strike_width'] * np.sqrt(45/90), 1), axis=1)
-    
+    # Format break ratios
     df['45_break_fmt'] = df.apply(
         lambda x: _format_break_ratio(x['45d_breaks_up'], x['45d_breaks_dn'], x['45d_break_bias']), 
         axis=1
@@ -213,38 +221,52 @@ def _create_results_dataframe(results):
         axis=1
     )
     
-    df['strategy_display'] = df['strategy'].apply(lambda x: 
-        x.replace('BIAS↑', 'BIAS↑').replace('BIAS↓', 'BIAS↓') if 'BIAS' in x else x
-    )
+    # DO NOT SORT - preserve input order
     
     return df
 
 
 def _print_results_table(df):
-    """Print results table"""
-    print(f"\n{'='*110}")
+    """Print results table with 45d AND 90d columns"""
+    
+    print(f"\n{'='*150}")
     print("BACKTEST RESULTS")
-    print("="*110)
+    print("="*150)
     
     display_cols = {
         'Ticker': df['ticker'],
         'HVol%': df['hvol'].astype(int),
     }
     
+    # Add IV columns if available (with clarified headers)
     if 'current_iv' in df.columns and df['current_iv'].notna().any():
-        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
-        display_cols['RVol45'] = df['avg_rvol_45d'].apply(lambda x: f"{int(x)}")
-        display_cols['IVvsRV'] = df['iv_elevation'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
+        display_cols['IV45'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
+        display_cols['vs45RV'] = df['iv_elevation'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
         display_cols['|'] = '|'
     
+    # Add 45d columns
     display_cols.update({
-        '90D%': df['90d_contain'].astype(int),
-        '90Bias': df['90d_overall_bias'].astype(int),
-        '90Break': df['90_break_fmt'],
-        '90Drift': df['90d_drift'].apply(lambda x: f"{x:+.1f}%"),
-        ' | ': '|',
-        'Pattern': df['strategy_display']
+        ' 45D%': df['45d_contain'].astype(int),
+        ' 45Brk': df['45_break_fmt'],
+        '  |': '|',
     })
+    
+    # Add 90d columns with drift
+    display_cols.update({
+        '  90D%': df['90d_contain'].astype(int),
+        ' 90Brk': df['90_break_fmt'],
+        '90Drift': df['90d_drift'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "N/A"),
+        '   |': '|',
+    })
+    
+    # Extract edge count and add as separate column
+    df['edge_count'] = df['strategy'].str.extract(r'\[(\d+) edge', expand=False).fillna('0')
+    display_cols['Edges'] = df['edge_count']
+    display_cols['    |'] = '|'
+    
+    # Remove edge count annotation from pattern string
+    df['pattern_clean'] = df['strategy'].str.replace(r'\s*\[\d+\s+edges?\]', '', regex=True)
+    display_cols['Pattern'] = df['pattern_clean']
     
     display_df = pd.DataFrame(display_cols)
     print(display_df.to_string(index=False))
@@ -252,9 +274,9 @@ def _print_results_table(df):
 
 def _print_insights(df):
     """Print key takeaways and insights"""
-    print(f"\n{'='*110}")
+    print(f"\n{'='*140}")
     print("KEY TAKEAWAYS:")
-    print("="*110)
+    print("="*140)
     
     ic_count = len(df[df['strategy'].str.contains('IC', na=False)])
     bias_up_count = len(df[df['strategy'].str.contains('BIAS↑', na=False)])
@@ -263,22 +285,37 @@ def _print_insights(df):
     
     print(f"\n📊 Pattern Summary: {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
     
+    # IV Landscape
     if 'iv_elevation' in df.columns and df['iv_elevation'].notna().any():
         elevated = df[df['iv_elevation'] >= 15].sort_values('iv_elevation', ascending=False)
         depressed = df[df['iv_elevation'] <= -15].sort_values('iv_elevation')
         
-        print(f"\n💰 IV vs Earnings RVol:")
+        print(f"\n💰 IV Landscape (vs RVol45d):")
         if not elevated.empty:
             tickers_str = ', '.join([f"{row['ticker']}(+{row['iv_elevation']:.0f}%)" for _, row in elevated.head(5).iterrows()])
-            print(f"  Elevated (≥15%): {tickers_str}")
+            print(f"  Rich Premium (≥15%): {tickers_str}")
         if not depressed.empty:
             tickers_str = ', '.join([f"{row['ticker']}({row['iv_elevation']:.0f}%)" for _, row in depressed.head(3).iterrows()])
-            print(f"  Depressed (≤-15%): {tickers_str}")
+            print(f"  Thin Premium (≤-15%): {tickers_str}")
         
         normal_count = len(df[(df['iv_elevation'] > -15) & (df['iv_elevation'] < 15)])
         if normal_count > 0:
             print(f"  Normal Range: {normal_count} tickers")
     
+    # High conviction plays (2+ edges) - FIXED: Use non-capturing group (?:...) to avoid regex warning
+    high_conviction = df[df['strategy'].str.contains(r'\[(?:\d+) edges?\]', regex=True, na=False)]
+    if not high_conviction.empty:
+        # Extract edge count from strategy string (here we DO want the capturing group)
+        high_conviction = high_conviction.copy()
+        high_conviction['edge_count'] = high_conviction['strategy'].str.extract(r'\[(\d+) edge').astype(int)
+        high_conviction = high_conviction[high_conviction['edge_count'] >= 2].sort_values('edge_count', ascending=False)
+        
+        if not high_conviction.empty:
+            print(f"\n🎯 High Conviction (2+ edges):")
+            for _, row in high_conviction.iterrows():
+                print(f"  {row['ticker']}: {row['strategy']}")
+    
+    # Asymmetric ICs
     ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
     ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
     
@@ -289,6 +326,7 @@ def _print_insights(df):
         if not ic_down_skew.empty:
             print(f"  Downside risk: {', '.join(ic_down_skew['ticker'].tolist())}")
     
+    # Strong directional signals
     strong_bias = df[
         (df['strategy'].str.contains('BIAS', na=False)) &
         ((df['90d_overall_bias'] >= 70) | (df['90d_overall_bias'] <= 30))
@@ -299,4 +337,4 @@ def _print_insights(df):
             direction = "↑" if row['90d_overall_bias'] >= 70 else "↓"
             print(f"  {row['ticker']}: {row['90d_overall_bias']:.0f}% bias {direction}, {row['90_break_fmt']} breaks, {row['90d_drift']:+.1f}% drift")
     
-    print(f"\n💡 Remember: Past patterns ≠ Future results. IV vs RVol shows current opportunity cost.")
+    print(f"\n💡 Remember: Past patterns ≠ Future results. IV context shows current opportunity cost.")

@@ -24,7 +24,7 @@ FETCH_WINDOWS = [
     (14, 0),   # 2:00 PM ET
     (15, 30),  # 3:30 PM ET
 ]
-MAX_DTE_FOR_IV = 45  # Use expirations within 45 days
+TARGET_DTE = 45  # Target 45-day expiration for IV45
 
 
 class YahooFinanceClient:
@@ -150,57 +150,44 @@ class YahooFinanceClient:
             return True
     
     @staticmethod
-    def _get_nearest_expirations(expirations: List[str], max_count: int = 3) -> List[str]:
+    def _get_closest_to_45dte(expirations: List[str]) -> Optional[str]:
         """
-        Get expirations ≤45 DTE, up to max_count
-        If none ≤45 DTE exist, fall back to single nearest expiration
-        
-        Examples:
-            [7d, 14d, 21d] → use all 3
-            [14d, 30d, 46d] → use first 2 (14d, 30d)
-            [45d, 70d, 90d] → use only 45d
-            [60d, 90d, 120d] → use only 60d (fallback)
+        Get expiration closest to 45 DTE for IV45 calculation
         
         Args:
             expirations: List of expiration date strings
-            max_count: Maximum number of expirations to return
         
         Returns:
-            List of up to max_count expiration dates (≤45 DTE preferred)
+            Expiration date string closest to 45 DTE, or None if no expirations
         """
         today = datetime.now()
         
-        # Filter to expirations ≤45 DTE
-        valid_exps = []
+        closest_exp = None
+        closest_diff = float('inf')
+        
         for exp in expirations:
             exp_date = datetime.strptime(exp, '%Y-%m-%d')
             dte = (exp_date - today).days
-            if 0 < dte <= MAX_DTE_FOR_IV:
-                valid_exps.append((exp, dte))
+            
+            # Only consider positive DTEs
+            if dte <= 0:
+                continue
+            
+            diff = abs(dte - TARGET_DTE)
+            if diff < closest_diff:
+                closest_diff = diff
+                closest_exp = exp
         
-        # If we have expirations ≤45 DTE, use up to max_count
-        if valid_exps:
-            valid_exps.sort(key=lambda x: x[1])  # Sort by DTE
-            return [exp for exp, _ in valid_exps[:max_count]]
-        
-        # Fallback: if NO expirations ≤45 DTE, use single nearest expiration
-        all_exps = []
-        for exp in expirations:
-            exp_date = datetime.strptime(exp, '%Y-%m-%d')
-            dte = abs((exp_date - today).days)
-            all_exps.append((exp, dte))
-        
-        all_exps.sort(key=lambda x: x[1])
-        return [all_exps[0][0]] if all_exps else []
+        return closest_exp
     
     @staticmethod
     def get_current_iv(ticker: str, retry_count: int = 2) -> Optional[Dict]:
         """
-        Fetch current implied volatility from expirations ≤45 DTE (up to 3)
+        Fetch IV45 - implied volatility from expiration closest to 45 DTE
         Uses time-gated caching (10am, 12pm, 2pm, 3:30pm ET windows)
-        Returns ATM IV averaged across up to 6 options (up to 3 puts + 3 calls)
+        Returns ATM IV averaged from put and call at ~45 DTE
         
-        If no expirations ≤45 DTE, falls back to single nearest expiration
+        This ensures apples-to-apples comparison with RVol45
         """
         if not YFINANCE_AVAILABLE:
             return None
@@ -228,74 +215,61 @@ class YahooFinanceClient:
             if not expirations:
                 return cache.get(ticker)
             
-            # Get up to 3 nearest expirations (prefer within 30 DTE)
-            nearest_exps = YahooFinanceClient._get_nearest_expirations(expirations, max_count=3)
+            # Get expiration closest to 45 DTE
+            target_exp = YahooFinanceClient._get_closest_to_45dte(expirations)
             
-            if not nearest_exps:
+            if not target_exp:
                 return cache.get(ticker)
             
-            # Collect IVs from all expirations
-            all_ivs = []
-            exps_used = []
-            
-            for exp in nearest_exps:
-                try:
-                    chain = stock.option_chain(exp)
-                    calls = chain.calls
-                    puts = chain.puts
-                    
-                    if calls.empty or puts.empty:
-                        continue
-                    
-                    if 'impliedVolatility' not in calls.columns or 'impliedVolatility' not in puts.columns:
-                        continue
-                    
-                    # Find ATM strikes
-                    calls['strike_diff'] = abs(calls['strike'] - current_price)
-                    puts['strike_diff'] = abs(puts['strike'] - current_price)
-                    
-                    atm_call_idx = calls['strike_diff'].idxmin()
-                    atm_put_idx = puts['strike_diff'].idxmin()
-                    
-                    atm_call = calls.loc[atm_call_idx]
-                    atm_put = puts.loc[atm_put_idx]
-                    
-                    # Get IVs
-                    call_iv = atm_call['impliedVolatility'] * 100
-                    put_iv = atm_put['impliedVolatility'] * 100
-                    
-                    all_ivs.extend([call_iv, put_iv])
-                    exps_used.append(exp)
+            # Get option chain for target expiration
+            try:
+                chain = stock.option_chain(target_exp)
+                calls = chain.calls
+                puts = chain.puts
                 
-                except:
-                    continue
+                if calls.empty or puts.empty:
+                    return cache.get(ticker)
+                
+                if 'impliedVolatility' not in calls.columns or 'impliedVolatility' not in puts.columns:
+                    return cache.get(ticker)
+                
+                # Find ATM strikes
+                calls['strike_diff'] = abs(calls['strike'] - current_price)
+                puts['strike_diff'] = abs(puts['strike'] - current_price)
+                
+                atm_call_idx = calls['strike_diff'].idxmin()
+                atm_put_idx = puts['strike_diff'].idxmin()
+                
+                atm_call = calls.loc[atm_call_idx]
+                atm_put = puts.loc[atm_put_idx]
+                
+                # Get IVs
+                call_iv = atm_call['impliedVolatility'] * 100
+                put_iv = atm_put['impliedVolatility'] * 100
+                
+                # Average call and put IV
+                avg_iv = (call_iv + put_iv) / 2
+                
+                # Calculate actual DTE
+                exp_date = datetime.strptime(target_exp, '%Y-%m-%d')
+                dte = (exp_date - datetime.now()).days
+                
+                # Create cache entry
+                iv_data = {
+                    'iv': round(avg_iv, 1),
+                    'dte': dte,
+                    'expiration': target_exp,
+                    'fetched_at': YahooFinanceClient._get_market_time().isoformat()
+                }
+                
+                # Update cache
+                cache[ticker] = iv_data
+                YahooFinanceClient._save_iv_cache(cache)
+                
+                return iv_data
             
-            # If we didn't get any valid IVs, return cache
-            if not all_ivs:
+            except Exception:
                 return cache.get(ticker)
-            
-            # Calculate average IV
-            avg_iv = sum(all_ivs) / len(all_ivs)
-            
-            # Calculate DTE of nearest expiration
-            nearest_exp = exps_used[0]
-            exp_date = datetime.strptime(nearest_exp, '%Y-%m-%d')
-            dte = (exp_date - datetime.now()).days
-            
-            # Create cache entry
-            iv_data = {
-                'iv': round(avg_iv, 1),
-                'dte': dte,
-                'expiration': nearest_exp,
-                'expirations_used': exps_used,
-                'fetched_at': YahooFinanceClient._get_market_time().isoformat()
-            }
-            
-            # Update cache
-            cache[ticker] = iv_data
-            YahooFinanceClient._save_iv_cache(cache)
-            
-            return iv_data
         
         except Exception:
             if retry_count > 0:

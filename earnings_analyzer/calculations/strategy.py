@@ -1,6 +1,5 @@
 """Strategy determination logic"""
 from typing import Dict
-
 from ..config import (
     CONTAINMENT_THRESHOLD,
     BREAK_RATIO_THRESHOLD,
@@ -10,107 +9,109 @@ from ..config import (
     DRIFT_THRESHOLD
 )
 
-
 def determine_strategy(stats_45: Dict, stats_90: Dict) -> str:
     """
     Determine trading strategy based on containment and directional patterns
     
-    All directional bias detection uses 90-day thresholds:
-    - Overall bias: % of moves that were positive
-    - Break bias: When breaks occur, which direction?
-    - Drift: Average move size and direction
-    
-    45-day analysis is used ONLY for IC45 containment patterns.
-    No directional bias is calculated from 45-day data.
+    Returns combined pattern string with edge counts embedded.
     
     Args:
         stats_45: 45-day statistics
         stats_90: 90-day statistics
     
     Returns:
-        Strategy recommendation string with edge count
+        Strategy recommendation string with all viable patterns
     """
-    rec_parts = []
-    bias_reasons = []
-    edge_count = 0  # Track independent patterns
+    patterns = []
+    total_edges = 0
     
-    # Pattern 1: IC90 (mean reversion at 90 days)
+    # Check IC90 (always check, don't exclude IC45)
     if stats_90['containment'] >= CONTAINMENT_THRESHOLD:
-        edge_count += 1
+        total_edges += 1
         break_ratio = max(stats_90['breaks_up'], stats_90['breaks_down']) / (
             min(stats_90['breaks_up'], stats_90['breaks_down']) + 1
         )
         
         if break_ratio < BREAK_RATIO_THRESHOLD:
-            rec_parts.append("IC90")
+            patterns.append("IC90")
         elif stats_90['break_bias'] >= BREAK_BIAS_THRESHOLD:
-            rec_parts.append("IC90⚠↑")
+            patterns.append("IC90⚠↑")
         else:
-            rec_parts.append("IC90⚠↓")
+            patterns.append("IC90⚠↓")
     
-    # Pattern 2: IC45 (mean reversion at 45 days)
+    # Check IC45 (independently, not mutually exclusive with IC90)
     if stats_45['containment'] >= CONTAINMENT_THRESHOLD:
-        edge_count += 1
+        total_edges += 1
         break_ratio = max(stats_45['breaks_up'], stats_45['breaks_down']) / (
             min(stats_45['breaks_up'], stats_45['breaks_down']) + 1
         )
         
         if break_ratio < BREAK_RATIO_THRESHOLD:
-            rec_parts.append("IC45")
+            patterns.append("IC45")
         elif stats_45['break_bias'] >= BREAK_BIAS_THRESHOLD:
-            rec_parts.append("IC45⚠↑")
+            patterns.append("IC45⚠↑")
         else:
-            rec_parts.append("IC45⚠↓")
+            patterns.append("IC45⚠↓")
     
-    # Pattern 3: Directional bias (90-day only)
+    # Check for BIAS (can combine with IC patterns)
+    bias_reasons = []
     has_upward_edge = False
     has_downward_edge = False
     
-    # Check overall bias
+    # Check upward bias signals - FIXED: Use actual ratio, not just >= 1.5x
     if stats_90['overall_bias'] >= UPWARD_BIAS_THRESHOLD:
         has_upward_edge = True
         bias_reasons.append(f"{stats_90['overall_bias']:.0f}% bias")
     
-    # Check break pattern
-    if stats_90['breaks_up'] >= stats_90['breaks_down'] * 1.5 and stats_90['breaks_up'] >= 2:
+    # FIXED: Calculate actual ratio and require >= 2.0x (matches BREAK_RATIO_THRESHOLD)
+    if stats_90['breaks_down'] > 0:
+        up_ratio = stats_90['breaks_up'] / stats_90['breaks_down']
+    else:
+        up_ratio = float('inf') if stats_90['breaks_up'] > 0 else 0
+    
+    if up_ratio >= BREAK_RATIO_THRESHOLD and stats_90['breaks_up'] >= 2:
         has_upward_edge = True
         bias_reasons.append(f"{stats_90['breaks_up']}:{stats_90['breaks_down']}↑ breaks")
     
-    # Check drift
     if stats_90['avg_move_pct'] >= DRIFT_THRESHOLD:
         has_upward_edge = True
         bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
     
-    # Downward checks
+    # Check downward bias signals - FIXED: Use actual ratio
     if stats_90['overall_bias'] <= DOWNWARD_BIAS_THRESHOLD:
         has_downward_edge = True
-        bias_reasons.append(f"{stats_90['overall_bias']:.0f}% bias")
+        if not bias_reasons:
+            bias_reasons.append(f"{stats_90['overall_bias']:.0f}% bias")
     
-    if stats_90['breaks_down'] >= stats_90['breaks_up'] * 1.5 and stats_90['breaks_down'] >= 2:
+    if stats_90['breaks_up'] > 0:
+        down_ratio = stats_90['breaks_down'] / stats_90['breaks_up']
+    else:
+        down_ratio = float('inf') if stats_90['breaks_down'] > 0 else 0
+    
+    if down_ratio >= BREAK_RATIO_THRESHOLD and stats_90['breaks_down'] >= 2:
         has_downward_edge = True
-        bias_reasons.append(f"{stats_90['breaks_up']}:{stats_90['breaks_down']}↓ breaks")
+        if not has_upward_edge:
+            bias_reasons.append(f"{stats_90['breaks_up']}:{stats_90['breaks_down']}↓ breaks")
     
     if stats_90['avg_move_pct'] <= -DRIFT_THRESHOLD:
         has_downward_edge = True
-        bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
+        if not has_upward_edge:
+            bias_reasons.append(f"{stats_90['avg_move_pct']:+.1f}% drift")
     
-    # Add bias pattern if detected
-    if has_upward_edge:
-        edge_count += 1
+    # Add BIAS pattern if found (BIAS counts as 1 edge total, not per reason)
+    if has_upward_edge and not has_downward_edge:
         reason_str = ", ".join(bias_reasons)
-        rec_parts.append(f"BIAS↑ ({reason_str})")
-    elif has_downward_edge:
-        edge_count += 1
+        total_edges += 1  # BIAS is 1 edge regardless of supporting reasons
+        patterns.append(f"BIAS↑ ({reason_str})")
+    elif has_downward_edge and not has_upward_edge:
         reason_str = ", ".join(bias_reasons)
-        rec_parts.append(f"BIAS↓ ({reason_str})")
+        total_edges += 1  # BIAS is 1 edge regardless of supporting reasons
+        patterns.append(f"BIAS↓ ({reason_str})")
     
-    # Build final string
-    if not rec_parts:
+    # Combine patterns with total edge count at the end
+    if patterns:
+        pattern_str = " + ".join(patterns)
+        edge_text = "edges" if total_edges > 1 else "edge"
+        return f"{pattern_str} [{total_edges} {edge_text}]"
+    else:
         return "SKIP"
-    
-    strategy_str = " + ".join(rec_parts)
-    
-    # Add edge count
-    edge_suffix = f" [{edge_count} edge{'s' if edge_count != 1 else ''}]"
-    
-    return strategy_str + edge_suffix
