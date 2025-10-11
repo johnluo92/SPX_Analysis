@@ -7,12 +7,27 @@ from ..config import DEFAULT_LOOKBACK_QUARTERS, MIN_QUARTERS_REQUIRED
 from ..data_sources import AlphaVantageClient, YahooFinanceClient
 from ..calculations import (
     calculate_historical_volatility,
+    get_volatility_tier,
     calculate_strike_width,
     get_reference_price,
     find_nearest_price,
     calculate_stats,
     determine_strategy
 )
+
+
+def calculate_rvol_from_move(move_pct: float, days_elapsed: int) -> float:
+    """
+    Calculate annualized realized volatility from a price move
+    
+    Args:
+        move_pct: Percentage price move (e.g., 5.2 for 5.2%)
+        days_elapsed: Number of days over which move occurred
+    
+    Returns:
+        Annualized realized volatility (as decimal, e.g., 0.28 for 28%)
+    """
+    return abs(move_pct / 100) * np.sqrt(252 / days_elapsed)
 
 
 def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTERS, 
@@ -78,10 +93,16 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
             price_45, date_45 = find_nearest_price(price_data, target_45)
             if price_45 is not None:
                 move_45 = (price_45 - ref_price) / ref_price * 100
+                
+                # Calculate realized volatility for this period
+                days_elapsed_45 = (date_45 - earnings['date']).days
+                rvol_45 = calculate_rvol_from_move(move_45, days_elapsed_45)
+                
                 data_45.append({
                     'move': move_45,
                     'width': strike_width_45,
                     'hvol': hvol * 100,
+                    'rvol': rvol_45 * 100,
                     'date': earnings['date'].strftime('%Y-%m-%d')
                 })
         
@@ -90,10 +111,16 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
             price_90, date_90 = find_nearest_price(price_data, target_90)
             if price_90 is not None:
                 move_90 = (price_90 - ref_price) / ref_price * 100
+                
+                # Calculate realized volatility for this period
+                days_elapsed_90 = (date_90 - earnings['date']).days
+                rvol_90 = calculate_rvol_from_move(move_90, days_elapsed_90)
+                
                 data_90.append({
                     'move': move_90,
                     'width': strike_width_90,
                     'hvol': hvol * 100,
+                    'rvol': rvol_90 * 100,
                     'date': earnings['date'].strftime('%Y-%m-%d')
                 })
     
@@ -105,11 +132,15 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
     stats_45 = calculate_stats(data_45)
     stats_90 = calculate_stats(data_90)
     avg_hvol = np.mean(hvol_list)
+    avg_rvol_45d = np.mean([d['rvol'] for d in data_45])
+    avg_rvol_90d = np.mean([d['rvol'] for d in data_90])
+    avg_tier = get_volatility_tier(avg_hvol / 100)
     
     recommendation = determine_strategy(stats_45, stats_90)
     
     if verbose:
-        print(f"\n📊 {ticker} | {avg_hvol:.1f}% HVol")
+        print(f"\n📊 {ticker} | {avg_hvol:.1f}% HVol | {avg_tier:.1f} std (±{stats_90['avg_width']:.1f}%)")
+        print(f"    RVol: 45d={avg_rvol_45d:.1f}%, 90d={avg_rvol_90d:.1f}%")
         print(f"\n  45-Day: {stats_45['total']}/{lookback_quarters} tested")
         print(f"    Containment: {stats_45['containment']:.0f}%")
         print(f"    Breaks: Up {stats_45['breaks_up']}, Down {stats_45['breaks_down']}")
@@ -129,7 +160,10 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
     summary = {
         'ticker': ticker,
         'hvol': round(avg_hvol, 1),
+        'tier': round(avg_tier, 1),
         'strike_width': round(stats_90['avg_width'], 1),
+        'avg_rvol_45d': round(avg_rvol_45d, 1),
+        'avg_rvol_90d': round(avg_rvol_90d, 1),
         '45d_contain': round(stats_45['containment'], 0),
         '45d_breaks_up': stats_45['breaks_up'],
         '45d_breaks_dn': stats_45['breaks_down'],
