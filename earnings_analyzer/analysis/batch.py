@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 from ..config import DEFAULT_LOOKBACK_QUARTERS, REQUEST_DELAY, ALPHAVANTAGE_KEYS
 from ..cache import load_cache, load_rate_limits
@@ -31,8 +32,15 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     print("\n" + "="*75)
     print(f"EARNINGS CONTAINMENT ANALYZER - v2.3")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
+    
+    # Get IV fetch time if applicable
     if fetch_iv:
-        print(f"Current IV from Yahoo Finance (15-20min delayed)")
+        iv_fetch_time = _get_iv_fetch_time()
+        if iv_fetch_time:
+            print(f"Current IV (fetched: {iv_fetch_time})")
+        else:
+            print(f"Current IV from Yahoo Finance (15-20min delayed)")
+    
     if parallel:
         print(f"Parallel processing: {max_workers} workers")
     print("="*75)
@@ -74,6 +82,33 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     return df
 
 
+def _get_iv_fetch_time() -> Optional[str]:
+    """Get formatted fetch time from most recent IV cache entry"""
+    try:
+        yf_client = YahooFinanceClient()
+        cache = yf_client._load_iv_cache()
+        
+        if not cache:
+            return None
+        
+        # Find most recent fetch time across all tickers
+        most_recent = None
+        for ticker_data in cache.values():
+            if 'fetched_at' in ticker_data:
+                fetched_dt = datetime.fromisoformat(ticker_data['fetched_at'])
+                if most_recent is None or fetched_dt > most_recent:
+                    most_recent = fetched_dt
+        
+        if most_recent:
+            # Format as "2:15 PM ET" or "10:30 AM ET"
+            time_str = most_recent.strftime("%-I:%M %p ET")
+            return time_str
+        
+        return None
+    except:
+        return None
+
+
 def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv, 
                           fetch_summary, iv_summary):
     """Process tickers serially"""
@@ -88,12 +123,11 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
         summary, status = analyze_ticker(ticker, lookback_quarters, verbose=False, debug=debug)
         
         if summary:
-            # CRITICAL: Preserve input order
-            summary['_order'] = i
-            
             if fetch_iv:
                 _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
             
+            # Add ticker_order to preserve input order
+            summary['ticker_order'] = i
             results.append(summary)
             if from_cache:
                 fetch_summary['cached'].append(ticker)
@@ -114,7 +148,7 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
     cache = load_cache()
     yf_client = YahooFinanceClient()
     
-    # CRITICAL: Create order mapping BEFORE parallel execution
+    # Create ticker order mapping
     ticker_order = {ticker: i for i, ticker in enumerate(tickers, 1)}
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -134,12 +168,11 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                 from_cache = ticker in cache
                 
                 if summary:
-                    # CRITICAL: Preserve input order using pre-built map
-                    summary['_order'] = ticker_order[ticker]
-                    
                     if fetch_iv:
                         _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
                     
+                    # Add ticker_order to preserve input order
+                    summary['ticker_order'] = ticker_order[ticker]
                     results.append(summary)
                     if from_cache:
                         fetch_summary['cached'].append(ticker)
@@ -210,10 +243,8 @@ def _create_results_dataframe(results):
     """Create formatted results dataframe"""
     df = pd.DataFrame(results)
     
-    # CRITICAL: Sort by input order, then remove helper column
-    if '_order' in df.columns:
-        df = df.sort_values('_order').reset_index(drop=True)
-        df = df.drop('_order', axis=1)
+    # Sort by ticker_order to preserve input order
+    df = df.sort_values('ticker_order').reset_index(drop=True)
     
     df['45d_width'] = df.apply(lambda x: round(x['strike_width'] * np.sqrt(45/90), 1), axis=1)
     
@@ -239,28 +270,30 @@ def _print_results_table(df):
     print("BACKTEST RESULTS")
     print("="*145)
     
-    display_cols = {
-        'Ticker': df['ticker'],
-        'HVol%': df['hvol'].astype(int),
-    }
+    # CRITICAL: DO NOT CHANGE THIS ORDER LOGIC
+    # DataFrame must be sorted by ticker_order BEFORE creating display columns
+    # Creating a new DataFrame from dict will NOT preserve the order
+    
+    # Build display columns directly on the sorted dataframe
+    display_df = pd.DataFrame()
+    display_df['Ticker'] = df['ticker']
+    display_df['HVol%'] = df['hvol'].astype(int)
     
     if 'current_iv' in df.columns and df['current_iv'].notna().any():
-        display_cols['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
-        display_cols['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
-        display_cols['|'] = '|'
+        display_df['CurIV%'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
+        display_df['IVPrem'] = df['iv_premium'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
+        display_df['|'] = '|'
     
-    display_cols.update({
-        '45D%': df['45d_contain'].astype(int),
-        '45Break': df['45_break_fmt'],
-        '90D%': df['90d_contain'].astype(int),
-        '90Bias': df['90d_overall_bias'].astype(int),
-        '90Break': df['90_break_fmt'],
-        '90Drift': df['90d_drift'].apply(lambda x: f"{x:+.1f}%"),
-        ' | ': '|',
-        'Pattern': df['strategy_display']
-    })
+    display_df['90D%'] = df['90d_contain'].astype(int)
+    display_df['90Bias'] = df['90d_overall_bias'].astype(int)
+    display_df['90Break'] = df['90_break_fmt']
+    display_df['90Drift'] = df['90d_drift'].apply(lambda x: f"{x:+.1f}%")
+    display_df[' | '] = '|'
+    display_df['45D%'] = df['45d_contain'].astype(int)
+    display_df['45Break'] = df['45_break_fmt']
+    display_df['  |  '] = '|'
+    display_df['Pattern'] = df['strategy_display']
     
-    display_df = pd.DataFrame(display_cols)
     print(display_df.to_string(index=False))
 
 

@@ -5,7 +5,8 @@ import time
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict
+from typing import Optional, Dict, List
+from zoneinfo import ZoneInfo
 
 try:
     import yfinance as yf
@@ -13,10 +14,17 @@ try:
 except ImportError:
     YFINANCE_AVAILABLE = False
 
-from ..config import REQUEST_TIMEOUT, IV_TARGET_DTE
+from ..config import REQUEST_TIMEOUT
 
+# IV cache settings
 IV_CACHE_FILE = "cache/iv_cache.json"
-IV_CACHE_HOURS = 24  # Cache IV for 24 hours
+FETCH_WINDOWS = [
+    (10, 0),   # 10:00 AM ET
+    (12, 0),   # 12:00 PM ET
+    (14, 0),   # 2:00 PM ET
+    (15, 30),  # 3:30 PM ET
+]
+MAX_DTE_FOR_IV = 45  # Use expirations within 45 days
 
 
 class YahooFinanceClient:
@@ -72,183 +80,226 @@ class YahooFinanceClient:
             json.dump(cache, f, indent=2)
     
     @staticmethod
-    def _is_market_hours() -> bool:
-        """Check if currently during US market hours (rough check)"""
-        now = datetime.now()
-        # Monday-Friday, 9:30 AM - 4:00 PM ET (simplified check)
-        if now.weekday() >= 5:  # Weekend
-            return False
-        hour = now.hour
-        # Very rough: assuming you're in US timezone for now
-        # Better: use pytz for proper timezone handling
-        return 9 <= hour <= 16
+    def _get_market_time() -> datetime:
+        """Get current time in ET timezone"""
+        return datetime.now(ZoneInfo("America/New_York"))
     
     @staticmethod
-    def get_current_iv(ticker: str, dte_target: int = IV_TARGET_DTE, retry_count: int = 2) -> Optional[Dict]:
+    def _is_market_open(ticker: str) -> bool:
+        """Check if market is currently open using yfinance marketState"""
+        try:
+            stock = yf.Ticker(ticker)
+            market_state = stock.info.get("marketState")
+            return market_state == "REGULAR"
+        except:
+            return False
+    
+    @staticmethod
+    def _should_fetch_iv(ticker: str, cache: Dict) -> bool:
         """
-        Fetch current implied volatility from options chain with caching
+        Determine if we should fetch new IV data based on fetch windows
         
-        Strategy:
-        1. Check cache first
-        2. If cache is fresh (<24h old), return cached value
-        3. If cache is stale AND during market hours, fetch new data
-        4. If cache is stale AND after hours, keep using stale cache
-        5. Never overwrite good cache with None/empty data
+        Fetch windows: 10am, 12pm, 2pm, 3:30pm ET
+        Only fetch if we've crossed a window threshold since last fetch
+        """
+        # Check if market is open first
+        if not YahooFinanceClient._is_market_open(ticker):
+            return False
+        
+        now = YahooFinanceClient._get_market_time()
+        
+        # Don't fetch before 10 AM or after 5 PM ET
+        if now.hour < 10 or now.hour >= 17:
+            return False
+        
+        # If no cache entry, fetch
+        if ticker not in cache:
+            return True
+        
+        try:
+            last_fetch = datetime.fromisoformat(cache[ticker]['fetched_at'])
+            
+            # If last fetch was more than 24 hours ago, fetch
+            if (now - last_fetch).total_seconds() > 86400:
+                return True
+            
+            # If last fetch was today, check if we've crossed a window
+            if last_fetch.date() == now.date():
+                last_hour = last_fetch.hour
+                last_minute = last_fetch.minute
+                
+                for window_hour, window_minute in FETCH_WINDOWS:
+                    # Current time is past this window
+                    current_past_window = (now.hour > window_hour or 
+                                          (now.hour == window_hour and now.minute >= window_minute))
+                    
+                    # Last fetch was before this window
+                    last_before_window = (last_hour < window_hour or 
+                                         (last_hour == window_hour and last_minute < window_minute))
+                    
+                    if current_past_window and last_before_window:
+                        return True
+                
+                return False
+            else:
+                # Last fetch was a previous day, fetch new data
+                return True
+        
+        except:
+            # If any error parsing, fetch fresh data
+            return True
+    
+    @staticmethod
+    def _get_nearest_expirations(expirations: List[str], max_count: int = 3) -> List[str]:
+        """
+        Get expirations ≤45 DTE, up to max_count
+        If none ≤45 DTE exist, fall back to single nearest expiration
+        
+        Examples:
+            [7d, 14d, 21d] → use all 3
+            [14d, 30d, 46d] → use first 2 (14d, 30d)
+            [45d, 70d, 90d] → use only 45d
+            [60d, 90d, 120d] → use only 60d (fallback)
+        
+        Args:
+            expirations: List of expiration date strings
+            max_count: Maximum number of expirations to return
+        
+        Returns:
+            List of up to max_count expiration dates (≤45 DTE preferred)
+        """
+        today = datetime.now()
+        
+        # Filter to expirations ≤45 DTE
+        valid_exps = []
+        for exp in expirations:
+            exp_date = datetime.strptime(exp, '%Y-%m-%d')
+            dte = (exp_date - today).days
+            if 0 < dte <= MAX_DTE_FOR_IV:
+                valid_exps.append((exp, dte))
+        
+        # If we have expirations ≤45 DTE, use up to max_count
+        if valid_exps:
+            valid_exps.sort(key=lambda x: x[1])  # Sort by DTE
+            return [exp for exp, _ in valid_exps[:max_count]]
+        
+        # Fallback: if NO expirations ≤45 DTE, use single nearest expiration
+        all_exps = []
+        for exp in expirations:
+            exp_date = datetime.strptime(exp, '%Y-%m-%d')
+            dte = abs((exp_date - today).days)
+            all_exps.append((exp, dte))
+        
+        all_exps.sort(key=lambda x: x[1])
+        return [all_exps[0][0]] if all_exps else []
+    
+    @staticmethod
+    def get_current_iv(ticker: str, retry_count: int = 2) -> Optional[Dict]:
+        """
+        Fetch current implied volatility from expirations ≤45 DTE (up to 3)
+        Uses time-gated caching (10am, 12pm, 2pm, 3:30pm ET windows)
+        Returns ATM IV averaged across up to 6 options (up to 3 puts + 3 calls)
+        
+        If no expirations ≤45 DTE, falls back to single nearest expiration
         """
         if not YFINANCE_AVAILABLE:
             return None
         
         # Load cache
-        iv_cache = YahooFinanceClient._load_iv_cache()
+        cache = YahooFinanceClient._load_iv_cache()
         
-        # Check if we have cached data for this ticker
-        if ticker in iv_cache:
-            cached_data = iv_cache[ticker]
-            
-            # Backward compatibility: handle old cache format without fetched_at
-            if 'fetched_at' not in cached_data:
-                # Old cache format - treat as valid but will be updated with timestamp on next fetch
-                # For now, use it if after hours, otherwise let it fetch fresh
-                if not YahooFinanceClient._is_market_hours():
-                    return {
-                        'iv': cached_data['iv'],
-                        'dte': cached_data['dte'],
-                        'strike': cached_data['strike'],
-                        'expiration': cached_data['expiration']
-                    }
-                # Market hours - fall through to fetch new data with proper timestamp
-            else:
-                # New cache format with timestamp
-                cached_time = datetime.fromisoformat(cached_data['fetched_at'])
-                age_hours = (datetime.now() - cached_time).total_seconds() / 3600
-                
-                # If cache is fresh, use it
-                if age_hours < IV_CACHE_HOURS:
-                    return {
-                        'iv': cached_data['iv'],
-                        'dte': cached_data['dte'],
-                        'strike': cached_data['strike'],
-                        'expiration': cached_data['expiration']
-                    }
-                
-                # Cache is stale - only fetch if during market hours
-                if not YahooFinanceClient._is_market_hours():
-                    # After hours: keep using stale cache rather than getting bad data
-                    return {
-                        'iv': cached_data['iv'],
-                        'dte': cached_data['dte'],
-                        'strike': cached_data['strike'],
-                        'expiration': cached_data['expiration']
-                    }
+        # Check if we should fetch
+        if not YahooFinanceClient._should_fetch_iv(ticker, cache):
+            # Return cached data
+            return cache.get(ticker)
         
-        # No cache or cache stale during market hours - fetch new data
+        # Fetch new IV data
         try:
             stock = yf.Ticker(ticker)
             
+            # Get current price
             hist = stock.history(period='1d')
             if hist.empty:
-                # Failed to fetch - return cached data if available
-                if ticker in iv_cache:
-                    cached = iv_cache[ticker]
-                    return {
-                        'iv': cached['iv'],
-                        'dte': cached['dte'],
-                        'strike': cached['strike'],
-                        'expiration': cached['expiration']
-                    }
-                return None
-            
+                return cache.get(ticker)
             current_price = hist['Close'].iloc[-1]
             
+            # Get all expirations
             expirations = stock.options
             if not expirations:
-                # No options data - return cached if available
-                if ticker in iv_cache:
-                    cached = iv_cache[ticker]
-                    return {
-                        'iv': cached['iv'],
-                        'dte': cached['dte'],
-                        'strike': cached['strike'],
-                        'expiration': cached['expiration']
-                    }
-                return None
+                return cache.get(ticker)
             
-            today = datetime.now()
-            target_exp = None
-            min_diff = 999
+            # Get up to 3 nearest expirations (prefer within 30 DTE)
+            nearest_exps = YahooFinanceClient._get_nearest_expirations(expirations, max_count=3)
             
-            for exp_str in expirations:
-                exp_date = datetime.strptime(exp_str, '%Y-%m-%d')
-                dte = (exp_date - today).days
-                if abs(dte - dte_target) < min_diff:
-                    min_diff = abs(dte - dte_target)
-                    target_exp = exp_str
+            if not nearest_exps:
+                return cache.get(ticker)
             
-            if not target_exp:
-                # No suitable expiration - return cached if available
-                if ticker in iv_cache:
-                    cached = iv_cache[ticker]
-                    return {
-                        'iv': cached['iv'],
-                        'dte': cached['dte'],
-                        'strike': cached['strike'],
-                        'expiration': cached['expiration']
-                    }
-                return None
+            # Collect IVs from all expirations
+            all_ivs = []
+            exps_used = []
             
-            chain = stock.option_chain(target_exp)
-            calls = chain.calls
+            for exp in nearest_exps:
+                try:
+                    chain = stock.option_chain(exp)
+                    calls = chain.calls
+                    puts = chain.puts
+                    
+                    if calls.empty or puts.empty:
+                        continue
+                    
+                    if 'impliedVolatility' not in calls.columns or 'impliedVolatility' not in puts.columns:
+                        continue
+                    
+                    # Find ATM strikes
+                    calls['strike_diff'] = abs(calls['strike'] - current_price)
+                    puts['strike_diff'] = abs(puts['strike'] - current_price)
+                    
+                    atm_call_idx = calls['strike_diff'].idxmin()
+                    atm_put_idx = puts['strike_diff'].idxmin()
+                    
+                    atm_call = calls.loc[atm_call_idx]
+                    atm_put = puts.loc[atm_put_idx]
+                    
+                    # Get IVs
+                    call_iv = atm_call['impliedVolatility'] * 100
+                    put_iv = atm_put['impliedVolatility'] * 100
+                    
+                    all_ivs.extend([call_iv, put_iv])
+                    exps_used.append(exp)
+                
+                except:
+                    continue
             
-            if calls.empty or 'impliedVolatility' not in calls.columns:
-                # Empty chain - return cached if available
-                if ticker in iv_cache:
-                    cached = iv_cache[ticker]
-                    return {
-                        'iv': cached['iv'],
-                        'dte': cached['dte'],
-                        'strike': cached['strike'],
-                        'expiration': cached['expiration']
-                    }
-                return None
+            # If we didn't get any valid IVs, return cache
+            if not all_ivs:
+                return cache.get(ticker)
             
-            calls['strike_diff'] = abs(calls['strike'] - current_price)
-            atm_idx = calls['strike_diff'].idxmin()
-            atm_call = calls.loc[atm_idx]
+            # Calculate average IV
+            avg_iv = sum(all_ivs) / len(all_ivs)
             
-            iv_pct = atm_call['impliedVolatility'] * 100
-            actual_dte = (datetime.strptime(target_exp, '%Y-%m-%d') - today).days
+            # Calculate DTE of nearest expiration
+            nearest_exp = exps_used[0]
+            exp_date = datetime.strptime(nearest_exp, '%Y-%m-%d')
+            dte = (exp_date - datetime.now()).days
             
-            # Successfully fetched - update cache
-            result = {
-                'iv': round(iv_pct, 1),
-                'dte': actual_dte,
-                'strike': atm_call['strike'],
-                'expiration': target_exp
+            # Create cache entry
+            iv_data = {
+                'iv': round(avg_iv, 1),
+                'dte': dte,
+                'expiration': nearest_exp,
+                'expirations_used': exps_used,
+                'fetched_at': YahooFinanceClient._get_market_time().isoformat()
             }
             
-            iv_cache[ticker] = {
-                **result,
-                'fetched_at': datetime.now().isoformat(),
-                'market_date': datetime.now().strftime('%Y-%m-%d')
-            }
-            YahooFinanceClient._save_iv_cache(iv_cache)
+            # Update cache
+            cache[ticker] = iv_data
+            YahooFinanceClient._save_iv_cache(cache)
             
-            return result
+            return iv_data
         
         except Exception:
-            # Exception during fetch - return cached data if available
-            if ticker in iv_cache:
-                cached = iv_cache[ticker]
-                return {
-                    'iv': cached['iv'],
-                    'dte': cached['dte'],
-                    'strike': cached['strike'],
-                    'expiration': cached['expiration']
-                }
-            
-            # Retry if allowed
             if retry_count > 0:
                 time.sleep(1)
-                return YahooFinanceClient.get_current_iv(ticker, dte_target, retry_count - 1)
-            
-            return None
+                return YahooFinanceClient.get_current_iv(ticker, retry_count - 1)
+            # Return cached data if fetch fails
+            return cache.get(ticker)
