@@ -1,0 +1,26 @@
+{
+  "JPM": {
+    "hvol": null,
+    "containment_45": null,
+    "containment_90": null,
+    "breaks_45_up": null,
+    "breaks_45_down": null,
+    "pattern": "SKIP"
+  },
+  "GS": {
+    "hvol": null,
+    "containment_45": null,
+    "containment_90": null,
+    "breaks_45_up": null,
+    "breaks_45_down": null,
+    "pattern": "SKIP"
+  },
+  "C": {
+    "hvol": null,
+    "containment_45": null,
+    "containment_90": null,
+    "breaks_45_up": null,
+    "breaks_45_down": null,
+    "pattern": "SKIP"
+  }
+}

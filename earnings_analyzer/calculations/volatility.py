@@ -36,17 +36,21 @@ def get_volatility_tier(hvol: float) -> float:
     return VOLATILITY_TIERS[-1][1]
 
 
-def calculate_rvol_tier(historical_data: List[Dict], dte: int, current_hvol: float) -> float:
+def calculate_rvol_tier(historical_data: List[Dict], dte: int, current_hvol: float, 
+                       current_index: int = None) -> float:
     """
     Calculate strike width tier based on realized volatility from past earnings
     
     Uses leave-one-out methodology: calculates tier from historical RVol
-    without including the current period being evaluated.
+    WITHOUT including the current period being evaluated.
+    
+    CRITICAL FIX: Now properly excludes current period via current_index parameter
     
     Args:
         historical_data: List of dicts with 'rvol' key from past earnings
         dte: Target days to expiration (45 or 90)
         current_hvol: Current period's HVol (fallback if no history)
+        current_index: Index of current period to EXCLUDE (leave-one-out)
     
     Returns:
         Tier multiplier for strike width calculation
@@ -55,13 +59,24 @@ def calculate_rvol_tier(historical_data: List[Dict], dte: int, current_hvol: flo
         # First period: fallback to HVol-based tier
         return get_volatility_tier(current_hvol)
     
-    # Extract RVol values
-    rvols = [d['rvol'] for d in historical_data if 'rvol' in d]
+    # Extract RVol values, EXCLUDING current period if specified
+    if current_index is not None:
+        # Leave-one-out: exclude the period we're evaluating
+        rvols = [
+            d['rvol'] for i, d in enumerate(historical_data) 
+            if 'rvol' in d and i != current_index
+        ]
+    else:
+        # If no index specified, use all historical data
+        # This happens when calculating for future (not backtest)
+        rvols = [d['rvol'] for d in historical_data if 'rvol' in d]
     
-    if not rvols:
+    if not rvols or len(rvols) < 3:
+        # Insufficient historical data: fallback to HVol
+        # Require at least 3 past periods for robust estimation
         return get_volatility_tier(current_hvol)
     
-    # Calculate average RVol from historical data
+    # Calculate average RVol from historical data (excluding current)
     avg_rvol = np.mean(rvols)
     
     # Map avg RVol to tier using same thresholds as HVol
@@ -73,11 +88,23 @@ def calculate_rvol_tier(historical_data: List[Dict], dte: int, current_hvol: flo
     return VOLATILITY_TIERS[-1][1]
 
 
-def calculate_strike_width(hvol: float, dte: int) -> float:
-    """Calculate strike width for given DTE"""
-    strike_std = get_volatility_tier(hvol)
+def calculate_strike_width(hvol: float, dte: int, tier_multiplier: float = None) -> float:
+    """
+    Calculate strike width for given DTE
+    
+    Args:
+        hvol: Historical volatility (annualized)
+        dte: Days to expiration
+        tier_multiplier: Optional tier override, otherwise uses hvol-based tier
+    
+    Returns:
+        Strike width as percentage
+    """
+    if tier_multiplier is None:
+        tier_multiplier = get_volatility_tier(hvol)
+    
     dte_factor = np.sqrt(dte / 365)
-    return hvol * dte_factor * strike_std * 100
+    return hvol * dte_factor * tier_multiplier * 100
 
 
 def find_nearest_price(price_data: pd.DataFrame, target_date: datetime) -> Tuple[Optional[float], Optional[datetime]]:
@@ -99,6 +126,61 @@ def find_nearest_price(price_data: pd.DataFrame, target_date: datetime) -> Tuple
 
 def get_reference_price(price_data: pd.DataFrame, earnings_date: datetime, 
                        timing: str) -> Tuple[Optional[float], Optional[datetime]]:
-    """Get entry price based on earnings timing"""
-    target_date = earnings_date - timedelta(days=1) if timing == 'bmo' else earnings_date
-    return find_nearest_price(price_data, target_date)
+    """
+    Get entry price based on earnings timing
+    
+    CRITICAL: This determines when we "enter" the position and calculate strike width
+    - BMO (before market open): Use close price from day BEFORE earnings
+    - AMC (after market close): Use close price from earnings day itself
+    
+    Args:
+        price_data: DataFrame with price history
+        earnings_date: Date of earnings announcement
+        timing: 'bmo' or 'amc'
+    
+    Returns:
+        Tuple of (reference_price, reference_date)
+        reference_date is the actual date used for width calculation (for audit trail)
+    """
+    # Determine target date based on timing
+    if timing.lower() == 'bmo':
+        # BMO: We enter after close on day before earnings
+        target_date = earnings_date - timedelta(days=1)
+    else:
+        # AMC: We enter after close on earnings day
+        target_date = earnings_date
+    
+    # Find nearest trading day to target
+    price, actual_date = find_nearest_price(price_data, target_date)
+    
+    # actual_date is now our reference_date for audit trail
+    return price, actual_date
+
+
+def calculate_realized_volatility(price_data: pd.DataFrame, start_date: datetime, 
+                                  end_date: datetime) -> Optional[float]:
+    """
+    Calculate realized volatility over a specific period
+    
+    Args:
+        price_data: DataFrame with price history
+        start_date: Start of measurement period
+        end_date: End of measurement period
+    
+    Returns:
+        Annualized realized volatility as decimal (e.g., 0.25 = 25%)
+    """
+    window = price_data[(price_data.index >= start_date) & (price_data.index <= end_date)]
+    
+    if len(window) < 10:
+        return None
+    
+    returns = window['close'].pct_change().dropna()
+    
+    if len(returns) < 5:
+        return None
+    
+    daily_vol = returns.std()
+    annual_vol = daily_vol * np.sqrt(252)
+    
+    return annual_vol

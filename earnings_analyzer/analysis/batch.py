@@ -241,6 +241,7 @@ def _print_results_table(df):
     # Add IV columns if available (with clarified headers)
     if 'current_iv' in df.columns and df['current_iv'].notna().any():
         display_cols['IV45'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
+        display_cols['IV From DTE'] = df['iv_dte'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
         display_cols['vs45RV'] = df['iv_elevation'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
         display_cols['|'] = '|'
     
@@ -264,19 +265,34 @@ def _print_results_table(df):
     df['pattern_clean'] = df['strategy'].str.replace(r'\s*\[\d+\s+edges?\]', '', regex=True)
     display_cols['Pattern'] = df['pattern_clean']
     
-    # Extract edge count and add as separate rightmost column
+    # Extract edge count
     df['edge_count'] = df['strategy'].str.extract(r'\[(\d+) edge', expand=False).fillna('0')
-    display_cols['    |'] = '|'
-    display_cols['Edges'] = df['edge_count']
     
+    # Don't add edges to display_cols yet - we'll print it manually
     display_df = pd.DataFrame(display_cols)
-    print(display_df.to_string(index=False))
+    
+    # Print table without edges column
+    table_lines = display_df.to_string(index=False).split('\n')
+    
+    # Now manually append the edges column with proper alignment and coloring
+    header = table_lines[0]
+    print(f"{header}     | Edges")
+    
+    for i, line in enumerate(table_lines[1:], 0):
+        edge_val = df.iloc[i]['edge_count']
+        if edge_val == '3':
+            edge_display = f"\033[1;92m{edge_val:>6}\033[0m"
+        elif edge_val == '2':
+            edge_display = f"\033[1;93m{edge_val:>6}\033[0m"
+        else:
+            edge_display = f"{edge_val:>6}"
+        print(f"{line}     | {edge_display}")
 
 
 def _print_insights(df):
     """Print key takeaways and insights"""
     print(f"\n{'='*140}")
-    print("KEY TAKEAWAYS:")
+    print("KEY INSIGHTS")
     print("="*140)
     
     ic_count = len(df[df['strategy'].str.contains('IC', na=False)])
@@ -284,24 +300,27 @@ def _print_insights(df):
     bias_down_count = len(df[df['strategy'].str.contains('BIAS↓', na=False)])
     skip_count = len(df[df['strategy'] == 'SKIP'])
     
-    print(f"\n📊 Pattern Summary: {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
+    print(f"\n┌─ PATTERN SUMMARY")
+    print(f"│  {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
+    print(f"└─")
     
     # IV Landscape
     if 'iv_elevation' in df.columns and df['iv_elevation'].notna().any():
         elevated = df[df['iv_elevation'] >= 15].sort_values('iv_elevation', ascending=False)
         depressed = df[df['iv_elevation'] <= -15].sort_values('iv_elevation')
         
-        print(f"\n💰 IV Landscape (vs RVol45d):")
+        print(f"\n┌─ IV LANDSCAPE (vs RVol45d)")
         if not elevated.empty:
             tickers_str = ', '.join([f"{row['ticker']}(+{row['iv_elevation']:.0f}%)" for _, row in elevated.head(5).iterrows()])
-            print(f"  Rich Premium (≥15%): {tickers_str}")
+            print(f"│  Rich Premium (>=15%): {tickers_str}")
         if not depressed.empty:
             tickers_str = ', '.join([f"{row['ticker']}({row['iv_elevation']:.0f}%)" for _, row in depressed.head(3).iterrows()])
-            print(f"  Thin Premium (≤-15%): {tickers_str}")
+            print(f"│  Thin Premium (<=-15%): {tickers_str}")
         
         normal_count = len(df[(df['iv_elevation'] > -15) & (df['iv_elevation'] < 15)])
         if normal_count > 0:
-            print(f"  Normal Range: {normal_count} tickers")
+            print(f"│  Normal Range: {normal_count} tickers")
+        print(f"└─")
     
     # High conviction plays (2+ edges) - FIXED: Use non-capturing group (?:...) to avoid regex warning
     high_conviction = df[df['strategy'].str.contains(r'\[(?:\d+) edges?\]', regex=True, na=False)]
@@ -312,20 +331,33 @@ def _print_insights(df):
         high_conviction = high_conviction[high_conviction['edge_count'] >= 2].sort_values('edge_count', ascending=False)
         
         if not high_conviction.empty:
-            print(f"\n🎯 High Conviction (2+ edges):")
+            print(f"\n┌─ HIGH CONVICTION [2+ edges]")
             for _, row in high_conviction.iterrows():
-                print(f"  {row['ticker']}: {row['strategy']}")
+                # Add spacing to align edge numbers in colored format
+                edge_num = int(row['edge_count'])
+                if edge_num == 3:
+                    edge_display = f"[\033[1;92m3\033[0m edges]"  # Bright green
+                elif edge_num == 2:
+                    edge_display = f"[\033[1;93m2\033[0m edges]"  # Bright yellow
+                else:
+                    edge_display = f"[{edge_num} edges]"
+                
+                # Remove the [X edges] from strategy and add colored version
+                strategy_clean = row['strategy'].replace(f"[{edge_num} edges]", "").replace(f"[{edge_num} edge]", "").strip()
+                print(f"│  {row['ticker']:6} {strategy_clean} {edge_display}")
+            print(f"└─")
     
     # Asymmetric ICs
     ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
     ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
     
     if not ic_up_skew.empty or not ic_down_skew.empty:
-        print(f"\n⚠️  Asymmetric ICs:")
+        print(f"\n┌─ ASYMMETRIC ICs")
         if not ic_up_skew.empty:
-            print(f"  Upside risk: {', '.join(ic_up_skew['ticker'].tolist())}")
+            print(f"│  Upside risk: {', '.join(ic_up_skew['ticker'].tolist())}")
         if not ic_down_skew.empty:
-            print(f"  Downside risk: {', '.join(ic_down_skew['ticker'].tolist())}")
+            print(f"│  Downside risk: {', '.join(ic_down_skew['ticker'].tolist())}")
+        print(f"└─")
     
     # Strong directional signals
     strong_bias = df[
@@ -333,9 +365,12 @@ def _print_insights(df):
         ((df['90d_overall_bias'] >= 70) | (df['90d_overall_bias'] <= 30))
     ]
     if not strong_bias.empty:
-        print(f"\n📈 Strong Directional Signals:")
+        print(f"\n┌─ STRONG DIRECTIONAL SIGNALS")
         for _, row in strong_bias.iterrows():
             direction = "↑" if row['90d_overall_bias'] >= 70 else "↓"
-            print(f"  {row['ticker']}: {row['90d_overall_bias']:.0f}% bias {direction}, {row['90_break_fmt']} breaks, {row['90d_drift']:+.1f}% drift")
+            print(f"│  {row['ticker']:6} {row['90d_overall_bias']:.0f}% bias {direction}, {row['90_break_fmt']} breaks, {row['90d_drift']:+.1f}% drift")
+        print(f"└─")
     
-    print(f"\n💡 Remember: Past patterns ≠ Future results. IV context shows current opportunity cost.")
+    print(f"\n{'─'*140}")
+    print(f"NOTE: Past patterns do not guarantee future results. IV context shows current opportunity cost.")
+    print(f"{'─'*140}")
