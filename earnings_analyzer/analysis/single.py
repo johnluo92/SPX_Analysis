@@ -1,4 +1,4 @@
-"""Single ticker earnings analysis - Original HVol-based approach"""
+"""Single ticker earnings analysis"""
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, Tuple, Optional
@@ -56,13 +56,12 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
     if price_data.empty:
         return None, "no_price_data"
     
-    # Single-pass: calculate HVol, set width, test containment
     data_45 = []
     data_90 = []
     hvol_list = []
+    realized_moves_45 = []  # For RVol45 calculation
     
     for earnings in past_earnings:
-        # Calculate HVol from 30-day pre-earnings daily volatility
         hvol = calculate_historical_volatility(price_data, earnings['date'])
         if hvol is None:
             continue
@@ -73,7 +72,6 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
         if ref_price is None:
             continue
         
-        # Calculate strike widths using HVol
         strike_width_45 = calculate_strike_width(hvol, 45)
         strike_width_90 = calculate_strike_width(hvol, 90)
         
@@ -82,6 +80,8 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
             price_45, date_45 = find_nearest_price(price_data, target_45)
             if price_45 is not None:
                 move_45 = (price_45 - ref_price) / ref_price * 100
+                realized_moves_45.append(move_45)  # Store for RVol calculation
+                
                 data_45.append({
                     'move': move_45,
                     'width': strike_width_45,
@@ -111,22 +111,29 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
     avg_hvol = np.mean(hvol_list)
     avg_tier = get_volatility_tier(avg_hvol / 100)
     
+    # Calculate RVol45 - realized volatility from actual 45-day post-earnings moves
+    rvol_45d = None
+    if len(realized_moves_45) >= MIN_QUARTERS_REQUIRED:
+        # Standard deviation of moves (already in percentage terms)
+        rvol_45d = np.std(realized_moves_45, ddof=1)
+    
     recommendation = determine_strategy(stats_45, stats_90)
     
     if verbose:
-        print(f"\n📊 {ticker} | {avg_hvol:.1f}% HVol | {avg_tier:.1f}x tier (±{stats_90['avg_width']:.1f}%)")
+        rvol_display = f"{rvol_45d:.1f}%" if rvol_45d else "N/A"
+        print(f"\n📊 {ticker} | {avg_hvol:.1f}% HVol | RVol45: {rvol_display} | {avg_tier:.1f} std (±{stats_90['avg_width']:.1f}%)")
         print(f"\n  45-Day: {stats_45['total']}/{lookback_quarters} tested")
-        print(f"    Containment: {stats_45['containment']:.1f}%")
+        print(f"    Containment: {stats_45['containment']:.0f}%")
         print(f"    Breaks: Up {stats_45['breaks_up']}, Down {stats_45['breaks_down']}")
-        print(f"    Overall Bias: {stats_45['overall_bias']:.1f}% up")
-        print(f"    Break Bias: {stats_45['break_bias']:.1f}% of breaks were upward")
+        print(f"    Overall Bias: {stats_45['overall_bias']:.0f}% up")
+        print(f"    Break Bias: {stats_45['break_bias']:.0f}% of breaks were upward")
         print(f"    Avg Drift: {stats_45['avg_move_pct']:+.1f}% ({stats_45['drift_vs_width']:+.0f}% of width)")
         
         print(f"\n  90-Day: {stats_90['total']}/{lookback_quarters} tested")
-        print(f"    Containment: {stats_90['containment']:.1f}%")
+        print(f"    Containment: {stats_90['containment']:.0f}%")
         print(f"    Breaks: Up {stats_90['breaks_up']}, Down {stats_90['breaks_down']}")
-        print(f"    Overall Bias: {stats_90['overall_bias']:.1f}% up")
-        print(f"    Break Bias: {stats_90['break_bias']:.1f}% of breaks were upward")
+        print(f"    Overall Bias: {stats_90['overall_bias']:.0f}% up")
+        print(f"    Break Bias: {stats_90['break_bias']:.0f}% of breaks were upward")
         print(f"    Avg Drift: {stats_90['avg_move_pct']:+.1f}% ({stats_90['drift_vs_width']:+.0f}% of width)")
         
         print(f"\n  💡 Strategy: {recommendation}")
@@ -134,18 +141,20 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
     summary = {
         'ticker': ticker,
         'hvol': round(avg_hvol, 1),
+        'tier': round(avg_tier, 1),
         'strike_width': round(stats_90['avg_width'], 1),
-        '45d_contain': round(stats_45['containment'], 1),
+        'rvol_45d': round(rvol_45d, 1) if rvol_45d is not None else None,
+        '45d_contain': round(stats_45['containment'], 0),
         '45d_breaks_up': stats_45['breaks_up'],
         '45d_breaks_dn': stats_45['breaks_down'],
-        '45d_overall_bias': round(stats_45['overall_bias'], 1),
-        '45d_break_bias': round(stats_45['break_bias'], 1),
+        '45d_overall_bias': round(stats_45['overall_bias'], 0),
+        '45d_break_bias': round(stats_45['break_bias'], 0),
         '45d_drift': round(stats_45['avg_move_pct'], 1),
-        '90d_contain': round(stats_90['containment'], 1),
+        '90d_contain': round(stats_90['containment'], 0),
         '90d_breaks_up': stats_90['breaks_up'],
         '90d_breaks_dn': stats_90['breaks_down'],
-        '90d_overall_bias': round(stats_90['overall_bias'], 1),
-        '90d_break_bias': round(stats_90['break_bias'], 1),
+        '90d_overall_bias': round(stats_90['overall_bias'], 0),
+        '90d_break_bias': round(stats_90['break_bias'], 0),
         '90d_drift': round(stats_90['avg_move_pct'], 1),
         'strategy': recommendation
     }
