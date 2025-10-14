@@ -2,12 +2,13 @@
 import time
 import pandas as pd
 import numpy as np
+from datetime import datetime
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ..config import DEFAULT_LOOKBACK_QUARTERS, REQUEST_DELAY, ALPHAVANTAGE_KEYS
 from ..cache import load_cache, load_rate_limits
-from ..data_sources import YahooFinanceClient
+from ..data_sources import YahooFinanceClient, AlphaVantageClient
 from .single import analyze_ticker
 
 
@@ -47,21 +48,22 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
     results = []
     fetch_summary = {'cached': [], 'api': [], 'failed': []}
     iv_summary = {'success': [], 'failed': []}
+    earnings_summary = {'success': [], 'failed': []}
     
     if parallel:
         results = _batch_analyze_parallel(
             tickers, lookback_quarters, debug, fetch_iv, 
-            max_workers, fetch_summary, iv_summary
+            max_workers, fetch_summary, iv_summary, earnings_summary
         )
     else:
         results = _batch_analyze_serial(
             tickers, lookback_quarters, debug, fetch_iv,
-            fetch_summary, iv_summary
+            fetch_summary, iv_summary, earnings_summary
         )
     
     print("\r" + " " * 80 + "\r", end='')
     
-    _print_fetch_summary(fetch_summary, iv_summary, fetch_iv)
+    _print_fetch_summary(fetch_summary, iv_summary, earnings_summary, fetch_iv)
     
     if not results:
         print("\n⚠️  No valid results")
@@ -75,11 +77,12 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
 
 
 def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv, 
-                          fetch_summary, iv_summary):
+                          fetch_summary, iv_summary, earnings_summary):
     """Process tickers serially"""
     results = []
     cache = load_cache()
     yf_client = YahooFinanceClient()
+    av_client = AlphaVantageClient()
     
     for i, ticker in enumerate(tickers, 1):
         print(f"\r[{i}/{len(tickers)}] Processing {ticker}...", end='', flush=True)
@@ -90,6 +93,9 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
         if summary:
             if fetch_iv:
                 _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
+            
+            # Add upcoming earnings countdown
+            _fetch_and_add_earnings_countdown(ticker, summary, av_client, earnings_summary)
             
             results.append(summary)
             if from_cache:
@@ -105,11 +111,12 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
 
 
 def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
-                           max_workers, fetch_summary, iv_summary):
+                           max_workers, fetch_summary, iv_summary, earnings_summary):
     """Process tickers in parallel while preserving order"""
     results_dict = {}
     cache = load_cache()
     yf_client = YahooFinanceClient()
+    av_client = AlphaVantageClient()
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit with index to maintain order
@@ -131,6 +138,9 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                 if summary:
                     if fetch_iv:
                         _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
+                    
+                    # Add upcoming earnings countdown
+                    _fetch_and_add_earnings_countdown(ticker, summary, av_client, earnings_summary)
                     
                     # Store with original index
                     results_dict[idx] = summary
@@ -157,7 +167,7 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
     if iv_data:
         summary['current_iv'] = iv_data['iv']
         summary['iv_dte'] = iv_data['dte']
-        # Changed: IV elevation vs RVol45d (apples-to-apples comparison)
+        # IV elevation vs RVol45d (apples-to-apples comparison)
         if 'rvol_45d' in summary and summary['rvol_45d'] is not None:
             iv_elevation = ((iv_data['iv'] - summary['rvol_45d']) / summary['rvol_45d']) * 100
             summary['iv_elevation'] = round(iv_elevation, 1)
@@ -171,7 +181,37 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
         iv_summary['failed'].append(ticker)
 
 
-def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv):
+def _fetch_and_add_earnings_countdown(ticker, summary, av_client, earnings_summary):
+    """Fetch and add earnings countdown to summary"""
+    upcoming, status = av_client.get_upcoming_earnings(ticker, use_cache=True, debug=False)
+    
+    if upcoming and upcoming.get('date'):
+        try:
+            today = datetime.now().date()
+            earnings_date = datetime.strptime(upcoming['date'], '%Y-%m-%d').date()
+            days_until = (earnings_date - today).days
+            
+            summary['days_till_earnings'] = days_until
+            summary['earnings_date'] = upcoming['date']
+            earnings_summary['success'].append(ticker)
+        except:
+            summary['days_till_earnings'] = None
+            summary['earnings_date'] = None
+            earnings_summary['failed'].append(ticker)
+    else:
+        summary['days_till_earnings'] = None
+        summary['earnings_date'] = None
+        earnings_summary['failed'].append(ticker)
+
+
+def _format_days_till(days):
+    """Format days till earnings for display"""
+    if days is None or (isinstance(days, float) and pd.isna(days)):
+        return "N/A"
+    return str(int(days))
+
+
+def _print_fetch_summary(fetch_summary, iv_summary, earnings_summary, fetch_iv):
     """Print fetch summary"""
     print(f"\n📊 FETCH SUMMARY")
     print(f"{'='*75}")
@@ -190,6 +230,13 @@ def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv):
             print(f"✓ IV Retrieved ({len(iv_summary['success'])}): {iv_list}")
         if iv_summary['failed']:
             print(f"✗ IV Failed ({len(iv_summary['failed'])}): {', '.join(iv_summary['failed'])}")
+    if earnings_summary['success']:
+        earnings_list = ', '.join(earnings_summary['success'][:5])
+        if len(earnings_summary['success']) > 5:
+            earnings_list += '...'
+        print(f"✓ Upcoming Earnings ({len(earnings_summary['success'])}): {earnings_list}")
+    if earnings_summary['failed']:
+        print(f"✗ Upcoming Earnings Failed ({len(earnings_summary['failed'])}): {', '.join(earnings_summary['failed'])}")
     if fetch_summary['failed']:
         print(f"✗ Analysis Failed ({len(fetch_summary['failed'])}): {', '.join(fetch_summary['failed'])}")
 
@@ -224,7 +271,6 @@ def _create_results_dataframe(results):
     # DO NOT SORT - preserve input order
     
     return df
-
 
 
 def _print_results_table(df):
@@ -297,13 +343,14 @@ def _print_results_table(df):
             return "-"
         if "(" in pattern:
             pattern = pattern.split("(")[0].strip()
-        return pattern.replace("BIAS↑", "Bias↑").replace("BIAS↓", "Bias↓").replace("⚠", "⚠️")
+        return pattern.replace("BIAS↑", "Bias↑").replace("BIAS↓", "Bias↓").replace("⚠ ", "⚠️")
     
     # Build table data
     table_data = []
     for i, row in df.iterrows():
         table_data.append([
             row['ticker'],
+            _format_days_till(row.get('days_till_earnings')),
             int(row['hvol']),
             # 45d section
             int(row['45d_contain']),
@@ -324,6 +371,7 @@ def _print_results_table(df):
     # Headers with section separators
     headers = [
         "Ticker",
+        "Days Till",
         "HVol%",
         "45d%",
         "45Bias",
@@ -340,88 +388,21 @@ def _print_results_table(df):
     ]
     
     # Print with clean formatting
-    print("\n" + "="*165)
+    print("\n" + "="*175)
     print("BACKTEST RESULTS")
-    print("="*165)
+    print("="*175)
     
-    # Use 'simple' tablefmt for clean lines, or 'grid' for boxes
+    # Use 'grid' tablefmt for clean boxes
     table_str = tabulate(
         table_data, 
         headers=headers, 
-        tablefmt='grid',  # Clean, minimalist style
+        tablefmt='grid',
         numalign='right',
         stralign='left',
-        disable_numparse=True  # Keep our formatting intact
+        disable_numparse=True
     )
     
     print(table_str)
-
-def _print_insights(df):
-    """Print condensed 4-line insights for quick batch overview"""
-    
-    # Line 1: Pattern counts
-    ic_count = len(df[df['strategy'].str.contains('IC', na=False)])
-    bias_up_count = len(df[df['strategy'].str.contains('BIAS↑', na=False)])
-    bias_down_count = len(df[df['strategy'].str.contains('BIAS↓', na=False)])
-    skip_count = len(df[df['strategy'] == 'SKIP'])
-    
-    # Line 2: IV elevation summary
-    rich_count = 0
-    thin_count = 0
-    if 'iv_elevation' in df.columns and df['iv_elevation'].notna().any():
-        rich_count = len(df[df['iv_elevation'] >= 15])
-        thin_count = len(df[df['iv_elevation'] <= -15])
-    
-    # Line 3: High conviction tickers (3+ edges only)
-    high_conviction_tickers = []
-    high_conviction = df[df['strategy'].str.contains(r'\[(?:\d+) edges?\]', regex=True, na=False)]
-    if not high_conviction.empty:
-        high_conviction = high_conviction.copy()
-        high_conviction['edge_count'] = high_conviction['strategy'].str.extract(r'\[(\d+) edge').astype(int)
-        high_conviction = high_conviction[high_conviction['edge_count'] >= 3].sort_values('edge_count', ascending=False)
-        high_conviction_tickers = high_conviction['ticker'].tolist()
-    
-    # Line 4: Asymmetric IC warnings
-    ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
-    ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
-    asymmetric_warnings = []
-    if not ic_up_skew.empty:
-        asymmetric_warnings.extend([f"{t}↑" for t in ic_up_skew['ticker'].tolist()])
-    if not ic_down_skew.empty:
-        asymmetric_warnings.extend([f"{t}↓" for t in ic_down_skew['ticker'].tolist()])
-    
-    # Print 4-line condensed format
-    print(f"\n{'='*140}")
-    print("📊 QUICK INTEL")
-    print("="*140)
-    
-    # Line 1
-    print(f"{ic_count} IC candidates | {bias_up_count} Bias↑ | {bias_down_count} Bias↓ | {skip_count} Skip")
-    
-    # Line 2
-    print(f"Rich premium (≥15%): {rich_count} tickers | Thin premium (≤-15%): {thin_count} tickers")
-    
-    # Line 3
-    if high_conviction_tickers:
-        print(f"High conviction (3+ edges): {', '.join(high_conviction_tickers)}")
-    else:
-        print(f"High conviction (3+ edges): None")
-    
-    # Line 4
-    if asymmetric_warnings:
-        print(f"⚠️ Asymmetric ICs: {', '.join(asymmetric_warnings)} (adjust wings for directional risk)")
-    else:
-        print(f"⚠️ Asymmetric ICs: None")
-    
-    print("="*140)
-    
-    # Optional detailed sections (collapsed by default, can be expanded if needed)
-    # Strong directional signals with 45d/90d labels (TASK 2)
-    _print_strong_directional_signals(df)
-    
-    print(f"\n{'─'*140}")
-    print(f"NOTE: Past patterns do not guarantee future results. IV context shows current opportunity cost.")
-    print(f"{'─'*140}")
 
 
 def _print_insights(df):
@@ -444,8 +425,8 @@ def _print_insights(df):
             high_conviction_dict[row['ticker']] = int(row['edge_count'])
     
     # Line 3: Asymmetric IC warnings
-    ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
-    ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
+    ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠️↑', regex=True, na=False))]
+    ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠️↓', regex=True, na=False))]
     asymmetric_warnings = []
     if not ic_up_skew.empty:
         asymmetric_warnings.extend([f"{t}↑" for t in ic_up_skew['ticker'].tolist()])
@@ -475,8 +456,12 @@ def _print_insights(df):
     
     print("="*140)
     
-    # Strong directional signals with 45d/90d split (TASK 2)
+    # Strong directional signals with 45d/90d split
     _print_strong_directional_signals(df)
+    
+    print(f"\n{'─'*140}")
+    print(f"NOTE: Past patterns do not guarantee future results. IV context shows current opportunity cost.")
+    print(f"{'─'*140}")
 
 
 def _print_strong_directional_signals(df):
