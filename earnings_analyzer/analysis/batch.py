@@ -195,7 +195,7 @@ def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv):
 
 
 def _format_break_ratio(up_breaks, down_breaks, break_bias):
-    """Format break ratio with directional arrow"""
+    """DEPRECATED - kept for backward compatibility"""
     if up_breaks == 0 and down_breaks == 0:
         return "0:0"
     
@@ -211,7 +211,7 @@ def _create_results_dataframe(results):
     """Create formatted results dataframe"""
     df = pd.DataFrame(results)
     
-    # Format break ratios
+    # Format break ratios (kept for backward compatibility with insights)
     df['45_break_fmt'] = df.apply(
         lambda x: _format_break_ratio(x['45d_breaks_up'], x['45d_breaks_dn'], x['45d_break_bias']), 
         axis=1
@@ -226,67 +226,143 @@ def _create_results_dataframe(results):
     return df
 
 
+
 def _print_results_table(df):
-    """Print results table with 45d AND 90d columns"""
+    """Print clean, aligned table using tabulate - perfect for Jupyter notebooks"""
     
-    print(f"\n{'='*150}")
-    print("BACKTEST RESULTS")
-    print("="*150)
+    from tabulate import tabulate
+    from ..calculations.strategy import determine_strategy_45, determine_strategy_90
     
-    display_cols = {
-        'Ticker': df['ticker'],
-        'HVol%': df['hvol'].astype(int),
-    }
+    # Calculate 45d and 90d strategies separately for each row
+    strategies_45d = []
+    strategies_90d = []
+    edges_45d = []
+    edges_90d = []
     
-    # Add IV columns if available (with clarified headers)
-    if 'current_iv' in df.columns and df['current_iv'].notna().any():
-        display_cols['IV45'] = df['current_iv'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
-        display_cols['IV From DTE'] = df['iv_dte'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "N/A")
-        display_cols['vs45RV'] = df['iv_elevation'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "N/A")
-        display_cols['|'] = '|'
+    for _, row in df.iterrows():
+        stats_45 = {
+            'containment': row['45d_contain'],
+            'breaks_up': row['45d_breaks_up'],
+            'breaks_down': row['45d_breaks_dn'],
+            'break_bias': row['45d_break_bias'],
+            'overall_bias': row['45d_overall_bias'],
+            'avg_move_pct': row['45d_drift']
+        }
+        stats_90 = {
+            'containment': row['90d_contain'],
+            'breaks_up': row['90d_breaks_up'],
+            'breaks_down': row['90d_breaks_dn'],
+            'break_bias': row['90d_break_bias'],
+            'overall_bias': row['90d_overall_bias'],
+            'avg_move_pct': row['90d_drift']
+        }
+        
+        pattern_45, edge_45 = determine_strategy_45(stats_45)
+        pattern_90, edge_90 = determine_strategy_90(stats_90)
+        
+        strategies_45d.append(pattern_45)
+        strategies_90d.append(pattern_90)
+        edges_45d.append(edge_45)
+        edges_90d.append(edge_90)
     
-    # Add 45d columns with drift
-    display_cols.update({
-        ' 45D%': df['45d_contain'].astype(int),
-        ' 45Brk': df['45_break_fmt'],
-        '45Drift': df['45d_drift'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "N/A"),
-        '  |': '|',
-    })
-    
-    # Add 90d columns with drift
-    display_cols.update({
-        '  90D%': df['90d_contain'].astype(int),
-        ' 90Brk': df['90_break_fmt'],
-        '90Drift': df['90d_drift'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "N/A"),
-        '   |': '|',
-    })
-    
-    # Remove edge count annotation from pattern string (do this first)
-    df['pattern_clean'] = df['strategy'].str.replace(r'\s*\[\d+\s+edges?\]', '', regex=True)
-    display_cols['Pattern'] = df['pattern_clean']
-    
-    # Extract edge count
-    df['edge_count'] = df['strategy'].str.extract(r'\[(\d+) edge', expand=False).fillna('0')
-    
-    # Don't add edges to display_cols yet - we'll print it manually
-    display_df = pd.DataFrame(display_cols)
-    
-    # Print table without edges column
-    table_lines = display_df.to_string(index=False).split('\n')
-    
-    # Now manually append the edges column with proper alignment and coloring
-    header = table_lines[0]
-    print(f"{header}     | Edges")
-    
-    for i, line in enumerate(table_lines[1:], 0):
-        edge_val = df.iloc[i]['edge_count']
-        if edge_val == '3':
-            edge_display = f"\033[1;92m{edge_val:>6}\033[0m"
-        elif edge_val == '2':
-            edge_display = f"\033[1;93m{edge_val:>6}\033[0m"
+    # Format helpers
+    def format_bias(bias_pct):
+        if bias_pct >= 66.7:
+            return f"↑{bias_pct:.0f}%"
+        elif bias_pct <= 33.3:
+            down_pct = 100 - bias_pct
+            return f"↓{down_pct:.0f}%"
         else:
-            edge_display = f"{edge_val:>6}"
-        print(f"{line}     | {edge_display}")
+            if bias_pct >= 50:
+                return f"↑{bias_pct:.0f}%"
+            else:
+                down_pct = 100 - bias_pct
+                return f"↓{down_pct:.0f}%"
+    
+    def format_breaks(up, down):
+        if up == 0 and down == 0:
+            return "0:0"
+        total = up + down
+        up_pct = (up / total) * 100
+        
+        if up > down and up_pct >= 60:
+            return f"{up}:{down}↑({up_pct:.0f}%)"
+        elif down > up and (100 - up_pct) >= 60:
+            return f"{up}:{down}↓({100-up_pct:.0f}%)"
+        else:
+            return f"{up}:{down}({up_pct:.0f}%)"
+    
+    def clean_pattern(pattern):
+        if pattern == "SKIP":
+            return "-"
+        if "(" in pattern:
+            pattern = pattern.split("(")[0].strip()
+        return pattern.replace("BIAS↑", "Bias↑").replace("BIAS↓", "Bias↓").replace("⚠", "⚠️")
+    
+    # Build table data
+    table_data = []
+    for i, row in df.iterrows():
+        table_data.append([
+            row['ticker'],
+            int(row['hvol']),
+            # 45d section
+            int(row['45d_contain']),
+            format_bias(row['45d_overall_bias']),
+            format_breaks(row['45d_breaks_up'], row['45d_breaks_dn']),
+            f"{row['45d_drift']:+.1f}%",
+            clean_pattern(strategies_45d[i]),
+            edges_45d[i],
+            # 90d section
+            int(row['90d_contain']),
+            format_bias(row['90d_overall_bias']),
+            format_breaks(row['90d_breaks_up'], row['90d_breaks_dn']),
+            f"{row['90d_drift']:+.1f}%",
+            clean_pattern(strategies_90d[i]),
+            edges_90d[i]
+        ])
+    
+    # Headers with section separators
+    headers = [
+        "Ticker",
+        "HVol%",
+        "45d%",
+        "45Bias",
+        "45Brk",
+        "45Drift",
+        "45Pattern",
+        "45E",
+        "90d%",
+        "90Bias",
+        "90Brk",
+        "90Drift",
+        "90Pattern",
+        "90E"
+    ]
+    
+    # Print with clean formatting
+    print("\n" + "="*165)
+    print("BACKTEST RESULTS")
+    print("="*165)
+    
+    # Use 'simple' tablefmt for clean lines, or 'grid' for boxes
+    table_str = tabulate(
+        table_data, 
+        headers=headers, 
+        tablefmt='grid',  # Clean, minimalist style
+        numalign='right',
+        stralign='left',
+        disable_numparse=True  # Keep our formatting intact
+    )
+    
+    print(table_str)
+    
+    # Add section dividers manually after printing
+    print("\n" + "─"*165)
+    print("Legend: Bias% = breakout direction (↑67% = 67% broke UP). Brk = up:down ratio with %. Pattern uses ⚠️ for asymmetric ICs.")
+    print("        Edge count: 2+ signals = stronger conviction. 45d/90d analyzed independently.")
+    print("─"*165 + "\n")
+
+
 
 
 def _print_insights(df):
