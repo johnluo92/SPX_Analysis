@@ -355,98 +355,212 @@ def _print_results_table(df):
     )
     
     print(table_str)
-    
-    # Add section dividers manually after printing
-    print("\n" + "─"*165)
-    print("Legend: Bias% = breakout direction (↑67% = 67% broke UP). Brk = up:down ratio with %. Pattern uses ⚠️ for asymmetric ICs.")
-    print("        Edge count: 2+ signals = stronger conviction. 45d/90d analyzed independently.")
-    print("─"*165 + "\n")
-
-
-
 
 def _print_insights(df):
-    """Print key takeaways and insights"""
-    print(f"\n{'='*140}")
-    print("KEY INSIGHTS")
-    print("="*140)
+    """Print condensed 4-line insights for quick batch overview"""
     
+    # Line 1: Pattern counts
     ic_count = len(df[df['strategy'].str.contains('IC', na=False)])
     bias_up_count = len(df[df['strategy'].str.contains('BIAS↑', na=False)])
     bias_down_count = len(df[df['strategy'].str.contains('BIAS↓', na=False)])
     skip_count = len(df[df['strategy'] == 'SKIP'])
     
-    print(f"\n┌─ PATTERN SUMMARY")
-    print(f"│  {ic_count} IC candidates | {bias_up_count} Upward bias | {bias_down_count} Downward bias | {skip_count} No edge")
-    print(f"└─")
-    
-    # IV Landscape
+    # Line 2: IV elevation summary
+    rich_count = 0
+    thin_count = 0
     if 'iv_elevation' in df.columns and df['iv_elevation'].notna().any():
-        elevated = df[df['iv_elevation'] >= 15].sort_values('iv_elevation', ascending=False)
-        depressed = df[df['iv_elevation'] <= -15].sort_values('iv_elevation')
-        
-        print(f"\n┌─ IV LANDSCAPE (vs RVol45d)")
-        if not elevated.empty:
-            tickers_str = ', '.join([f"{row['ticker']}(+{row['iv_elevation']:.0f}%)" for _, row in elevated.head(5).iterrows()])
-            print(f"│  Rich Premium (>=15%): {tickers_str}")
-        if not depressed.empty:
-            tickers_str = ', '.join([f"{row['ticker']}({row['iv_elevation']:.0f}%)" for _, row in depressed.head(3).iterrows()])
-            print(f"│  Thin Premium (<=-15%): {tickers_str}")
-        
-        normal_count = len(df[(df['iv_elevation'] > -15) & (df['iv_elevation'] < 15)])
-        if normal_count > 0:
-            print(f"│  Normal Range: {normal_count} tickers")
-        print(f"└─")
+        rich_count = len(df[df['iv_elevation'] >= 15])
+        thin_count = len(df[df['iv_elevation'] <= -15])
     
-    # High conviction plays (2+ edges) - FIXED: Use non-capturing group (?:...) to avoid regex warning
+    # Line 3: High conviction tickers (3+ edges only)
+    high_conviction_tickers = []
     high_conviction = df[df['strategy'].str.contains(r'\[(?:\d+) edges?\]', regex=True, na=False)]
     if not high_conviction.empty:
-        # Extract edge count from strategy string (here we DO want the capturing group)
         high_conviction = high_conviction.copy()
         high_conviction['edge_count'] = high_conviction['strategy'].str.extract(r'\[(\d+) edge').astype(int)
-        high_conviction = high_conviction[high_conviction['edge_count'] >= 2].sort_values('edge_count', ascending=False)
-        
-        if not high_conviction.empty:
-            print(f"\n┌─ HIGH CONVICTION [2+ edges]")
-            for _, row in high_conviction.iterrows():
-                # Add spacing to align edge numbers in colored format
-                edge_num = int(row['edge_count'])
-                if edge_num == 3:
-                    edge_display = f"[\033[1;92m3\033[0m edges]"  # Bright green
-                elif edge_num == 2:
-                    edge_display = f"[\033[1;93m2\033[0m edges]"  # Bright yellow
-                else:
-                    edge_display = f"[{edge_num} edges]"
-                
-                # Remove the [X edges] from strategy and add colored version
-                strategy_clean = row['strategy'].replace(f"[{edge_num} edges]", "").replace(f"[{edge_num} edge]", "").strip()
-                print(f"│  {row['ticker']:6} {strategy_clean} {edge_display}")
-            print(f"└─")
+        high_conviction = high_conviction[high_conviction['edge_count'] >= 3].sort_values('edge_count', ascending=False)
+        high_conviction_tickers = high_conviction['ticker'].tolist()
     
-    # Asymmetric ICs
+    # Line 4: Asymmetric IC warnings
     ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
     ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
+    asymmetric_warnings = []
+    if not ic_up_skew.empty:
+        asymmetric_warnings.extend([f"{t}↑" for t in ic_up_skew['ticker'].tolist()])
+    if not ic_down_skew.empty:
+        asymmetric_warnings.extend([f"{t}↓" for t in ic_down_skew['ticker'].tolist()])
     
-    if not ic_up_skew.empty or not ic_down_skew.empty:
-        print(f"\n┌─ ASYMMETRIC ICs")
-        if not ic_up_skew.empty:
-            print(f"│  Upside risk: {', '.join(ic_up_skew['ticker'].tolist())}")
-        if not ic_down_skew.empty:
-            print(f"│  Downside risk: {', '.join(ic_down_skew['ticker'].tolist())}")
-        print(f"└─")
+    # Print 4-line condensed format
+    print(f"\n{'='*140}")
+    print("📊 QUICK INTEL")
+    print("="*140)
     
-    # Strong directional signals
-    strong_bias = df[
-        (df['strategy'].str.contains('BIAS', na=False)) &
-        ((df['90d_overall_bias'] >= 70) | (df['90d_overall_bias'] <= 30))
-    ]
-    if not strong_bias.empty:
-        print(f"\n┌─ STRONG DIRECTIONAL SIGNALS")
-        for _, row in strong_bias.iterrows():
-            direction = "↑" if row['90d_overall_bias'] >= 70 else "↓"
-            print(f"│  {row['ticker']:6} {row['90d_overall_bias']:.0f}% bias {direction}, {row['90_break_fmt']} breaks, {row['90d_drift']:+.1f}% drift")
-        print(f"└─")
+    # Line 1
+    print(f"{ic_count} IC candidates | {bias_up_count} Bias↑ | {bias_down_count} Bias↓ | {skip_count} Skip")
+    
+    # Line 2
+    print(f"Rich premium (≥15%): {rich_count} tickers | Thin premium (≤-15%): {thin_count} tickers")
+    
+    # Line 3
+    if high_conviction_tickers:
+        print(f"High conviction (3+ edges): {', '.join(high_conviction_tickers)}")
+    else:
+        print(f"High conviction (3+ edges): None")
+    
+    # Line 4
+    if asymmetric_warnings:
+        print(f"⚠️ Asymmetric ICs: {', '.join(asymmetric_warnings)} (adjust wings for directional risk)")
+    else:
+        print(f"⚠️ Asymmetric ICs: None")
+    
+    print("="*140)
+    
+    # Optional detailed sections (collapsed by default, can be expanded if needed)
+    # Strong directional signals with 45d/90d labels (TASK 2)
+    _print_strong_directional_signals(df)
     
     print(f"\n{'─'*140}")
     print(f"NOTE: Past patterns do not guarantee future results. IV context shows current opportunity cost.")
     print(f"{'─'*140}")
+
+
+def _print_insights(df):
+    """Print condensed 3-line insights for quick batch overview"""
+    
+    # Line 1: Pattern counts
+    ic_count = len(df[df['strategy'].str.contains('IC', na=False)])
+    bias_up_count = len(df[df['strategy'].str.contains('BIAS↑', na=False)])
+    bias_down_count = len(df[df['strategy'].str.contains('BIAS↓', na=False)])
+    skip_count = len(df[df['strategy'] == 'SKIP'])
+    
+    # Line 2: High conviction tickers (show actual edge counts, not capped)
+    high_conviction_dict = {}  # {ticker: edge_count}
+    high_conviction = df[df['strategy'].str.contains(r'\[(?:\d+) edges?\]', regex=True, na=False)]
+    if not high_conviction.empty:
+        high_conviction = high_conviction.copy()
+        high_conviction['edge_count'] = high_conviction['strategy'].str.extract(r'\[(\d+) edge').astype(int)
+        high_conviction = high_conviction[high_conviction['edge_count'] >= 3].sort_values('edge_count', ascending=False)
+        for _, row in high_conviction.iterrows():
+            high_conviction_dict[row['ticker']] = int(row['edge_count'])
+    
+    # Line 3: Asymmetric IC warnings
+    ic_up_skew = df[(df['strategy'].str.contains('IC.*⚠↑', regex=True, na=False))]
+    ic_down_skew = df[(df['strategy'].str.contains('IC.*⚠↓', regex=True, na=False))]
+    asymmetric_warnings = []
+    if not ic_up_skew.empty:
+        asymmetric_warnings.extend([f"{t}↑" for t in ic_up_skew['ticker'].tolist()])
+    if not ic_down_skew.empty:
+        asymmetric_warnings.extend([f"{t}↓" for t in ic_down_skew['ticker'].tolist()])
+    
+    # Print 3-line condensed format
+    print(f"\n{'='*140}")
+    print("📊 QUICK INTEL")
+    print("="*140)
+    
+    # Line 1
+    print(f"{ic_count} IC candidates | {bias_up_count} Bias↑ | {bias_down_count} Bias↓ | {skip_count} Skip")
+    
+    # Line 2 - Show edge counts with tickers
+    if high_conviction_dict:
+        conviction_str = ', '.join([f"{ticker}[{edges}]" for ticker, edges in high_conviction_dict.items()])
+        print(f"High conviction (3+ edges): {conviction_str}")
+    else:
+        print(f"High conviction (3+ edges): None")
+    
+    # Line 3
+    if asymmetric_warnings:
+        print(f"⚠️ Asymmetric ICs: {', '.join(asymmetric_warnings)} (adjust wings for directional risk)")
+    else:
+        print(f"⚠️ Asymmetric ICs: None")
+    
+    print("="*140)
+    
+    # Strong directional signals with 45d/90d split (TASK 2)
+    _print_strong_directional_signals(df)
+
+
+def _print_strong_directional_signals(df):
+    """Print strong directional signals split by timeframe"""
+    
+    # Collect signals for each timeframe
+    signals_45d = []
+    signals_90d = []
+    
+    for _, row in df.iterrows():
+        if 'BIAS' not in str(row['strategy']):
+            continue
+        
+        # Check 45d signal
+        bias_45 = row['45d_overall_bias']
+        if bias_45 >= 70 or bias_45 <= 30:
+            direction = "↑" if bias_45 >= 70 else "↓"
+            breaks_up = row['45d_breaks_up']
+            breaks_dn = row['45d_breaks_dn']
+            
+            # Format break ratio with directional arrow if strong
+            breaks_total = breaks_up + breaks_dn
+            if breaks_total > 0:
+                up_pct = (breaks_up / breaks_total) * 100
+                if up_pct >= 60:
+                    break_str = f"{breaks_up}:{breaks_dn}↑"
+                elif up_pct <= 40:
+                    break_str = f"{breaks_up}:{breaks_dn}↓"
+                else:
+                    break_str = f"{breaks_up}:{breaks_dn}"
+            else:
+                break_str = "0:0"
+            
+            signals_45d.append({
+                'ticker': row['ticker'],
+                'bias': bias_45,
+                'direction': direction,
+                'break_str': break_str,
+                'drift': row['45d_drift']
+            })
+        
+        # Check 90d signal
+        bias_90 = row['90d_overall_bias']
+        if bias_90 >= 70 or bias_90 <= 30:
+            direction = "↑" if bias_90 >= 70 else "↓"
+            breaks_up = row['90d_breaks_up']
+            breaks_dn = row['90d_breaks_dn']
+            
+            # Format break ratio with directional arrow if strong
+            breaks_total = breaks_up + breaks_dn
+            if breaks_total > 0:
+                up_pct = (breaks_up / breaks_total) * 100
+                if up_pct >= 60:
+                    break_str = f"{breaks_up}:{breaks_dn}↑"
+                elif up_pct <= 40:
+                    break_str = f"{breaks_up}:{breaks_dn}↓"
+                else:
+                    break_str = f"{breaks_up}:{breaks_dn}"
+            else:
+                break_str = "0:0"
+            
+            signals_90d.append({
+                'ticker': row['ticker'],
+                'bias': bias_90,
+                'direction': direction,
+                'break_str': break_str,
+                'drift': row['90d_drift']
+            })
+    
+    if signals_45d or signals_90d:
+        print(f"\n┌─ STRONG DIRECTIONAL SIGNALS")
+        
+        if signals_45d:
+            print(f"│  45d timeframe:")
+            for signal in signals_45d:
+                print(f"│    {signal['ticker']:6} {signal['bias']:.0f}% bias {signal['direction']}, "
+                      f"{signal['break_str']} breaks, {signal['drift']:+.1f}% drift")
+        
+        if signals_90d:
+            if signals_45d:  # Add separator if we had 45d signals
+                print(f"│")
+            print(f"│  90d timeframe:")
+            for signal in signals_90d:
+                print(f"│    {signal['ticker']:6} {signal['bias']:.0f}% bias {signal['direction']}, "
+                      f"{signal['break_str']} breaks, {signal['drift']:+.1f}% drift")
+        
+        print(f"└─")

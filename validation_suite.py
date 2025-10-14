@@ -66,9 +66,6 @@ class BacktestValidator:
             'strategy'
         ]
         
-        # Optional but useful columns
-        recommended = ['iv_elevation', 'current_iv', 'rvol_45d', 'rvol_90d', 'strike_width', 'tier']
-        
         missing = [col for col in required if col not in self.df.columns]
         
         if missing:
@@ -77,14 +74,6 @@ class BacktestValidator:
             print(f"   Available columns: {self.df.columns.tolist()}")
         else:
             print("✅ All required columns present")
-            
-        # Check for recommended columns (non-blocking)
-        missing_recommended = [col for col in recommended if col not in self.df.columns]
-        if missing_recommended and not missing:
-            # Only show this if required columns passed
-            present_recommended = [col for col in recommended if col in self.df.columns]
-            if present_recommended:
-                print(f"   ℹ️  Optional columns present: {', '.join(present_recommended)}")
     
     def _check_tier_sanity(self):
         """Verify tier values are reasonable"""
@@ -221,27 +210,3 @@ def quick_validate(df: pd.DataFrame, ticker_order: List[str] = None, strict: boo
     """
     validator = BacktestValidator(df, ticker_order)
     return validator.validate_all(strict=strict)
-
-
-# Example integration
-if __name__ == "__main__":
-    # Demo usage
-    print("\n" + "="*80)
-    print("📚 VALIDATION SUITE - USAGE GUIDE")
-    print("="*80)
-    print("""
-Add this to your analysis script (after batch_analyze import):
-
-from validation_suite import quick_validate
-
-# Your existing code:
-results = batch_analyze(tickers, lookback_quarters=24, fetch_iv=True, parallel=True)
-
-# Add validation right after batch_analyze:
-if results is not None:
-    quick_validate(results, ticker_order=tickers)  # <-- ADD THIS LINE
-    plot_quality_matrix(results, save_path='quality_matrix_full.html', show=True)
-
-That's it! Validation runs automatically and prints any issues found.
-    """)
-    print("="*80 + "\n")

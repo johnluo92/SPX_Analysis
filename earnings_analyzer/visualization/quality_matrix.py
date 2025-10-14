@@ -235,7 +235,7 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     
     if save_path:
         fig.write_html(save_path)
-        print(f"\nâœ… Quality matrix saved to: {save_path}")
+        print(f"\nQuality matrix saved to: {save_path}")
     
     if show:
         fig.show()
