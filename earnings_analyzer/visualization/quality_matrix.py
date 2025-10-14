@@ -88,6 +88,17 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     
     # Directional Bias (blue)
     if not df_bias.empty:
+        # Extract bias pattern from strategy column
+        bias_patterns = []
+        for _, row in df_bias.iterrows():
+            strategy = row['strategy']
+            # Extract just the BIAS portion (e.g., "BIAS↑ (6:2↑ breaks, +5.9% drift)")
+            if 'BIAS' in strategy:
+                bias_part = strategy.split('BIAS')[1].split('[')[0].strip()  # Remove edge count
+                bias_patterns.append(f"BIAS{bias_part}")
+            else:
+                bias_patterns.append("BIAS detected")
+        
         fig.add_trace(go.Scatter(
             x=df_bias['current_iv'],
             y=df_bias['90d_contain'],
@@ -97,9 +108,10 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             text=df_bias['ticker'],
             textposition='top center',
             textfont=dict(size=9),
+            customdata=bias_patterns,
             hovertemplate='<b>%{text}</b><br>' +
-                         'Current IV: %{x:.1f}%<br>' +
                          '90d Containment: %{y:.1f}%<br>' +
+                         '%{customdata}<br>' +
                          '<extra></extra>',
             showlegend=True
         ), row=1, col=2)
