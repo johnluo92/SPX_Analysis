@@ -52,13 +52,16 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     df['strategy_90d'] = strategies_90d
     
     # Separate by strategy type using the new columns
+    # Each ticker can only belong to ONE category per timeframe
     df_ic45 = df[df['strategy_45d'].str.contains('IC45', na=False)]
-    df_bias45 = df[df['strategy_45d'].str.contains('BIAS', na=False) & ~df['strategy_45d'].str.contains('IC', na=False)]
-    df_skip45 = df[df['strategy_45d'] == 'SKIP']
+    df_bias45 = df[(df['strategy_45d'].str.contains('BIAS', na=False)) & 
+                   (~df['strategy_45d'].str.contains('IC', na=False))]
+    # We don't need df_skip45 anymore - we're not displaying skips
     
     df_ic90 = df[df['strategy_90d'].str.contains('IC90', na=False)]
-    df_bias90 = df[df['strategy_90d'].str.contains('BIAS', na=False) & ~df['strategy_90d'].str.contains('IC', na=False)]
-    df_skip90 = df[df['strategy_90d'] == 'SKIP']
+    df_bias90 = df[(df['strategy_90d'].str.contains('BIAS', na=False)) & 
+                   (~df['strategy_90d'].str.contains('IC', na=False))]
+    # We don't need df_skip90 anymore - we're not displaying skips
     
     # Create side-by-side subplots with reasonable spacing
     fig = make_subplots(
@@ -118,24 +121,6 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             showlegend=True
         ), row=1, col=1)
     
-    # Skip points (gray) for 45d
-    if not df_skip45.empty:
-        fig.add_trace(go.Scatter(
-            x=df_skip45['current_iv'],
-            y=df_skip45['45d_contain'],
-            mode='markers+text',
-            name='Skip',
-            marker=dict(size=8, color='gray', opacity=0.5),
-            text=df_skip45['ticker'],
-            textposition='top center',
-            textfont=dict(size=8, color='gray'),
-            hovertemplate='<b>%{text}</b><br>' +
-                         'Current IV: %{x:.1f}%<br>' +
-                         '45d Containment: %{y:.1f}%<br>' +
-                         '<extra></extra>',
-            showlegend=True
-        ), row=1, col=1)
-    
     # === RIGHT PLOT: 90-Day View ===
     
     # IC90 candidates (green)
@@ -185,24 +170,6 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
                          '%{customdata}<br>' +
                          '<extra></extra>',
             showlegend=True
-        ), row=1, col=2)
-    
-    # Skip points (gray) for 90d
-    if not df_skip90.empty:
-        fig.add_trace(go.Scatter(
-            x=df_skip90['current_iv'],
-            y=df_skip90['90d_contain'],
-            mode='markers+text',
-            name='Skip',
-            marker=dict(size=8, color='gray', opacity=0.5),
-            text=df_skip90['ticker'],
-            textposition='top center',
-            textfont=dict(size=8, color='gray'),
-            hovertemplate='<b>%{text}</b><br>' +
-                         'Current IV: %{x:.1f}%<br>' +
-                         '90d Containment: %{y:.1f}%<br>' +
-                         '<extra></extra>',
-            showlegend=False  # Don't duplicate Skip in legend
         ), row=1, col=2)
     
     # Add threshold lines - label in the CENTER between subplots
