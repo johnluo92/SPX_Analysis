@@ -15,17 +15,56 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
         show: Whether to open in browser
     """
     
-    # Separate by strategy type
-    df_ic45 = df[df['strategy'].str.contains('IC45', na=False)]
-    df_ic90 = df[df['strategy'].str.contains('IC90', na=False)]
-    df_bias = df[df['strategy'].str.contains('BIAS', na=False) & ~df['strategy'].str.contains('IC', na=False)]
-    df_skip = df[df['strategy'] == 'SKIP']
+    # Import strategy functions to calculate separate 45d/90d patterns
+    from ..calculations.strategy import determine_strategy_45, determine_strategy_90
     
-    # Create side-by-side subplots
+    # Calculate 45d and 90d strategies separately for each row
+    strategies_45d = []
+    strategies_90d = []
+    
+    for _, row in df.iterrows():
+        stats_45 = {
+            'containment': row['45d_contain'],
+            'breaks_up': row['45d_breaks_up'],
+            'breaks_down': row['45d_breaks_dn'],
+            'break_bias': row['45d_break_bias'],
+            'overall_bias': row['45d_overall_bias'],
+            'avg_move_pct': row['45d_drift']
+        }
+        stats_90 = {
+            'containment': row['90d_contain'],
+            'breaks_up': row['90d_breaks_up'],
+            'breaks_down': row['90d_breaks_dn'],
+            'break_bias': row['90d_break_bias'],
+            'overall_bias': row['90d_overall_bias'],
+            'avg_move_pct': row['90d_drift']
+        }
+        
+        pattern_45, _ = determine_strategy_45(stats_45)
+        pattern_90, _ = determine_strategy_90(stats_90)
+        
+        strategies_45d.append(pattern_45)
+        strategies_90d.append(pattern_90)
+    
+    # Add as temporary columns
+    df = df.copy()
+    df['strategy_45d'] = strategies_45d
+    df['strategy_90d'] = strategies_90d
+    
+    # Separate by strategy type using the new columns
+    df_ic45 = df[df['strategy_45d'].str.contains('IC45', na=False)]
+    df_bias45 = df[df['strategy_45d'].str.contains('BIAS', na=False) & ~df['strategy_45d'].str.contains('IC', na=False)]
+    df_skip45 = df[df['strategy_45d'] == 'SKIP']
+    
+    df_ic90 = df[df['strategy_90d'].str.contains('IC90', na=False)]
+    df_bias90 = df[df['strategy_90d'].str.contains('BIAS', na=False) & ~df['strategy_90d'].str.contains('IC', na=False)]
+    df_skip90 = df[df['strategy_90d'] == 'SKIP']
+    
+    # Create side-by-side subplots with reasonable spacing
     fig = make_subplots(
         rows=1, cols=2,
         subplot_titles=('45-Day Containment', '90-Day Containment'),
-        horizontal_spacing=0.12
+        horizontal_spacing=0.08  # Reasonable space between subplots
     )
     
     # === LEFT PLOT: 45-Day View ===
@@ -41,22 +80,53 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             text=df_ic45['ticker'],
             textposition='top center',
             textfont=dict(size=9),
+            customdata=df_ic45['strategy_45d'],
             hovertemplate='<b>%{text}</b><br>' +
                          'Current IV: %{x:.1f}%<br>' +
                          '45d Containment: %{y:.1f}%<br>' +
+                         '%{customdata}<br>' +
+                         '<extra></extra>',
+            showlegend=True
+        ), row=1, col=1)
+    
+    # BIAS45 patterns (blue)
+    if not df_bias45.empty:
+        bias_patterns_45 = []
+        for _, row in df_bias45.iterrows():
+            pattern = row['strategy_45d']
+            if 'BIAS' in pattern:
+                bias_part = pattern.split('BIAS')[1].split('[')[0].strip()
+                bias_patterns_45.append(f"BIAS{bias_part}")
+            else:
+                bias_patterns_45.append("BIAS detected")
+        
+        fig.add_trace(go.Scatter(
+            x=df_bias45['current_iv'],
+            y=df_bias45['45d_contain'],
+            mode='markers+text',
+            name='BIAS45',
+            marker=dict(size=10, color='blue', opacity=0.7, line=dict(width=1, color='darkblue')),
+            text=df_bias45['ticker'],
+            textposition='top center',
+            textfont=dict(size=9),
+            customdata=bias_patterns_45,
+            hovertemplate='<b>%{text}</b><br>' +
+                         'Current IV: %{x:.1f}%<br>' +
+                         '45d Containment: %{y:.1f}%<br>' +
+                         '%{customdata}<br>' +
                          '<extra></extra>',
             showlegend=True
         ), row=1, col=1)
     
     # Skip points (gray) for 45d
-    if not df_skip.empty:
+    if not df_skip45.empty:
         fig.add_trace(go.Scatter(
-            x=df_skip['current_iv'],
-            y=df_skip['45d_contain'],
+            x=df_skip45['current_iv'],
+            y=df_skip45['45d_contain'],
             mode='markers+text',
             name='Skip',
             marker=dict(size=8, color='gray', opacity=0.5),
-            text=df_skip['ticker'],
+            text=df_skip45['ticker'],
             textposition='top center',
             textfont=dict(size=8, color='gray'),
             hovertemplate='<b>%{text}</b><br>' +
@@ -79,37 +149,38 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             text=df_ic90['ticker'],
             textposition='top center',
             textfont=dict(size=9),
+            customdata=df_ic90['strategy_90d'],
             hovertemplate='<b>%{text}</b><br>' +
                          'Current IV: %{x:.1f}%<br>' +
                          '90d Containment: %{y:.1f}%<br>' +
+                         '%{customdata}<br>' +
                          '<extra></extra>',
             showlegend=True
         ), row=1, col=2)
     
-    # Directional Bias (blue)
-    if not df_bias.empty:
-        # Extract bias pattern from strategy column
-        bias_patterns = []
-        for _, row in df_bias.iterrows():
-            strategy = row['strategy']
-            # Extract just the BIAS portion (e.g., "BIAS↑ (6:2↑ breaks, +5.9% drift)")
-            if 'BIAS' in strategy:
-                bias_part = strategy.split('BIAS')[1].split('[')[0].strip()  # Remove edge count
-                bias_patterns.append(f"BIAS{bias_part}")
+    # BIAS90 patterns (blue)
+    if not df_bias90.empty:
+        bias_patterns_90 = []
+        for _, row in df_bias90.iterrows():
+            pattern = row['strategy_90d']
+            if 'BIAS' in pattern:
+                bias_part = pattern.split('BIAS')[1].split('[')[0].strip()
+                bias_patterns_90.append(f"BIAS{bias_part}")
             else:
-                bias_patterns.append("BIAS detected")
+                bias_patterns_90.append("BIAS detected")
         
         fig.add_trace(go.Scatter(
-            x=df_bias['current_iv'],
-            y=df_bias['90d_contain'],
+            x=df_bias90['current_iv'],
+            y=df_bias90['90d_contain'],
             mode='markers+text',
-            name='Directional Bias',
+            name='BIAS90',
             marker=dict(size=10, color='blue', opacity=0.7, line=dict(width=1, color='darkblue')),
-            text=df_bias['ticker'],
+            text=df_bias90['ticker'],
             textposition='top center',
             textfont=dict(size=9),
-            customdata=bias_patterns,
+            customdata=bias_patterns_90,
             hovertemplate='<b>%{text}</b><br>' +
+                         'Current IV: %{x:.1f}%<br>' +
                          '90d Containment: %{y:.1f}%<br>' +
                          '%{customdata}<br>' +
                          '<extra></extra>',
@@ -117,14 +188,14 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
         ), row=1, col=2)
     
     # Skip points (gray) for 90d
-    if not df_skip.empty:
+    if not df_skip90.empty:
         fig.add_trace(go.Scatter(
-            x=df_skip['current_iv'],
-            y=df_skip['90d_contain'],
+            x=df_skip90['current_iv'],
+            y=df_skip90['90d_contain'],
             mode='markers+text',
             name='Skip',
             marker=dict(size=8, color='gray', opacity=0.5),
-            text=df_skip['ticker'],
+            text=df_skip90['ticker'],
             textposition='top center',
             textfont=dict(size=8, color='gray'),
             hovertemplate='<b>%{text}</b><br>' +
@@ -134,12 +205,10 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             showlegend=False  # Don't duplicate Skip in legend
         ), row=1, col=2)
     
-    # Add threshold lines to both plots
+    # Add threshold lines - label in the CENTER between subplots
     fig.add_hline(y=69.5, line_dash="dash", line_color="red", opacity=0.5,
-                  annotation_text="IC Threshold", annotation_position="right",
                   row=1, col=1)
     fig.add_hline(y=69.5, line_dash="dash", line_color="red", opacity=0.5,
-                  annotation_text="IC Threshold", annotation_position="right",
                   row=1, col=2)
     
     # Layout
@@ -163,23 +232,43 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             bgcolor='rgba(255,255,255,0.8)',
             bordercolor='gray',
             borderwidth=1
-        )
+        ),
+        # Add IC Threshold label in the center between subplots
+        annotations=[
+            dict(
+                text="IC Threshold",
+                x=0.5,  # Dead center between the two subplots
+                y=69.5,  # At the threshold line height
+                xref="paper",
+                yref="y",
+                showarrow=False,
+                font=dict(size=11, color='red'),
+                xanchor='center',
+                yanchor='bottom',
+                bgcolor='rgba(255,255,255,0.8)',  # Light background so it stands out
+                borderpad=4
+            )
+        ]
     )
     
     # Update axes - same range for both
+    # Left subplot: normal y-axis on left
     fig.update_xaxes(title_text="Current Implied Volatility (%)", gridcolor='lightgray', 
                      showgrid=True, zeroline=False, row=1, col=1)
-    fig.update_xaxes(title_text="Current Implied Volatility (%)", gridcolor='lightgray', 
-                     showgrid=True, zeroline=False, row=1, col=2)
-    
     fig.update_yaxes(title_text="45-Day Containment Rate (%)", gridcolor='lightgray', 
                      showgrid=True, zeroline=False, range=[40, 95], row=1, col=1)
+    
+    # Right subplot: y-axis on RIGHT side
+    fig.update_xaxes(title_text="Current Implied Volatility (%)", gridcolor='lightgray', 
+                     showgrid=True, zeroline=False, row=1, col=2)
     fig.update_yaxes(title_text="90-Day Containment Rate (%)", gridcolor='lightgray', 
-                     showgrid=True, zeroline=False, range=[40, 95], row=1, col=2)
+                     showgrid=True, zeroline=False, range=[40, 95], 
+                     side='right',  # Move to right side
+                     row=1, col=2)
     
     if save_path:
         fig.write_html(save_path)
-        print(f"\n✅ Quality matrix saved to: {save_path}")
+        print(f"\nâœ… Quality matrix saved to: {save_path}")
     
     if show:
         fig.show()

@@ -29,7 +29,7 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         DataFrame with analysis results
     """
     print("\n" + "="*75)
-    print(f"EARNINGS CONTAINMENT ANALYZER - v2.8")
+    print(f"EARNINGS CONTAINMENT ANALYZER - v3")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
     if fetch_iv:
         print(f"Current IV from Yahoo Finance (15-20min delayed)")
