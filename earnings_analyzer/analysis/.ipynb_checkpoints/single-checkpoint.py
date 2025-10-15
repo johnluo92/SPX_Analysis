@@ -133,16 +133,16 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
         print(f"\n  45-Day: {stats_45['total']}/{lookback_quarters} tested")
         print(f"    Containment: {stats_45['containment']:.0f}%")
         print(f"    Breaks: Up {stats_45['breaks_up']}, Down {stats_45['breaks_down']}")
-        print(f"    Overall Bias: {stats_45['overall_bias']:.0f}% up")
-        print(f"    Break Bias: {stats_45['break_bias']:.0f}% of breaks were upward")
-        print(f"    Avg Drift: {stats_45['avg_move_pct']:+.1f}% ({stats_45['drift_vs_width']:+.0f}% of width)")
+        print(f"    Trend: {stats_45['trend_pct']:.0f}% up")
+        print(f"    Break Direction: {stats_45['break_up_pct']:.0f}% of breaks were upward")
+        print(f"    Avg Drift: {stats_45['drift_pct']:+.1f}% ({stats_45['drift_vs_width']:+.0f}% of width)")
         
         print(f"\n  90-Day: {stats_90['total']}/{lookback_quarters} tested")
         print(f"    Containment: {stats_90['containment']:.0f}%")
         print(f"    Breaks: Up {stats_90['breaks_up']}, Down {stats_90['breaks_down']}")
-        print(f"    Overall Bias: {stats_90['overall_bias']:.0f}% up")
-        print(f"    Break Bias: {stats_90['break_bias']:.0f}% of breaks were upward")
-        print(f"    Avg Drift: {stats_90['avg_move_pct']:+.1f}% ({stats_90['drift_vs_width']:+.0f}% of width)")
+        print(f"    Trend: {stats_90['trend_pct']:.0f}% up")
+        print(f"    Break Direction: {stats_90['break_up_pct']:.0f}% of breaks were upward")
+        print(f"    Avg Drift: {stats_90['drift_pct']:+.1f}% ({stats_90['drift_vs_width']:+.0f}% of width)")
         
         print(f"\n  💡 Strategy: {recommendation}")
     
@@ -154,15 +154,15 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
         '45d_contain': round(stats_45['containment'], 0),
         '45d_breaks_up': stats_45['breaks_up'],
         '45d_breaks_dn': stats_45['breaks_down'],
-        '45d_overall_bias': round(stats_45['overall_bias'], 0),
-        '45d_break_bias': round(stats_45['break_bias'], 0),
-        '45d_drift': round(stats_45['avg_move_pct'], 1),
+        '45d_trend_pct': round(stats_45['trend_pct'], 0),
+        '45d_break_up_pct': round(stats_45['break_up_pct'], 0),
+        '45d_drift': round(stats_45['drift_pct'], 1),
         '90d_contain': round(stats_90['containment'], 0),
         '90d_breaks_up': stats_90['breaks_up'],
         '90d_breaks_dn': stats_90['breaks_down'],
-        '90d_overall_bias': round(stats_90['overall_bias'], 0),
-        '90d_break_bias': round(stats_90['break_bias'], 0),
-        '90d_drift': round(stats_90['avg_move_pct'], 1),
+        '90d_trend_pct': round(stats_90['trend_pct'], 0),
+        '90d_break_up_pct': round(stats_90['break_up_pct'], 0),
+        '90d_drift': round(stats_90['drift_pct'], 1),
         'strategy': recommendation,
         'earnings_history': data_90  # Include for audit trail
     }

@@ -23,21 +23,22 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     strategies_90d = []
     
     for _, row in df.iterrows():
+        # FIXED: Updated to use new column names
         stats_45 = {
             'containment': row['45d_contain'],
             'breaks_up': row['45d_breaks_up'],
             'breaks_down': row['45d_breaks_dn'],
-            'break_bias': row['45d_break_bias'],
-            'overall_bias': row['45d_overall_bias'],
-            'avg_move_pct': row['45d_drift']
+            'break_up_pct': row['45d_break_up_pct'],  # RENAMED from break_bias
+            'trend_pct': row['45d_trend_pct'],         # RENAMED from overall_bias
+            'drift_pct': row['45d_drift']              # RENAMED from avg_move_pct
         }
         stats_90 = {
             'containment': row['90d_contain'],
             'breaks_up': row['90d_breaks_up'],
             'breaks_down': row['90d_breaks_dn'],
-            'break_bias': row['90d_break_bias'],
-            'overall_bias': row['90d_overall_bias'],
-            'avg_move_pct': row['90d_drift']
+            'break_up_pct': row['90d_break_up_pct'],  # RENAMED from break_bias
+            'trend_pct': row['90d_trend_pct'],         # RENAMED from overall_bias
+            'drift_pct': row['90d_drift']              # RENAMED from avg_move_pct
         }
         
         pattern_45, _ = determine_strategy_45(stats_45)
@@ -56,18 +57,16 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     df_ic45 = df[df['strategy_45d'].str.contains('IC45', na=False)]
     df_bias45 = df[(df['strategy_45d'].str.contains('BIAS', na=False)) & 
                    (~df['strategy_45d'].str.contains('IC', na=False))]
-    # We don't need df_skip45 anymore - we're not displaying skips
     
     df_ic90 = df[df['strategy_90d'].str.contains('IC90', na=False)]
     df_bias90 = df[(df['strategy_90d'].str.contains('BIAS', na=False)) & 
                    (~df['strategy_90d'].str.contains('IC', na=False))]
-    # We don't need df_skip90 anymore - we're not displaying skips
     
     # Create side-by-side subplots with reasonable spacing
     fig = make_subplots(
         rows=1, cols=2,
         subplot_titles=('45-Day Containment', '90-Day Containment'),
-        horizontal_spacing=0.08  # Reasonable space between subplots
+        horizontal_spacing=0.08
     )
     
     # === LEFT PLOT: 45-Day View ===
@@ -172,7 +171,7 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             showlegend=True
         ), row=1, col=2)
     
-    # Add threshold lines - label in the CENTER between subplots
+    # Add threshold lines
     fig.add_hline(y=69.5, line_dash="dash", line_color="red", opacity=0.5,
                   row=1, col=1)
     fig.add_hline(y=69.5, line_dash="dash", line_color="red", opacity=0.5,
@@ -200,37 +199,34 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             bordercolor='gray',
             borderwidth=1
         ),
-        # Add IC Threshold label in the center between subplots
         annotations=[
             dict(
                 text="IC Threshold",
-                x=0.5,  # Dead center between the two subplots
-                y=69.5,  # At the threshold line height
+                x=0.5,
+                y=69.5,
                 xref="paper",
                 yref="y",
                 showarrow=False,
                 font=dict(size=11, color='red'),
                 xanchor='center',
                 yanchor='bottom',
-                bgcolor='rgba(255,255,255,0.8)',  # Light background so it stands out
+                bgcolor='rgba(255,255,255,0.8)',
                 borderpad=4
             )
         ]
     )
     
-    # Update axes - same range for both
-    # Left subplot: normal y-axis on left
+    # Update axes
     fig.update_xaxes(title_text="Current Implied Volatility (%)", gridcolor='lightgray', 
                      showgrid=True, zeroline=False, row=1, col=1)
     fig.update_yaxes(title_text="45-Day Containment Rate (%)", gridcolor='lightgray', 
                      showgrid=True, zeroline=False, range=[40, 95], row=1, col=1)
     
-    # Right subplot: y-axis on RIGHT side
     fig.update_xaxes(title_text="Current Implied Volatility (%)", gridcolor='lightgray', 
                      showgrid=True, zeroline=False, row=1, col=2)
     fig.update_yaxes(title_text="90-Day Containment Rate (%)", gridcolor='lightgray', 
                      showgrid=True, zeroline=False, range=[40, 95], 
-                     side='right',  # Move to right side
+                     side='right',
                      row=1, col=2)
     
     if save_path:

@@ -26,14 +26,15 @@ VOLATILITY_TIERS = [
     (float('inf'), 1.5)
 ]
 
-# Strategy thresholds (TIGHTENED)
-CONTAINMENT_THRESHOLD = 69.5  # Was 69.5
-MIN_QUARTERS_REQUIRED = 12    # Was 10
-UPWARD_BIAS_THRESHOLD = 70    # Was 65
-DOWNWARD_BIAS_THRESHOLD = 30  # Was 35
-DRIFT_THRESHOLD = 5.0         # Was 3.0
+# Strategy thresholds
+CONTAINMENT_THRESHOLD = 69.5
+MIN_QUARTERS_REQUIRED = 12
+UPWARD_BIAS_THRESHOLD = 70    # % of closes above entry for upward signal
+DOWNWARD_BIAS_THRESHOLD = 30  # % of closes above entry for downward signal
+DRIFT_THRESHOLD = 5.0
 BREAK_BIAS_THRESHOLD = 70
 BREAK_RATIO_THRESHOLD = 2.0
+MIN_BREAKS_FOR_SIGNAL = 8     # NEW: Minimum total breaks needed for directional signal
 
 IV_TARGET_DTE = 45
 IV_PREMIUM_ELEVATED = 15
