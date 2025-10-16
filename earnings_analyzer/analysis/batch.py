@@ -68,7 +68,7 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         return None
     
     df = _create_results_dataframe(results)
-    _print_results_table(df)
+    _print_results_table(df, fetch_iv)
     _print_insights(df)
     
     return df
@@ -89,7 +89,7 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
         
         if summary:
             if fetch_iv:
-                _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
+                _fetch_and_add_iv(ticker, summary, yf_client, iv_summary, debug)
             
             results.append(summary)
             if from_cache:
@@ -130,7 +130,7 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                 
                 if summary:
                     if fetch_iv:
-                        _fetch_and_add_iv(ticker, summary, yf_client, iv_summary)
+                        _fetch_and_add_iv(ticker, summary, yf_client, iv_summary, debug)
                     
                     # Store with original index
                     results_dict[idx] = summary
@@ -151,24 +151,36 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
     return results
 
 
-def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary):
-    """Fetch and add IV data to summary"""
-    iv_data = yf_client.get_current_iv(ticker)
-    if iv_data:
-        summary['current_iv'] = iv_data['iv']
-        summary['iv_dte'] = iv_data['dte']
-        # IV elevation vs RVol45d (apples-to-apples comparison)
-        if 'rvol_45d' in summary and summary['rvol_45d'] is not None:
-            iv_elevation = ((iv_data['iv'] - summary['rvol_45d']) / summary['rvol_45d']) * 100
-            summary['iv_elevation'] = round(iv_elevation, 1)
+def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary, debug=False):
+    """Fetch and add IV data to summary with robust error handling"""
+    try:
+        iv_data = yf_client.get_current_iv(ticker)
+        if iv_data and 'iv' in iv_data and iv_data['iv'] is not None:
+            summary['current_iv'] = iv_data['iv']
+            summary['iv_dte'] = iv_data.get('dte', None)
+            # IV elevation vs RVol45d (apples-to-apples comparison)
+            if 'rvol_45d' in summary and summary['rvol_45d'] is not None:
+                iv_elevation = ((iv_data['iv'] - summary['rvol_45d']) / summary['rvol_45d']) * 100
+                summary['iv_elevation'] = round(iv_elevation, 1)
+            else:
+                summary['iv_elevation'] = None
+            iv_summary['success'].append(ticker)
         else:
+            # Explicit None assignment ensures ticker still appears in results
+            summary['current_iv'] = None
+            summary['iv_dte'] = None
             summary['iv_elevation'] = None
-        iv_summary['success'].append(ticker)
-    else:
+            iv_summary['failed'].append(ticker)
+            if debug:
+                print(f"\n⚠️  IV fetch returned no data for {ticker}")
+    except Exception as e:
+        # Catch any unexpected errors during IV fetch
         summary['current_iv'] = None
         summary['iv_dte'] = None
         summary['iv_elevation'] = None
         iv_summary['failed'].append(ticker)
+        if debug:
+            print(f"\n⚠️  IV fetch error for {ticker}: {e}")
 
 
 def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv):
@@ -225,7 +237,7 @@ def _create_results_dataframe(results):
     
     return df
 
-def _print_results_table(df):
+def _print_results_table(df, fetch_iv=False):
     """Print clean, aligned table using tabulate"""
     
     from tabulate import tabulate
@@ -292,6 +304,18 @@ def _print_results_table(df):
         else:
             return f"{up}:{down}({up_pct:.0f}%)"
     
+    def format_iv_value(value):
+        """Format IV values, showing N/A for missing data"""
+        if value is None or pd.isna(value):
+            return "N/A"
+        return f"{value:.1f}%"
+    def format_iv_with_dte(iv, dte):
+        """Format IV with DTE, showing N/A for missing data"""
+        if iv is None or pd.isna(iv):
+            return "N/A"
+        if dte is None or pd.isna(dte):
+            return f"{iv:.1f}%"
+        return f"{iv:.1f}% ({int(dte)}DTE)"
     def clean_pattern(pattern):
         if pattern == "SKIP":
             return "-"
@@ -302,7 +326,7 @@ def _print_results_table(df):
     # Build table data
     table_data = []
     for i, row in df.iterrows():
-        table_data.append([
+        row_data = [
             row['ticker'],
             int(row['hvol']),
             # 45d section
@@ -319,7 +343,13 @@ def _print_results_table(df):
             f"{row['90d_drift']:+.1f}%",
             clean_pattern(strategies_90d[i]),
             edges_90d[i]
-        ])
+        ]
+        
+        # Add IV column if fetch_iv is enabled
+        if fetch_iv:
+            row_data.append(format_iv_with_dte(row.get('current_iv'), row.get('iv_dte')))
+        
+        table_data.append(row_data)
     
     # Headers with section separators
     headers = [
@@ -338,6 +368,10 @@ def _print_results_table(df):
         "90Pattern",
         "90E"
     ]
+    
+    # Add IV header if fetch_iv is enabled
+    if fetch_iv:
+        headers.append("CurrIV")
     
     # Print with clean formatting
     print("\n" + "="*165)

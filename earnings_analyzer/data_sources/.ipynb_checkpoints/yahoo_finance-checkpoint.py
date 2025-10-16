@@ -24,7 +24,6 @@ FETCH_WINDOWS = [
     (14, 0),   # 2:00 PM ET
     (15, 30),  # 3:30 PM ET
 ]
-TARGET_DTE = 45  # Target 45-day expiration for IV45
 
 
 class YahooFinanceClient:
@@ -101,15 +100,13 @@ class YahooFinanceClient:
         
         Fetch windows: 10am, 12pm, 2pm, 3:30pm ET
         Only fetch if we've crossed a window threshold since last fetch
-        """
-        # Check if market is open first
-        if not YahooFinanceClient._is_market_open(ticker):
-            return False
         
+        Fetching allowed between 10 AM - 10 PM ET
+        """
         now = YahooFinanceClient._get_market_time()
         
-        # Don't fetch before 10 AM or after 5 PM ET
-        if now.hour < 10 or now.hour >= 17:
+        # Don't fetch before 10 AM or after 10 PM ET
+        if now.hour < 10 or now.hour >= 22:
             return False
         
         # If no cache entry, fetch
@@ -150,44 +147,58 @@ class YahooFinanceClient:
             return True
     
     @staticmethod
-    def _get_closest_to_45dte(expirations: List[str]) -> Optional[str]:
+    def _get_nearest_liquid_expiration(expirations: List[str]) -> Optional[str]:
         """
-        Get expiration closest to 45 DTE for IV45 calculation
+        Get the nearest liquid expiration (typically 15-60 DTE)
+        
+        Strategy: Find first expiration with reasonable DTE (positive days, preferably 15+)
+        This maximizes success rate by not forcing specific DTE requirements
         
         Args:
             expirations: List of expiration date strings
         
         Returns:
-            Expiration date string closest to 45 DTE, or None if no expirations
+            First reasonable expiration date string, or None if no expirations
         """
+        if not expirations:
+            return None
+        
         today = datetime.now()
         
-        closest_exp = None
-        closest_diff = float('inf')
-        
+        # Look for expirations in the 15-60 DTE range (most liquid)
         for exp in expirations:
-            exp_date = datetime.strptime(exp, '%Y-%m-%d')
-            dte = (exp_date - today).days
-            
-            # Only consider positive DTEs
-            if dte <= 0:
+            try:
+                exp_date = datetime.strptime(exp, '%Y-%m-%d')
+                dte = (exp_date - today).days
+                
+                # Prefer 15-60 DTE range for liquidity
+                if 15 <= dte <= 60:
+                    return exp
+            except:
                 continue
-            
-            diff = abs(dte - TARGET_DTE)
-            if diff < closest_diff:
-                closest_diff = diff
-                closest_exp = exp
         
-        return closest_exp
+        # Fallback: if nothing in 15-60 range, just get first valid positive DTE
+        for exp in expirations:
+            try:
+                exp_date = datetime.strptime(exp, '%Y-%m-%d')
+                dte = (exp_date - today).days
+                
+                if dte > 0:
+                    return exp
+            except:
+                continue
+        
+        return None
     
     @staticmethod
     def get_current_iv(ticker: str, retry_count: int = 2) -> Optional[Dict]:
         """
-        Fetch IV45 - implied volatility from expiration closest to 45 DTE
+        Fetch current implied volatility from nearest liquid expiration
         Uses time-gated caching (10am, 12pm, 2pm, 3:30pm ET windows)
-        Returns ATM IV averaged from put and call at ~45 DTE
+        Returns ATM IV averaged from put and call
         
-        This ensures apples-to-apples comparison with RVol45
+        Note: DTE will vary by ticker based on available expirations
+        The actual DTE used is returned in the result for transparency
         """
         if not YFINANCE_AVAILABLE:
             return None
@@ -215,8 +226,8 @@ class YahooFinanceClient:
             if not expirations:
                 return cache.get(ticker)
             
-            # Get expiration closest to 45 DTE
-            target_exp = YahooFinanceClient._get_closest_to_45dte(expirations)
+            # Get nearest liquid expiration (no specific DTE requirement)
+            target_exp = YahooFinanceClient._get_nearest_liquid_expiration(expirations)
             
             if not target_exp:
                 return cache.get(ticker)

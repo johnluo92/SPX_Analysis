@@ -18,27 +18,43 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     # Import strategy functions to calculate separate 45d/90d patterns
     from ..calculations.strategy import determine_strategy_45, determine_strategy_90
     
+    # CRITICAL: Filter out tickers with missing IV data BEFORE processing
+    df_original = df.copy()
+    missing_iv_tickers = []
+    
+    if 'current_iv' in df.columns:
+        missing_iv_mask = df['current_iv'].isna()
+        missing_iv_tickers = df[missing_iv_mask]['ticker'].tolist()
+        df = df[~missing_iv_mask].copy()
+        
+        if missing_iv_tickers:
+            print(f"\n⚠️  Quality Matrix: Excluding {len(missing_iv_tickers)} ticker(s) without IV data: {', '.join(missing_iv_tickers)}")
+            print(f"    These tickers still appear in the backtest results table above.")
+    
+    if df.empty:
+        print("\n❌ Cannot create quality matrix: No tickers with valid IV data")
+        return None
+    
     # Calculate 45d and 90d strategies separately for each row
     strategies_45d = []
     strategies_90d = []
     
     for _, row in df.iterrows():
-        # FIXED: Updated to use new column names
         stats_45 = {
             'containment': row['45d_contain'],
             'breaks_up': row['45d_breaks_up'],
             'breaks_down': row['45d_breaks_dn'],
-            'break_up_pct': row['45d_break_up_pct'],  # RENAMED from break_bias
-            'trend_pct': row['45d_trend_pct'],         # RENAMED from overall_bias
-            'drift_pct': row['45d_drift']              # RENAMED from avg_move_pct
+            'break_up_pct': row['45d_break_up_pct'],
+            'trend_pct': row['45d_trend_pct'],
+            'drift_pct': row['45d_drift']
         }
         stats_90 = {
             'containment': row['90d_contain'],
             'breaks_up': row['90d_breaks_up'],
             'breaks_down': row['90d_breaks_dn'],
-            'break_up_pct': row['90d_break_up_pct'],  # RENAMED from break_bias
-            'trend_pct': row['90d_trend_pct'],         # RENAMED from overall_bias
-            'drift_pct': row['90d_drift']              # RENAMED from avg_move_pct
+            'break_up_pct': row['90d_break_up_pct'],
+            'trend_pct': row['90d_trend_pct'],
+            'drift_pct': row['90d_drift']
         }
         
         pattern_45, _ = determine_strategy_45(stats_45)
@@ -48,7 +64,6 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
         strategies_90d.append(pattern_90)
     
     # Add as temporary columns
-    df = df.copy()
     df['strategy_45d'] = strategies_45d
     df['strategy_90d'] = strategies_90d
     
@@ -73,6 +88,12 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     
     # IC45 candidates (green)
     if not df_ic45.empty:
+        # Build customdata with strategy and DTE
+        customdata_45_ic = []
+        for _, row in df_ic45.iterrows():
+            dte_str = f"{int(row['iv_dte'])} DTE" if pd.notna(row.get('iv_dte')) else "N/A"
+            customdata_45_ic.append([row['strategy_45d'], dte_str])
+        
         fig.add_trace(go.Scatter(
             x=df_ic45['current_iv'],
             y=df_ic45['45d_contain'],
@@ -82,11 +103,11 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             text=df_ic45['ticker'],
             textposition='top center',
             textfont=dict(size=9),
-            customdata=df_ic45['strategy_45d'],
+            customdata=customdata_45_ic,
             hovertemplate='<b>%{text}</b><br>' +
-                         'Current IV: %{x:.1f}%<br>' +
+                         'Current IV: %{x:.1f}% (%{customdata[1]})<br>' +
                          '45d Containment: %{y:.1f}%<br>' +
-                         '%{customdata}<br>' +
+                         '%{customdata[0]}<br>' +
                          '<extra></extra>',
             showlegend=True
         ), row=1, col=1)
@@ -94,6 +115,7 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     # BIAS45 patterns (blue)
     if not df_bias45.empty:
         bias_patterns_45 = []
+        customdata_45_bias = []
         for _, row in df_bias45.iterrows():
             pattern = row['strategy_45d']
             if 'BIAS' in pattern:
@@ -101,6 +123,9 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
                 bias_patterns_45.append(f"BIAS{bias_part}")
             else:
                 bias_patterns_45.append("BIAS detected")
+            
+            dte_str = f"{int(row['iv_dte'])} DTE" if pd.notna(row.get('iv_dte')) else "N/A"
+            customdata_45_bias.append([pattern, dte_str])
         
         fig.add_trace(go.Scatter(
             x=df_bias45['current_iv'],
@@ -111,11 +136,11 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             text=df_bias45['ticker'],
             textposition='top center',
             textfont=dict(size=9),
-            customdata=bias_patterns_45,
+            customdata=customdata_45_bias,
             hovertemplate='<b>%{text}</b><br>' +
-                         'Current IV: %{x:.1f}%<br>' +
+                         'Current IV: %{x:.1f}% (%{customdata[1]})<br>' +
                          '45d Containment: %{y:.1f}%<br>' +
-                         '%{customdata}<br>' +
+                         '%{customdata[0]}<br>' +
                          '<extra></extra>',
             showlegend=True
         ), row=1, col=1)
@@ -124,6 +149,12 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     
     # IC90 candidates (green)
     if not df_ic90.empty:
+        # Build customdata with strategy and DTE
+        customdata_90_ic = []
+        for _, row in df_ic90.iterrows():
+            dte_str = f"{int(row['iv_dte'])} DTE" if pd.notna(row.get('iv_dte')) else "N/A"
+            customdata_90_ic.append([row['strategy_90d'], dte_str])
+        
         fig.add_trace(go.Scatter(
             x=df_ic90['current_iv'],
             y=df_ic90['90d_contain'],
@@ -133,11 +164,11 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             text=df_ic90['ticker'],
             textposition='top center',
             textfont=dict(size=9),
-            customdata=df_ic90['strategy_90d'],
+            customdata=customdata_90_ic,
             hovertemplate='<b>%{text}</b><br>' +
-                         'Current IV: %{x:.1f}%<br>' +
+                         'Current IV: %{x:.1f}% (%{customdata[1]})<br>' +
                          '90d Containment: %{y:.1f}%<br>' +
-                         '%{customdata}<br>' +
+                         '%{customdata[0]}<br>' +
                          '<extra></extra>',
             showlegend=True
         ), row=1, col=2)
@@ -145,6 +176,7 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     # BIAS90 patterns (blue)
     if not df_bias90.empty:
         bias_patterns_90 = []
+        customdata_90_bias = []
         for _, row in df_bias90.iterrows():
             pattern = row['strategy_90d']
             if 'BIAS' in pattern:
@@ -152,6 +184,9 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
                 bias_patterns_90.append(f"BIAS{bias_part}")
             else:
                 bias_patterns_90.append("BIAS detected")
+            
+            dte_str = f"{int(row['iv_dte'])} DTE" if pd.notna(row.get('iv_dte')) else "N/A"
+            customdata_90_bias.append([pattern, dte_str])
         
         fig.add_trace(go.Scatter(
             x=df_bias90['current_iv'],
@@ -162,11 +197,11 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
             text=df_bias90['ticker'],
             textposition='top center',
             textfont=dict(size=9),
-            customdata=bias_patterns_90,
+            customdata=customdata_90_bias,
             hovertemplate='<b>%{text}</b><br>' +
-                         'Current IV: %{x:.1f}%<br>' +
+                         'Current IV: %{x:.1f}% (%{customdata[1]})<br>' +
                          '90d Containment: %{y:.1f}%<br>' +
-                         '%{customdata}<br>' +
+                         '%{customdata[0]}<br>' +
                          '<extra></extra>',
             showlegend=True
         ), row=1, col=2)
@@ -177,10 +212,15 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     fig.add_hline(y=69.5, line_dash="dash", line_color="red", opacity=0.5,
                   row=1, col=2)
     
+    # Build title with exclusion notice if applicable
+    title_text = 'Trade Quality Matrix - Earnings Plays'
+    if missing_iv_tickers:
+        title_text += f'<br><sub>Excluded {len(missing_iv_tickers)} ticker(s) without IV data: {", ".join(missing_iv_tickers)}</sub>'
+    
     # Layout
     fig.update_layout(
         title=dict(
-            text='Trade Quality Matrix - Earnings Plays',
+            text=title_text,
             font=dict(size=18, color='black'),
             x=0.5,
             xanchor='center'
@@ -231,7 +271,7 @@ def plot_quality_matrix(df: pd.DataFrame, save_path: str = 'quality_matrix.html'
     
     if save_path:
         fig.write_html(save_path)
-        print(f"\nQuality matrix saved to: {save_path}")
+        print(f"\n✓ Quality matrix saved to: {save_path}")
     
     if show:
         fig.show()
