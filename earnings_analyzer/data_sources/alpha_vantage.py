@@ -20,7 +20,9 @@ class AlphaVantageClient:
         Get earnings announcement dates for a ticker
         Returns: (earnings_list, status)
         """
+        # Always reload cache to get latest (important for parallel processing)
         cache = load_cache()
+        
         if use_cache and ticker in cache:
             return [
                 {'date': datetime.fromisoformat(e['date']), 'time': e['time']} 
@@ -66,6 +68,8 @@ class AlphaVantageClient:
                 
                 earnings_info = self._parse_earnings(data['quarterlyEarnings'])
                 
+                # Reload cache again before saving (in case another thread updated it)
+                cache = load_cache()
                 cache[ticker] = [
                     {'date': e['date'].isoformat(), 'time': e['time']} 
                     for e in earnings_info
