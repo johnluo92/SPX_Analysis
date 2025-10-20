@@ -1,12 +1,12 @@
-"""Batch processing with parallel execution"""
+"""Batch processing with parallel execution and detailed error reporting"""
 import time
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..config import DEFAULT_LOOKBACK_QUARTERS, REQUEST_DELAY, ALPHAVANTAGE_KEYS
-from ..cache import load_cache, load_rate_limits
+from ..config import DEFAULT_LOOKBACK_QUARTERS, REQUEST_DELAY
+from ..cache import load_cache
 from ..data_sources import YahooFinanceClient
 from .single import analyze_ticker
 
@@ -29,7 +29,7 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         DataFrame with analysis results
     """
     print("\n" + "="*75)
-    print(f"EARNINGS CONTAINMENT ANALYZER - v3")
+    print(f"EARNINGS CONTAINMENT ANALYZER - v3 (YFinance)")
     print(f"Lookback: {lookback_quarters} quarters (~{lookback_quarters/4:.0f} years)")
     if fetch_iv:
         print(f"Current IV from Yahoo Finance (15-20min delayed)")
@@ -37,31 +37,25 @@ def batch_analyze(tickers: List[str], lookback_quarters: int = DEFAULT_LOOKBACK_
         print(f"Parallel processing: {max_workers} workers")
     print("="*75)
     
-    rate_limited_keys = load_rate_limits()
-    if rate_limited_keys:
-        available = len(ALPHAVANTAGE_KEYS) - len(rate_limited_keys)
-        print(f"\n⚠️  Rate Limit: {available}/{len(ALPHAVANTAGE_KEYS)} API keys available")
-    else:
-        print(f"\n✓ All {len(ALPHAVANTAGE_KEYS)} API keys available")
-    
     results = []
     fetch_summary = {'cached': [], 'api': [], 'failed': []}
     iv_summary = {'success': [], 'failed': []}
+    failure_details = {}
     
     if parallel:
-        results = _batch_analyze_parallel(
+        results, failure_details = _batch_analyze_parallel(
             tickers, lookback_quarters, debug, fetch_iv, 
             max_workers, fetch_summary, iv_summary
         )
     else:
-        results = _batch_analyze_serial(
+        results, failure_details = _batch_analyze_serial(
             tickers, lookback_quarters, debug, fetch_iv,
             fetch_summary, iv_summary
         )
     
     print("\r" + " " * 80 + "\r", end='')
     
-    _print_fetch_summary(fetch_summary, iv_summary, fetch_iv)
+    _print_fetch_summary(fetch_summary, iv_summary, fetch_iv, failure_details)
     
     if not results:
         print("\n⚠️  No valid results")
@@ -78,6 +72,7 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
                           fetch_summary, iv_summary):
     """Process tickers serially"""
     results = []
+    failure_details = {}
     cache = load_cache()
     yf_client = YahooFinanceClient()
     
@@ -98,16 +93,18 @@ def _batch_analyze_serial(tickers, lookback_quarters, debug, fetch_iv,
                 fetch_summary['api'].append(ticker)
         else:
             fetch_summary['failed'].append(ticker)
+            failure_details[ticker] = status
         
         time.sleep(REQUEST_DELAY)
     
-    return results
+    return results, failure_details
 
 
 def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                            max_workers, fetch_summary, iv_summary):
     """Process tickers in parallel while preserving order"""
     results_dict = {}
+    failure_details = {}
     cache = load_cache()
     yf_client = YahooFinanceClient()
     
@@ -141,14 +138,19 @@ def _batch_analyze_parallel(tickers, lookback_quarters, debug, fetch_iv,
                         fetch_summary['api'].append(ticker)
                 else:
                     fetch_summary['failed'].append(ticker)
+                    failure_details[ticker] = status
             except Exception as e:
-                print(f"\n❌ Error processing {ticker}: {e}")
+                print(f"\n✗ EXCEPTION on {ticker}: {type(e).__name__}: {e}")
+                if debug:
+                    import traceback
+                    traceback.print_exc()
                 fetch_summary['failed'].append(ticker)
+                failure_details[ticker] = f"exception: {str(e)}"
     
     # Sort by original index and return as list
     results = [results_dict[i] for i in sorted(results_dict.keys())]
     
-    return results
+    return results, failure_details
 
 
 def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary, debug=False):
@@ -166,7 +168,6 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary, debug=False):
                 summary['iv_elevation'] = None
             iv_summary['success'].append(ticker)
         else:
-            # Explicit None assignment ensures ticker still appears in results
             summary['current_iv'] = None
             summary['iv_dte'] = None
             summary['iv_elevation'] = None
@@ -174,7 +175,6 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary, debug=False):
             if debug:
                 print(f"\n⚠️  IV fetch returned no data for {ticker}")
     except Exception as e:
-        # Catch any unexpected errors during IV fetch
         summary['current_iv'] = None
         summary['iv_dte'] = None
         summary['iv_elevation'] = None
@@ -183,8 +183,8 @@ def _fetch_and_add_iv(ticker, summary, yf_client, iv_summary, debug=False):
             print(f"\n⚠️  IV fetch error for {ticker}: {e}")
 
 
-def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv):
-    """Print fetch summary"""
+def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv, failure_details):
+    """Print fetch summary with detailed failure reasons"""
     print(f"\n📊 FETCH SUMMARY")
     print(f"{'='*75}")
     if fetch_summary['cached']:
@@ -202,40 +202,60 @@ def _print_fetch_summary(fetch_summary, iv_summary, fetch_iv):
             print(f"✓ IV Retrieved ({len(iv_summary['success'])}): {iv_list}")
         if iv_summary['failed']:
             print(f"✗ IV Failed ({len(iv_summary['failed'])}): {', '.join(iv_summary['failed'])}")
-    if fetch_summary['failed']:
-        print(f"✗ Analysis Failed ({len(fetch_summary['failed'])}): {', '.join(fetch_summary['failed'])}")
-
-
-def _format_break_ratio(up_breaks, down_breaks, break_bias):
-    """DEPRECATED - kept for backward compatibility"""
-    if up_breaks == 0 and down_breaks == 0:
-        return "0:0"
     
-    if break_bias >= 66.7:
-        return f"{up_breaks}:{down_breaks}↑"
-    elif break_bias <= 33.3:
-        return f"{up_breaks}:{down_breaks}↓"
-    else:
-        return f"{up_breaks}:{down_breaks}"
+    # Detailed failure reporting
+    if fetch_summary['failed']:
+        print(f"\n{'─'*75}")
+        print(f"✗ ANALYSIS FAILURES ({len(fetch_summary['failed'])})")
+        print(f"{'─'*75}")
+        
+        # Group failures by reason
+        failure_groups = {}
+        for ticker in fetch_summary['failed']:
+            reason = failure_details.get(ticker, 'unknown_error')
+            if reason not in failure_groups:
+                failure_groups[reason] = []
+            failure_groups[reason].append(ticker)
+        
+        # Print failures grouped by reason
+        for reason, ticker_list in sorted(failure_groups.items()):
+            reason_desc = _get_failure_description(reason)
+            ticker_str = ', '.join(ticker_list)
+            print(f"  • {reason_desc}")
+            print(f"    Tickers: {ticker_str}")
+        
+        print(f"{'─'*75}")
+
+
+def _get_failure_description(status: str) -> str:
+    """Get human-readable description of failure status"""
+    descriptions = {
+        'yfinance_unavailable': 'yfinance library not installed',
+        'no_earnings': 'No earnings data available',
+        'insufficient_quarters': 'Less than 12 quarters of earnings history',
+        'no_price_data': 'No historical price data available',
+        'insufficient_valid_data': 'Less than 12 valid data points after processing',
+        'unknown_error': 'Unknown error occurred'
+    }
+    
+    # Handle exception messages
+    if 'exception' in status.lower():
+        if ': ' in status:
+            error_msg = status.split(': ', 1)[1]
+            return f'Exception: {error_msg[:50]}'
+        return 'Exception during processing'
+    
+    return descriptions.get(status, f'Unknown status: {status}')
 
 
 def _create_results_dataframe(results):
     """Create formatted results dataframe"""
     df = pd.DataFrame(results)
     
-    # Format break ratios (kept for backward compatibility with insights)
-    df['45_break_fmt'] = df.apply(
-        lambda x: _format_break_ratio(x['45d_breaks_up'], x['45d_breaks_dn'], x['45d_break_up_pct']), 
-        axis=1
-    )
-    df['90_break_fmt'] = df.apply(
-        lambda x: _format_break_ratio(x['90d_breaks_up'], x['90d_breaks_dn'], x['90d_break_up_pct']), 
-        axis=1
-    )
-    
     # DO NOT SORT - preserve input order
     
     return df
+
 
 def _print_results_table(df, fetch_iv=False):
     """Print clean, aligned table using tabulate"""
@@ -284,7 +304,6 @@ def _print_results_table(df, fetch_iv=False):
             down_pct = 100 - trend_pct
             return f"↓{down_pct:.0f}%"
         else:
-            # Moderate - show whichever direction is majority
             if trend_pct >= 50:
                 return f"↑{trend_pct:.0f}%"
             else:
@@ -304,11 +323,6 @@ def _print_results_table(df, fetch_iv=False):
         else:
             return f"{up}:{down}({up_pct:.0f}%)"
     
-    def format_iv_value(value):
-        """Format IV values, showing N/A for missing data"""
-        if value is None or pd.isna(value):
-            return "N/A"
-        return f"{value:.1f}%"
     def format_iv_with_dte(iv, dte):
         """Format IV with DTE, showing N/A for missing data"""
         if iv is None or pd.isna(iv):
@@ -316,6 +330,7 @@ def _print_results_table(df, fetch_iv=False):
         if dte is None or pd.isna(dte):
             return f"{iv:.1f}%"
         return f"{iv:.1f}% ({int(dte)}DTE)"
+    
     def clean_pattern(pattern):
         if pattern == "SKIP":
             return "-"
@@ -399,7 +414,7 @@ def _print_insights(df):
     bias_down_count = len(df[df['strategy'].str.contains('BIAS↓', na=False)])
     skip_count = len(df[df['strategy'] == 'SKIP'])
     
-    # Line 2: High conviction tickers (show actual edge counts)
+    # Line 2: High conviction tickers
     high_conviction_dict = {}
     high_conviction = df[df['strategy'].str.contains(r'\[(?:\d+) edges?\]', regex=True, na=False)]
     if not high_conviction.empty:

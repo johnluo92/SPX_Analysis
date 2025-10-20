@@ -1,10 +1,10 @@
-"""Single ticker earnings analysis - Simplified to use direct HVol without tier bucketing"""
+"""Single ticker earnings analysis - Uses YFinance for all data"""
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, Tuple, Optional
 
 from ..config import DEFAULT_LOOKBACK_QUARTERS, MIN_QUARTERS_REQUIRED
-from ..data_sources import AlphaVantageClient, YahooFinanceClient
+from ..data_sources import YFinanceEarningsClient, YahooFinanceClient
 from ..calculations import (
     calculate_historical_volatility,
     calculate_strike_width,
@@ -21,8 +21,7 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
     """
     Analyze post-earnings movements for a single ticker
     
-    SIMPLIFIED: Uses direct HVol calculation without tier bucketing
-    This creates natural variation in strike widths across tickers
+    Uses YFinance for both earnings dates and price data
     
     Args:
         ticker: Stock ticker symbol
@@ -38,10 +37,10 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
         print(f"📊 {ticker} - Post-Earnings Containment Analysis")
         print(f"{'='*75}")
     
-    av_client = AlphaVantageClient()
+    earnings_client = YFinanceEarningsClient()
     yf_client = YahooFinanceClient()
     
-    earnings_info, status = av_client.get_earnings(ticker, debug=debug)
+    earnings_info, status = earnings_client.get_earnings(ticker, debug=debug)
     if not earnings_info:
         return None, status
     
@@ -76,8 +75,7 @@ def analyze_ticker(ticker: str, lookback_quarters: int = DEFAULT_LOOKBACK_QUARTE
         if ref_price is None:
             continue
         
-        # SIMPLIFIED: Direct HVol calculation, no tier bucketing
-        # This creates natural variation - each ticker's width is proportional to its volatility
+        # Direct HVol calculation, no tier bucketing
         strike_width_45 = calculate_strike_width(hvol, 45, multiplier=1.0)
         strike_width_90 = calculate_strike_width(hvol, 90, multiplier=1.0)
         

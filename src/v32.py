@@ -6,6 +6,7 @@ REVERT BAD CHANGES:
 - ✅ Keep v3.1 conservative RF config (better regularization)
 - ✅ Keep confidence scoring system
 - ✅ Target: Gap <0.20 for all sectors
+- ✅ ADDED: Simple cache loader for when FRED is down
 
 Focus: Stability > Features. Less is more.
 """
@@ -15,9 +16,10 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import StandardScaler
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 from datetime import datetime, timedelta
 import warnings
+import os
 warnings.filterwarnings('ignore')
 
 
@@ -68,7 +70,7 @@ class SectorRotationFeatures:
         for col in macro.columns:
             for window in windows:
                 change = macro[col].pct_change(window) * 100
-                features[f'{col}_change_{window}d'] = change
+                features[f'{col}_change_{63}d'] = change
         
         # Yield curve slope
         if '10Y Treasury' in macro.columns and '2Y Treasury' in macro.columns:
@@ -463,41 +465,214 @@ class SectorRotationModel:
         return probs
 
 
+def load_from_cache(cache_dir='.cache_sector_data'):
+    """Load data from cache directory when FRED is down."""
+    print(f"\n📦 Loading from cache: {cache_dir}")
+    
+    if not os.path.exists(cache_dir):
+        print(f"❌ Cache directory not found: {cache_dir}")
+        return None, None, None
+    
+    # Look for pickle files
+    cache_files = [f for f in os.listdir(cache_dir) if f.endswith('.pkl')]
+    
+    if not cache_files:
+        print(f"❌ No .pkl files found in {cache_dir}")
+        return None, None, None
+    
+    print(f"✅ Found {len(cache_files)} cache file(s)")
+    
+    # Load the most recent one
+    cache_files.sort(reverse=True)
+    cache_file = os.path.join(cache_dir, cache_files[0])
+    
+    print(f"   Loading: {cache_files[0]}")
+    
+    try:
+        data = pd.read_pickle(cache_file)
+        print(f"   ✅ Loaded: {type(data)}")
+        
+        # Check what we loaded
+        if isinstance(data, dict):
+            print(f"   📊 Dictionary with keys: {list(data.keys())}")
+            
+            # This is the FRED cache - just economic indicators
+            # We need sector ETFs, macro (Gold/Dollar/Treasuries), and VIX from Yahoo
+            print("\n   💡 FRED cache detected (economic indicators only)")
+            print("   ⚠️  Need to fetch sectors, macro, VIX from Yahoo since that's what v3.2 uses")
+            
+            # Return None to trigger Yahoo fetch
+            return None, None, None
+            
+        elif isinstance(data, tuple) and len(data) == 3:
+            sectors, macro, vix = data
+            print(f"   ✅ Tuple with 3 elements detected")
+            return sectors, macro, vix
+            
+        elif isinstance(data, pd.DataFrame):
+            # Check if it has the columns we need
+            print(f"   📊 DataFrame: {data.shape}")
+            print(f"   Columns: {list(data.columns)[:10]}")
+            
+            # Assume it's combined data, return as sectors
+            return data, None, None
+        
+        else:
+            print(f"   ⚠️  Unknown cache structure: {type(data)}")
+            return None, None, None
+        
+    except Exception as e:
+        print(f"❌ Error loading cache: {e}")
+        return None, None, None
+
+
+def fetch_from_yahoo(start_str, end_str):
+    """Fetch data from Yahoo Finance since FRED is down."""
+    print(f"\n📊 Fetching from Yahoo Finance")
+    print(f"   Date range: {start_str} to {end_str}")
+    
+    try:
+        import yfinance as yf
+    except ImportError:
+        print("❌ yfinance not installed. Run: pip install yfinance")
+        return None, None, None
+    
+    # Fetch sectors
+    print("\n🔄 Fetching sector ETFs...")
+    sector_tickers = ['XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLP', 'XLI', 'XLB', 'XLU', 'XLRE', 'XLC', 'SPY']
+    
+    sectors_data = {}
+    for ticker in sector_tickers:
+        try:
+            print(f"   {ticker}...", end=" ", flush=True)
+            df = yf.download(ticker, start=start_str, end=end_str, progress=False, show_errors=False)
+            if not df.empty:
+                sectors_data[ticker] = df['Adj Close']
+                print(f"✅")
+            else:
+                print(f"❌")
+        except:
+            print(f"❌")
+    
+    sectors = pd.DataFrame(sectors_data)
+    print(f"\n✅ Sectors: {sectors.shape}")
+    
+    # Fetch macro
+    print("\n🔄 Fetching macro factors...")
+    macro_data = {}
+    
+    # Gold
+    try:
+        print(f"   Gold (GLD)...", end=" ", flush=True)
+        df = yf.download('GLD', start=start_str, end=end_str, progress=False, show_errors=False)
+        if not df.empty:
+            macro_data['Gold'] = df['Adj Close']
+            print(f"✅")
+    except:
+        print(f"❌")
+    
+    # Dollar
+    try:
+        print(f"   Dollar (UUP)...", end=" ", flush=True)
+        df = yf.download('UUP', start=start_str, end=end_str, progress=False, show_errors=False)
+        if not df.empty:
+            macro_data['Dollar'] = df['Adj Close']
+            print(f"✅")
+    except:
+        print(f"❌")
+    
+    # 10Y Treasury
+    try:
+        print(f"   10Y Treasury (^TNX)...", end=" ", flush=True)
+        df = yf.download('^TNX', start=start_str, end=end_str, progress=False, show_errors=False)
+        if not df.empty:
+            macro_data['10Y Treasury'] = df['Close']
+            print(f"✅")
+    except:
+        print(f"❌")
+    
+    # 2Y Treasury (use 13-week as proxy)
+    try:
+        print(f"   2Y Treasury (^IRX)...", end=" ", flush=True)
+        df = yf.download('^IRX', start=start_str, end=end_str, progress=False, show_errors=False)
+        if not df.empty:
+            macro_data['2Y Treasury'] = df['Close']
+            print(f"✅")
+    except:
+        print(f"❌")
+    
+    macro = pd.DataFrame(macro_data)
+    print(f"\n✅ Macro: {macro.shape}")
+    
+    # Fetch VIX
+    print("\n🔄 Fetching VIX...")
+    try:
+        df = yf.download('^VIX', start=start_str, end=end_str, progress=False, show_errors=False)
+        if not df.empty:
+            vix = df['Close']
+            print(f"✅ VIX: {len(vix)} rows")
+        else:
+            vix = None
+            print(f"❌ VIX failed")
+    except:
+        vix = None
+        print(f"❌ VIX failed")
+    
+    # Align to common dates
+    print("\n🔧 Aligning to common dates...")
+    common_idx = sectors.index
+    if not macro.empty:
+        common_idx = common_idx.intersection(macro.index)
+    if vix is not None:
+        common_idx = common_idx.intersection(vix.index)
+    
+    sectors_aligned = sectors.loc[common_idx]
+    macro_aligned = macro.loc[common_idx] if not macro.empty else None
+    vix_aligned = vix.loc[common_idx] if vix is not None else None
+    
+    print(f"✅ Aligned to {len(common_idx)} dates")
+    print(f"   Range: {common_idx.min().date()} to {common_idx.max().date()}")
+    
+    return sectors_aligned, macro_aligned, vix_aligned
+
+
 def test_v32_model():
-    """Test v3.2 - back to stability."""
+    """Test v3.2 - using cache + Yahoo since FRED is down."""
     print("\n" + "="*70)
     print("SECTOR ROTATION MODEL v3.2 - BACK TO STABILITY")
     print("="*70)
-    
-    from sector_data_fetcher import SectorDataFetcher
-    from UnifiedDataFetcher import UnifiedDataFetcher
+    print("\n⚠️  FRED IS DOWN - USING YAHOO FINANCE")
     
     # Fetch data
-    print("\n📊 Step 1: Fetch Data")
+    print("\n📊 Step 1: Load Data")
     print("-"*70)
     
-    sector_fetcher = SectorDataFetcher()
-    
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=7*365)  # 7 years (proven period)
+    start_date = end_date - timedelta(days=7*365)  # 7 years
     
     start_str = start_date.strftime('%Y-%m-%d')
     end_str = end_date.strftime('%Y-%m-%d')
     
-    print(f"📅 Data period: {start_str} to {end_str} (7 years)")
-    print(f"   Rationale: Proven to work without data loss")
+    # First try cache
+    sectors_aligned, macro_aligned, vix_aligned = load_from_cache('.cache_sector_data')
     
-    sectors = sector_fetcher.fetch_sector_etfs(start_str, end_str)
-    macro = sector_fetcher.fetch_macro_factors(start_str, end_str)
+    if sectors_aligned is None:
+        sectors_aligned, macro_aligned, vix_aligned = load_from_cache('cache')
     
-    unified = UnifiedDataFetcher()
-    vix = unified.fetch_vix(start_str, end_str)
+    # If cache doesn't have what we need, fetch from Yahoo
+    if sectors_aligned is None:
+        print("\n💡 Cache doesn't have sector data - fetching from Yahoo...")
+        sectors_aligned, macro_aligned, vix_aligned = fetch_from_yahoo(start_str, end_str)
     
-    # NO FRED - it's laggy and kills our data
+    if sectors_aligned is None or sectors_aligned.empty:
+        print("\n❌ No data available. Cannot proceed.")
+        return None
     
-    sectors_aligned, macro_aligned, vix_aligned = sector_fetcher.align_data(
-        sectors, macro, vix
-    )
+    print(f"\n✅ Data ready!")
+    print(f"   Sectors: {sectors_aligned.shape}")
+    print(f"   Macro: {macro_aligned.shape if macro_aligned is not None else 'None'}")
+    print(f"   VIX: {len(vix_aligned) if vix_aligned is not None else 'None'}")
+    print(f"   Date range: {sectors_aligned.index.min().date()} to {sectors_aligned.index.max().date()}")
     
     # Feature engineering
     print("\n📊 Step 2: Feature Engineering (v3.2 - Clean)")
@@ -590,11 +765,6 @@ def test_v32_model():
     print("\n" + "="*70)
     print("✅ v3.2 TEST COMPLETE - STABILITY RESTORED")
     print("="*70)
-    print("\n💡 Changes from v3.1:")
-    print("   ❌ Removed FRED (laggy, 2000+ row loss)")
-    print("   ✅ Kept conservative RF config")
-    print("   ✅ Simplified features (63d & 126d windows)")
-    print("   ✅ Focus: Gap <0.20 for quality signals")
     
     return model, features, results, validation, confidence
 
