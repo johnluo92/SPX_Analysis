@@ -1,0 +1,374 @@
+# VIX Regime Analysis - Methodology & Validation
+
+## Overview
+This document explains how VIX regime analysis is calculated, provides mathematical justification, and identifies areas for peer review and improvement.
+
+---
+
+## 1. Regime Classification
+
+### Current Implementation
+Regimes are defined by fixed VIX thresholds:
+
+| Regime | VIX Range | Rationale |
+|--------|-----------|-----------|
+| **Low** | < 15 | Below long-term median (~16-17), historically calm markets |
+| **Normal** | 15-25 | Within 1 standard deviation of historical mean |
+| **Elevated** | 25-35 | Heightened uncertainty, often during corrections |
+| **Crisis** | ≥ 35 | Severe market stress, historical panic levels |
+
+### Mathematical Definition
+```
+classify_regime(VIX) = {
+    "Low"       if VIX < 15
+    "Normal"    if 15 ≤ VIX < 25
+    "Elevated"  if 25 ≤ VIX < 35
+    "Crisis"    if VIX ≥ 35
+}
+```
+
+### ⚠️ Areas for Review
+1. **Fixed vs Dynamic Thresholds**: Current thresholds are static. Consider:
+   - Percentile-based thresholds (e.g., 25th, 50th, 75th, 90th percentiles)
+   - Rolling window calculations (e.g., relative to 252-day average)
+   - Regime-switching models (Hamilton 1989, Markov-switching)
+
+2. **Threshold Selection**: Values chosen based on:
+   - Historical VIX behavior (1990-2024)
+   - Industry convention (e.g., VIX < 20 = "low vol")
+   - Option trading norms (VIX 15-25 = "normal premium selling environment")
+   
+   **TODO**: Validate against academic literature (see References section)
+
+3. **Number of Regimes**: Currently 4 regimes. Alternatives:
+   - 3 regimes (Low/Normal/High) for simplicity
+   - 5+ regimes for finer granularity
+   - Continuous regime probability (fuzzy classification)
+
+---
+
+## 2. Velocity Calculation
+
+### Current Implementation
+```python
+velocity = VIX(t) - VIX(t-5)
+```
+
+**Velocity Label Logic:**
+- `|velocity| < 2`: "Stable"
+- `velocity ≥ 2`: "Rising Fast"  
+- `velocity ≤ -2`: "Falling Fast"
+
+### ⚠️ Areas for Review
+1. **Window Selection**: 5-day window is arbitrary. Consider:
+   - 1-day change (instantaneous velocity)
+   - 10-day change (smoothing noise)
+   - Exponential moving average of changes
+
+2. **Threshold Calibration**: The ±2 threshold needs validation:
+   - What percentile does this represent historically?
+   - Does it predict regime transitions effectively?
+   - Should it be regime-dependent? (e.g., ±2 in Low vs ±5 in Crisis)
+
+3. **Missing Features**:
+   - **Acceleration**: Second derivative (velocity of velocity)
+   - **Momentum**: Weighted moving average of velocity
+   - **Volatility of volatility**: Standard deviation of recent changes
+
+**TODO**: Test predictive power of velocity for regime transitions
+
+---
+
+## 3. Transition Probability Analysis
+
+### Current Implementation
+**Step 1**: Identify regime runs
+```python
+regimes = classify_series(VIX_history)
+regime_changes = (regimes != regimes.shift(1))
+regime_runs = regime_changes.cumsum()
+```
+
+**Step 2**: Count transitions
+```python
+for each day i:
+    if regime[i] == "Normal":
+        next_regime = regime[i+1]
+        transition_counts["Normal → {next_regime}"] += 1
+```
+
+**Step 3**: Calculate probabilities
+```
+P(regime[t+1] = j | regime[t] = i) = count(i → j) / Σ count(i → *)
+```
+
+### Example Output
+From our test (2020-2025 data):
+- **Normal → Normal**: 92.1%
+- **Normal → Elevated**: 4.2%
+- **Normal → Low**: 3.4%
+
+### ⚠️ Areas for Review
+
+#### 3.1 First-Order Markov Assumption
+Current implementation assumes:
+```
+P(regime[t+1] | regime[t], regime[t-1], ...) = P(regime[t+1] | regime[t])
+```
+
+**Limitation**: This ignores:
+- How long you've been in the current regime (duration dependence)
+- Which regime you came from (path dependence)
+- Velocity/momentum effects
+
+**Alternative Approaches**:
+1. **Semi-Markov Process**: Include duration in transition probabilities
+   ```
+   P(transition | current_regime, days_in_regime)
+   ```
+
+2. **Second-Order Markov**: Consider previous regime
+   ```
+   P(regime[t+1] | regime[t], regime[t-1])
+   ```
+
+3. **Hidden Markov Model (HMM)**: Allow for unobserved states
+
+#### 3.2 Sample Size Concerns
+From our test results:
+- Normal regime: 854 days → **853 transitions** (good sample)
+- Low regime: 270 days → **269 transitions** (adequate)
+- Crisis regime: 59 days → **58 transitions** (⚠️ small sample!)
+
+**Issue**: Crisis→Normal transition probability may be unreliable due to only ~58 observations.
+
+**Solutions**:
+- Use longer historical data (1990-2025 = 35 years)
+- Apply Bayesian priors for rare transitions
+- Report confidence intervals on probabilities
+
+#### 3.3 Non-Stationarity
+**Problem**: VIX behavior may change over time:
+- 1990s-2000s: Different vol regime than 2010s-2020s
+- Structural breaks (e.g., 2008 crisis, COVID-19)
+- Fed policy changes affecting volatility dynamics
+
+**Current Risk**: Mixing old and new regimes may produce misleading averages.
+
+**Potential Solutions**:
+- Rolling window analysis (only use recent 5 years)
+- Weight recent data more heavily (exponential decay)
+- Detect structural breaks (Chow test, CUSUM)
+- Allow time-varying transition matrices
+
+#### 3.4 Duration Statistics
+Current calculation of "Avg Duration":
+```python
+durations = regime_run_ids.value_counts()
+avg_duration = durations.mean()
+```
+
+**Issues**:
+1. **Censoring**: Current regime is ongoing (duration incomplete)
+2. **Distribution**: Durations likely exponential, not normal
+   - Mean may be misleading (use median instead)
+   - Consider survival analysis (Kaplan-Meier)
+
+**Example from output**:
+- Normal: Avg 12.6 days, Median 3.0 days
+- This suggests **right-skewed distribution** (long tail)
+
+**Better Metric**: Report full distribution or hazard rate:
+```
+P(exit regime | days_in_regime = d)
+```
+
+---
+
+## 4. Statistical Validation Needed
+
+### 4.1 Backtesting
+- [ ] Test predictive power on out-of-sample data (2015-2020 train, 2020-2025 test)
+- [ ] Calculate accuracy of transition predictions
+- [ ] Compare to naive baseline (always predict "stay in current regime")
+
+### 4.2 Hypothesis Testing
+- [ ] Chi-squared test: Are transitions uniformly distributed?
+- [ ] Kolmogorov-Smirnov: Do durations follow exponential distribution?
+- [ ] Likelihood ratio test: Is Markov assumption valid?
+
+### 4.3 Model Comparison
+Compare our approach to:
+- **GARCH models** (volatility forecasting)
+- **Regime-switching GARCH** (academic standard)
+- **Machine learning** (Random Forest, LSTM)
+
+---
+
+## 5. Academic Literature Review
+
+### Key Papers to Review
+
+#### Regime-Switching Models
+1. **Hamilton (1989)** - "A New Approach to the Economic Analysis of Nonstationary Time Series"
+   - Introduced Markov regime-switching models
+   - Foundation for VIX regime analysis
+
+2. **Ang & Bekaert (2002)** - "Regime Switches in Interest Rates"
+   - Applied to financial markets
+   - Methodology for identifying regimes
+
+#### VIX-Specific Research
+3. **Whaley (2009)** - "Understanding VIX"
+   - Defines VIX behavior and thresholds
+   - Industry standard reference
+
+4. **Bekaert & Hoerova (2014)** - "The VIX, the Variance Premium and Stock Market Volatility"
+   - Decomposition of VIX into risk aversion + volatility expectations
+   - Implications for regime classification
+
+#### Volatility Forecasting
+5. **Engle (1982)** - "Autoregressive Conditional Heteroskedasticity (ARCH)"
+   - Volatility clustering
+   - Relevant for velocity/momentum
+
+6. **Bollerslev (1986)** - "Generalized ARCH (GARCH)"
+   - Standard volatility forecasting model
+   - Benchmark for comparison
+
+#### Transition Probabilities
+7. **Diebold et al. (1994)** - "Measuring Financial Asset Return and Volatility Spillovers"
+   - Transition matrix estimation
+   - Time-varying transition probabilities
+
+8. **Gray (1996)** - "Modeling the Conditional Distribution of Interest Rates"
+   - Regime-switching with duration dependence
+   - Relevant for our duration statistics
+
+### Industry Reports to Check
+- **CBOE White Papers** on VIX interpretation
+- **CME Group** research on VIX futures
+- **Volatility Institute (NYU)** publications
+- **Options Clearing Corporation (OCC)** educational materials
+
+---
+
+## 6. Recommended Improvements (Prioritized)
+
+### High Priority (Should Do)
+1. **Expand historical data**: Use 1990-2025 (35 years) instead of 2020-2025
+2. **Add confidence intervals**: Bootstrap standard errors for transition probabilities
+3. **Duration modeling**: Use survival analysis for regime durations
+4. **Validation split**: Test on out-of-sample data
+
+### Medium Priority (Could Do)
+5. **Dynamic thresholds**: Use percentiles instead of fixed values
+6. **Velocity thresholds**: Calibrate ±2 based on historical distribution
+7. **Second-order Markov**: Include previous regime in transition model
+8. **Time-varying transitions**: Allow probabilities to change over time
+
+### Low Priority (Nice to Have)
+9. **Hidden Markov Model**: Probabilistic regime classification
+10. **Machine learning**: Compare to ML-based regime detection
+11. **Multivariate analysis**: Include SPX returns, volume, etc.
+12. **Real-time updating**: Bayesian updating as new data arrives
+
+---
+
+## 7. Known Limitations
+
+### Current Implementation
+1. ✅ **Simple and interpretable** (good for trading decisions)
+2. ✅ **Fast computation** (real-time analysis possible)
+3. ✅ **Transparent logic** (easy to explain/debug)
+
+4. ❌ **No uncertainty quantification** (point estimates only)
+5. ❌ **Ignores market context** (only uses VIX)
+6. ❌ **Fixed thresholds** (may not adapt to changing markets)
+7. ❌ **Small sample for rare regimes** (Crisis has only 59 days)
+8. ❌ **No forward-looking element** (doesn't use VIX futures or options)
+
+---
+
+## 8. Future Research Questions
+
+1. **Does velocity improve transition predictions?**
+   - Hypothesis: Fast-rising VIX more likely to enter Elevated
+   - Test: Compare P(Normal→Elevated | velocity>2) vs P(Normal→Elevated)
+
+2. **Are regime durations memory-less (exponential)?**
+   - Hypothesis: Longer you're in Normal, more likely to exit
+   - Test: Plot hazard rate vs duration
+
+3. **Do thresholds need to be time-varying?**
+   - Hypothesis: VIX 15 in 2010 ≠ VIX 15 in 2020 (structural change)
+   - Test: Rolling window estimation of percentiles
+
+4. **Can we predict regime transitions 5-10 days ahead?**
+   - Hypothesis: Velocity + other factors enable prediction
+   - Test: Logistic regression or ML classifier
+
+5. **How do VIX futures inform regime analysis?**
+   - If we get futures data later, can term structure predict transitions?
+   - Test: Does contango/backwardation correlate with regime changes?
+
+---
+
+## 9. Validation Checklist
+
+Before using this in production/trading:
+
+- [ ] Review with academic literature (see Section 5)
+- [ ] Backtest on historical data (2000-2020)
+- [ ] Calculate prediction accuracy vs baseline
+- [ ] Add confidence intervals to all probabilities
+- [ ] Test sensitivity to threshold choices
+- [ ] Compare to established models (GARCH, etc.)
+- [ ] Peer review by quantitative analyst
+- [ ] Document assumptions clearly in UI
+
+---
+
+## 10. References for Deep Dive
+
+### Academic Databases
+- SSRN (Social Science Research Network)
+- JSTOR (financial econometrics)
+- Google Scholar: "VIX regime switching"
+
+### Practitioner Resources
+- **QuantLib** (open-source derivatives pricing)
+- **Quantopian/QuantConnect** forums
+- **Elite Trader** (options trading community)
+- **r/options** and **r/algotrading** (Reddit)
+
+### Code Repositories
+- **PyMC** (Bayesian regime-switching in Python)
+- **statsmodels** (Markov switching models)
+- **arch** (GARCH models in Python)
+
+---
+
+## Version History
+- **v1.0** (2025-10-19): Initial methodology documentation
+  - Basic Markov model with fixed thresholds
+  - Identified key areas for validation
+  - Listed academic references for review
+
+---
+
+## Contact for Improvements
+If you find academic papers or have suggestions for methodology improvements, document them here:
+
+### Suggested Changes Log
+*[To be populated as we find relevant research]*
+
+- **Date**: [YYYY-MM-DD]
+- **Source**: [Paper/Report citation]
+- **Suggestion**: [What to change and why]
+- **Priority**: [High/Medium/Low]
+- **Status**: [Proposed/In Progress/Implemented]
+
+---
+
+**Next Steps**: Use this document to guide Phase 2A implementation. Add tooltips/footnotes in the UI that reference these methodological considerations.

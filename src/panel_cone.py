@@ -5,7 +5,7 @@ Displays:
 - Historical SPX price action
 - VIX-implied probability cones (1σ, 2σ)
 - Volatility scenario cones (VIX expansion/contraction)
-- Strike recommendations for spreads
+- Optional strike recommendations (configurable)
 """
 
 import pandas as pd
@@ -122,7 +122,7 @@ class ProbabilityConePanel:
                       current_vix: float,
                       lookback_days: int = 30,
                       forward_days: int = 14,
-                      show_strikes: bool = True,
+                      show_strikes: bool = False,  # ✅ Default to False
                       strike_std_dev: float = 0.85,
                       wing_width: float = 25,
                       show_vol_scenarios: bool = True,
@@ -137,7 +137,7 @@ class ProbabilityConePanel:
             current_vix: Current VIX level
             lookback_days: Days of historical data
             forward_days: Days to project forward
-            show_strikes: Show suggested strikes
+            show_strikes: Show suggested strikes (default: False)
             strike_std_dev: Std devs for short strike
             wing_width: Spread width
             show_vol_scenarios: Show VIX expansion/contraction
@@ -247,7 +247,7 @@ class ProbabilityConePanel:
                 x=cone_dates,
                 y=cone_high['1sigma_upper'],
                 mode='lines',
-                name=f'If VIX→{vix_high:.0f}',
+                name=f'If VIX↑{vix_high:.0f}',
                 line=dict(color='rgba(231, 76, 60, 0.7)', width=1.5, dash='dash'),
                 hovertemplate=f'VIX {vix_high:.0f}: %{{y:.2f}}<extra></extra>',
                 showlegend=False,
@@ -272,7 +272,7 @@ class ProbabilityConePanel:
                     x=cone_dates,
                     y=cone_low['1sigma_upper'],
                     mode='lines',
-                    name=f'If VIX→{vix_low:.0f}',
+                    name=f'If VIX↓{vix_low:.0f}',
                     line=dict(color='rgba(46, 204, 113, 0.8)', width=1.5, dash='dash'),
                     hovertemplate=f'VIX {vix_low:.0f}: %{{y:.2f}}<extra></extra>',
                     showlegend=False,
@@ -287,7 +287,7 @@ class ProbabilityConePanel:
                     showlegend=False,
                 ), row=row, col=col)
         
-        # Add strikes
+        # ✅ STRIKE LINES ONLY SHOWN IF EXPLICITLY ENABLED
         if show_strikes:
             strikes = self.calculate_strikes(
                 current_spx, current_vix, forward_days, strike_std_dev, wing_width
@@ -339,47 +339,5 @@ class ProbabilityConePanel:
                 xanchor='left',
                 yanchor='top',
             )
-        
-        return fig
-    
-    def create_legend(self,
-                      fig: go.Figure,
-                      current_vix: float,
-                      show_vol_scenarios: bool = True,
-                      row: int = 1,
-                      col: int = 2) -> go.Figure:
-        """Create legend panel for this subplot."""
-        vix_high = current_vix + 10
-        vix_low = max(current_vix - 5, 12)
-        
-        legend_text = (
-            f"<b>Legend - Panel 1</b><br><br>"
-            f"<span style='color:#2E86AB'>━━━</span> SPX Historical<br>"
-            f"<span style='color:black'>●</span> Today<br>"
-            f"<span style='color:#8B5A9B'>━━━</span> ±1σ Range (68%)<br>"
-            f"<span style='color:#8B5A9B'>· · ·</span> ±2σ Range<br>"
-            f"<span style='color:gray'>- - -</span> No Move<br>"
-        )
-        
-        if show_vol_scenarios:
-            legend_text += f"<span style='color:rgba(231,76,60,0.7)'>- - -</span> If VIX→{vix_high:.0f}<br>"
-            if current_vix > 20:
-                legend_text += f"<span style='color:rgba(46,204,113,0.8)'>- - -</span> If VIX→{vix_low:.0f}<br>"
-        
-        fig.add_annotation(
-            xref=f'x{2 if row == 1 else row*2}',
-            yref=f'y{2 if row == 1 else row*2}',
-            x=0.5, y=0.5,
-            text=legend_text,
-            showarrow=False,
-            xanchor='center',
-            yanchor='middle',
-            align='left',
-            font=dict(size=10),
-            bordercolor='#2E86AB',
-            borderwidth=2,
-            borderpad=10,
-            bgcolor='rgba(255, 255, 255, 0.95)',
-        )
         
         return fig
