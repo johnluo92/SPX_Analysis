@@ -1,0 +1,14 @@
+{
+  "fetch_date": "2025-10-20T15:32:27.583792",
+  "rows": 1760,
+  "start_date": "2018-10-22 00:00:00",
+  "end_date": "2025-10-17 00:00:00",
+  "columns": [
+    "Gold",
+    "Crude Oil",
+    "Dollar",
+    "10Y Treasury",
+    "5Y Treasury"
+  ],
+  "ticker_config_hash": 5667202812266771422
+}

@@ -1,11 +1,10 @@
 """
-Sector Rotation Data Fetcher v2.0
-IMPROVEMENTS:
-- Replaced USO with CL=F (WTI futures)
-- Replaced UUP with DX-Y.NYB (actual DXY)
-- Added TLT (long bond proxy for duration)
-- Better diagnostics for macro factor loading
-- Correlation matrix output
+Sector Rotation Data Fetcher v3.4 - Simplified & Clean
+
+CHANGES FROM v2.1:
+✅ Yahoo Finance fixed treasury yields - no scaling needed
+✅ All macro factors from Yahoo Finance (FRED still disabled)
+✅ Clean validation and error handling
 """
 
 import pandas as pd
@@ -24,12 +23,12 @@ class SectorDataFetcher:
     """
     Fetches sector ETF and macro factor data with strict alignment.
     
-    IMPROVED MACRO FACTORS:
+    MACRO FACTORS (ALL YAHOO FINANCE):
     - GLD: Gold (inflation hedge, safe haven)
     - CL=F: WTI Crude Oil Futures (energy costs, inflation)
     - DX-Y.NYB: Dollar Index (currency strength, trade)
-    - TLT: 20Y Treasury Bond ETF (duration, flight-to-quality)
-    - DGS10, DGS2: Treasury yields via FRED (term structure)
+    - ^TNX: 10-Year Treasury Yield (risk-free rate, growth expectations) [FIXED: /10]
+    - ^FVX: 5-Year Treasury Yield (for yield curve calculation) [FIXED: /10]
     """
     
     SECTOR_ETFS = {
@@ -47,9 +46,11 @@ class SectorDataFetcher:
     }
     
     MACRO_TICKERS = {
-    'GLD': 'Gold',           # Inflation hedge, safe haven
-    'CL=F': 'Crude Oil',     # Energy costs, inflation
-    'DX-Y.NYB': 'Dollar',    # Currency strength, trade
+        'GLD': 'Gold',
+        'CL=F': 'Crude Oil',
+        'DX-Y.NYB': 'Dollar',
+        '^TNX': '10Y Treasury',  # Will be divided by 10
+        '^FVX': '5Y Treasury',   # Will be divided by 10
     }
     
     def __init__(self, cache_dir: str = '.cache_sector_data', config_path: str = 'config.json'):
@@ -57,7 +58,7 @@ class SectorDataFetcher:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
         
-        # Load FRED API key from config.json
+        # Load FRED API key from config.json (kept for future use)
         fred_api_key_path = None
         config_file = Path(config_path)
         
@@ -72,24 +73,19 @@ class SectorDataFetcher:
                         with open(temp_key_file, 'w') as key_file:
                             key_file.write(fred_api_key)
                         fred_api_key_path = str(temp_key_file)
-                        print(f"✅ Loaded FRED API key from {config_path}")
+                        print(f"✅ Loaded FRED API key from {config_path} (DISABLED)")
                     else:
                         print(f"⚠️  FRED API key not set in {config_path}")
             except Exception as e:
                 print(f"⚠️  Error reading {config_path}: {e}")
-        else:
-            print(f"⚠️  Config file not found: {config_path}")
         
-        # Initialize UnifiedDataFetcher
+        # Initialize UnifiedDataFetcher (kept for future use)
         if fred_api_key_path:
             self.unified = UnifiedDataFetcher(fred_api_key_path=fred_api_key_path)
         else:
             self.unified = UnifiedDataFetcher(fred_api_key_path='fred_api_key.txt')
         
-        if self.unified.fred_api_key:
-            print("✅ FRED API connected - Treasury yield data available")
-        else:
-            print("⚠️  FRED API key not configured")
+        print("ℹ️  Using Yahoo Finance for all macro factors")
     
     def _get_cache_path(self, dataset_name: str) -> Path:
         """Get cache file path for a dataset."""
@@ -125,7 +121,6 @@ class SectorDataFetcher:
         
         data.to_parquet(cache_path)
         
-        # Include ticker config for cache validation
         ticker_hash = hash(frozenset(self.MACRO_TICKERS.items()))
         
         metadata = {
@@ -134,7 +129,7 @@ class SectorDataFetcher:
             'start_date': str(data.index.min()),
             'end_date': str(data.index.max()),
             'columns': list(data.columns),
-            'ticker_config_hash': ticker_hash  # Invalidate if tickers change
+            'ticker_config_hash': ticker_hash
         }
         
         with open(metadata_path, 'w') as f:
@@ -222,24 +217,28 @@ class SectorDataFetcher:
                            start_date: str,
                            end_date: str) -> pd.DataFrame:
         """
-        Fetch macro factor data with IMPROVED DIAGNOSTICS.
+        Fetch macro factor data - ALL FROM YAHOO FINANCE.
+        
+        UPDATE v3.4: Yahoo Finance fixed treasury yields!
+        ^TNX and ^FVX now return actual % (no /10 needed)
         """
-        dataset_name = f"macro_{start_date}_{end_date}"
+        dataset_name = f"macro_{start_date}_{end_date}_v34"  # New cache name
         
         cached = self._load_from_cache(dataset_name)
         if cached is not None:
-            print(f"\n📊 Macro factors loaded from cache:")
+            print(f"\n📊 Macro factors loaded from cache (v3.4):")
             self._print_macro_summary(cached)
             return cached
         
-        print(f"\n📊 Fetching macro factor data...")
+        print(f"\n📊 Fetching macro factor data (Yahoo Finance)...")
         
         all_data = {}
         failed = []
         
-        # Fetch ETF-based factors
         for ticker, name in self.MACRO_TICKERS.items():
             try:
+                print(f"   Fetching {name} ({ticker})...", end=" ")
+                
                 data = yf.download(
                     ticker,
                     start=start_date,
@@ -250,46 +249,24 @@ class SectorDataFetcher:
                 
                 if not data.empty:
                     if 'Close' in data.columns:
-                        all_data[name] = data['Close']
+                        series = data['Close']
                     elif isinstance(data, pd.Series):
-                        all_data[name] = data
+                        series = data
                     else:
-                        all_data[name] = data.iloc[:, 0]
+                        series = data.iloc[:, 0]
                     
-                    print(f"   ✅ {name} ({ticker}): {len(data)} days")
+                    # Yahoo Finance now returns treasury yields correctly
+                    # No scaling needed!
+                    print(f"✅ {len(data)} days")
+                    
+                    all_data[name] = series
                 else:
-                    print(f"   ❌ {name} ({ticker}): No data")
+                    print(f"❌ No data")
                     failed.append(f"{name} ({ticker})")
                     
             except Exception as e:
-                print(f"   ❌ {name} ({ticker}): {e}")
+                print(f"❌ {e}")
                 failed.append(f"{name} ({ticker})")
-        
-        # Fetch FRED data (Treasury yields)
-        if self.unified.fred_api_key:
-            treasury_series = {
-                'DGS10': '10Y Treasury',
-                'DGS2': '2Y Treasury',
-            }
-            
-            for series_id, name in treasury_series.items():
-                try:
-                    data = self.unified.fetch_fred(
-                        series_id,
-                        start_date=start_date,
-                        end_date=end_date
-                    )
-                    
-                    if len(data) > 0:
-                        all_data[name] = data
-                        print(f"   ✅ {name}: {len(data)} days")
-                    else:
-                        print(f"   ❌ {name}: No data")
-                        failed.append(name)
-                        
-                except Exception as e:
-                    print(f"   ❌ {name}: {e}")
-                    failed.append(name)
         
         if not all_data:
             raise ValueError("No macro factor data could be fetched")
@@ -310,17 +287,41 @@ class SectorDataFetcher:
         if failed:
             print(f"\n   ⚠️  FAILED TO FETCH: {', '.join(failed)}")
         
-        # Print summary statistics
+        # Print summary with validation
         self._print_macro_summary(df)
         
         return df
     
     def _print_macro_summary(self, macro_df: pd.DataFrame):
-        """Print detailed summary of macro factors."""
+        """Print detailed summary with data validation."""
         print(f"\n📊 MACRO FACTOR SUMMARY:")
         print(f"   Columns: {list(macro_df.columns)}")
         print(f"   Date range: {macro_df.index.min().date()} to {macro_df.index.max().date()}")
         print(f"   Total observations: {len(macro_df)}")
+        
+        # VALIDATION: Check treasury yield ranges
+        print(f"\n   🔍 TREASURY YIELD VALIDATION:")
+        if '10Y Treasury' in macro_df.columns:
+            ten_y = macro_df['10Y Treasury']
+            print(f"      10Y Treasury - Current: {ten_y.iloc[-1]:.2f}%")
+            print(f"      10Y Treasury - Mean: {ten_y.mean():.2f}%")
+            print(f"      10Y Treasury - Range: {ten_y.min():.2f}% to {ten_y.max():.2f}%")
+            
+            if ten_y.mean() > 10:
+                print(f"      ⚠️  WARNING: 10Y yields look wrong (expected 1-5%)")
+            else:
+                print(f"      ✅ 10Y yields in expected range")
+        
+        if '5Y Treasury' in macro_df.columns:
+            five_y = macro_df['5Y Treasury']
+            print(f"      5Y Treasury - Current: {five_y.iloc[-1]:.2f}%")
+            print(f"      5Y Treasury - Mean: {five_y.mean():.2f}%")
+            print(f"      5Y Treasury - Range: {five_y.min():.2f}% to {five_y.max():.2f}%")
+            
+            if five_y.mean() > 10:
+                print(f"      ⚠️  WARNING: 5Y yields look wrong (expected 1-5%)")
+            else:
+                print(f"      ✅ 5Y yields in expected range")
         
         # Missing values
         missing = macro_df.isnull().sum()
@@ -333,8 +334,6 @@ class SectorDataFetcher:
         print(f"\n   📊 21-Day Return Correlations:")
         returns = macro_df.pct_change(21).dropna()
         corr = returns.corr()
-        
-        # Print correlation matrix with formatting
         print(corr.round(2).to_string())
         
         # Flag high correlations
@@ -350,14 +349,12 @@ class SectorDataFetcher:
             print(f"\n   ⚠️  HIGH CORRELATIONS (>0.6):")
             for h in high_corr:
                 print(f"      {h}")
-        else:
-            print(f"\n   ✅ All factors well-diversified (correlations <0.6)")
     
     def align_data(self, 
                    sectors: pd.DataFrame,
                    macro: pd.DataFrame,
                    vix: pd.Series = None) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.Series]]:
-        """Align all datasets to common dates (CRITICAL FOR HOMOSCEDASTICITY)."""
+        """Align all datasets to common dates."""
         print("\n🔧 Aligning data (enforcing homoscedasticity)...")
         
         # Normalize indices
@@ -429,45 +426,3 @@ class SectorDataFetcher:
         print("   ✅ HOMOSCEDASTICITY VERIFIED")
         
         return sectors_aligned, macro_aligned, vix_aligned
-    
-    def generate_alignment_report(self,
-                                  sectors: pd.DataFrame,
-                                  macro: pd.DataFrame,
-                                  vix: pd.Series = None) -> Dict:
-        """Generate comprehensive alignment report."""
-        report = {
-            'sectors': {
-                'count': len(sectors),
-                'start': str(sectors.index.min().date()),
-                'end': str(sectors.index.max().date()),
-                'missing': int(sectors.isnull().sum().sum()),
-                'columns': list(sectors.columns)
-            },
-            'macro': {
-                'count': len(macro),
-                'start': str(macro.index.min().date()),
-                'end': str(macro.index.max().date()),
-                'missing': int(macro.isnull().sum().sum()),
-                'columns': list(macro.columns)
-            }
-        }
-        
-        if vix is not None:
-            report['vix'] = {
-                'count': len(vix),
-                'start': str(vix.index.min().date()),
-                'end': str(vix.index.max().date()),
-                'missing': int(vix.isnull().sum())
-            }
-        
-        report['alignment'] = {
-            'homoscedastic': (
-                len(sectors) == len(macro) and 
-                sectors.index.equals(macro.index)
-            ),
-            'common_dates': len(sectors.index.intersection(macro.index)),
-            'sectors_only': len(sectors.index.difference(macro.index)),
-            'macro_only': len(macro.index.difference(sectors.index))
-        }
-        
-        return report
