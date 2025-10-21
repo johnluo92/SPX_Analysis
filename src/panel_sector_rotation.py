@@ -149,47 +149,6 @@ class SectorRotationPanel:
         high_conf_count = len(confidence_df[confidence_df['Tier'] == 'HIGH'])
         medium_conf_count = len(confidence_df[confidence_df['Tier'] == 'MEDIUM'])
         
-        insight_text = (
-            f"<b>ML Sector Rotation Predictions (21-Day Horizon)</b><br>"
-            f"<br>"
-            f"{rec_text}<br>"
-            f"<br>"
-            f"<b>Model Quality:</b><br>"
-            f"• High Confidence: {high_conf_count} sectors<br>"
-            f"• Medium Confidence: {medium_conf_count} sectors<br>"
-            f"• Avg Overfitting Gap: {avg_gap:.2f}<br>"
-            f"<br>"
-            f"<b>How to Use:</b><br>"
-            f"• Focus on HIGH/MEDIUM confidence<br>"
-            f"• Rotation Prob >55% = potential buy<br>"
-            f"• Consider category (macro-sensitive<br>"
-            f"  sectors perform better in model)<br>"
-            f"<br>"
-            f"<b>Color Guide:</b><br>"
-            f"• <span style='background-color:rgba(46,204,113,0.3)'>Green</span> = Strong signal (>55% + good confidence)<br>"
-            f"• <span style='background-color:rgba(231,76,60,0.2)'>Red</span> = Low confidence (use caution)<br>"
-            f"<br>"
-            f"<i>Model trained on 7 years of data<br>"
-            f"with sector-specific hyperparameters</i>"
-        )
-        
-        fig.add_annotation(
-            xref='paper',
-            yref='paper',
-            x=0.5,
-            y=0.28,  # Position below Panel 3
-            text=insight_text,
-            showarrow=False,
-            xanchor='center',
-            yanchor='top',
-            align='left',
-            font=dict(size=10),
-            bordercolor='#2E86AB',
-            borderwidth=2,
-            borderpad=10,
-            bgcolor='rgba(255, 255, 255, 0.95)',
-        )
-        
         return fig
     
     def create_category_summary(self, predictions: pd.DataFrame) -> str:

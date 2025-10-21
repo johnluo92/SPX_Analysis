@@ -295,9 +295,6 @@ class ConeVisualizerV4:
             row=4, col=1
         )
         
-        # Add IV/RV legend in a better position (right side, not overlapping)
-        self._add_iv_rv_legend(fig, current_vix, iv_stats, iv_rv_years)
-        
         # ==================== FINAL LAYOUT ====================
         
         fig.update_xaxes(title_text="Date", row=2, col=1)
@@ -427,29 +424,6 @@ class ConeVisualizerV4:
             return "Premium buying favored"
         else:
             return "Neutral edge"
-    
-    def _add_iv_rv_legend(self, fig, current_vix: float, stats: dict, iv_rv_years: int):
-        """Add IV/RV legend positioned to avoid graph collision."""
-        legend_text = (
-            f"<b>Key Findings ({iv_rv_years}Y)</b><br>"
-            f"<br>"
-            f"<b>Legend:</b><br>"
-            f"<span style='color:#2E86AB'>━━</span> Implied Vol (VIX)<br>"
-            f"<span style='color:#F18F01'>━━</span> Realized Vol<br>"
-            f"<br>"
-            f"<b>Overall:</b><br>"
-            f"IV>RV: {stats['overall_premium_pct']:.0f}%<br>"
-            f"Avg: {stats['overall_avg_spread']:+.1f}%<br>"
-            f"<br>"
-            f"<b>Current VIX {current_vix:.0f}:</b><br>"
-            f"RV avg: {stats['current_avg_realized']:.1f}%<br>"
-            f"IV>RV: {stats['current_premium_pct']:.0f}%<br>"
-            f"Spread: {stats['current_avg_spread']:+.1f}%<br>"
-            f"<br>"
-            f"<i>Premium selling<br>"
-            f"works best in<br>"
-            f"normal vol regimes</i>"
-        )
         
         # Position on the RIGHT side, using x domain coordinates
         fig.add_annotation(
@@ -469,16 +443,12 @@ class ConeVisualizerV4:
             bgcolor='rgba(255, 255, 255, 0.95)',
         )
     
-    def show_chart(self, **kwargs):
-        """Create and display the chart."""
-        fig = self.plot_decision_chart(**kwargs)
-        fig.show()
-    
     def save_chart(self, filename: str = 'spx_dashboard_v4.0.html', **kwargs):
         """Create and save the chart to HTML."""
         fig = self.plot_decision_chart(**kwargs)
         fig.write_html(filename)
         print(f"💾 Chart saved to {filename}")
+        fig.show()
 
 
 if __name__ == "__main__":
@@ -488,7 +458,6 @@ if __name__ == "__main__":
     print("="*60)
     
     viz = ConeVisualizerV4()
-    viz.show_chart()
     viz.save_chart()
     
     print("\n✅ DONE!")
