@@ -10,25 +10,31 @@ from typing import List
 
 from config import (
     LONG_HORIZON_SECTORS, RS_WINDOWS_SHORT, RS_WINDOWS_LONG,
-    MACRO_WINDOWS, VIX_WINDOWS
+    MACRO_WINDOWS, VIX_WINDOWS, FRED_WINDOWS
 )
 
 
 class FeatureEngine:
-    """Build features from sector and macro data."""
+    """Build features from sector, macro, and FRED data."""
     
     def __init__(self):
         self.scaler = StandardScaler()
     
     def build(self, sectors: pd.DataFrame, macro: pd.DataFrame, 
-              vix: pd.Series) -> pd.DataFrame:
+              vix: pd.Series, fred: pd.DataFrame = None) -> pd.DataFrame:
         """Build all features."""
-        features = pd.concat([
+        feature_dfs = [
             self._relative_strength(sectors),
             self._macro_features(macro),
             self._vix_features(vix),
             self._seasonality(sectors.index)
-        ], axis=1)
+        ]
+        
+        # Add FRED features if available
+        if fred is not None and not fred.empty:
+            feature_dfs.append(self._fred_features(fred))
+        
+        features = pd.concat(feature_dfs, axis=1)
         
         return features.dropna()
     
@@ -79,6 +85,32 @@ class FeatureEngine:
             oil_vel = macro['Crude Oil'].squeeze().pct_change(21)
             dollar_vel = macro['Dollar'].squeeze().pct_change(21)
             features['oil_dollar_interact'] = oil_vel * dollar_vel * 100
+        
+        return features
+    
+    def _fred_features(self, fred: pd.DataFrame) -> pd.DataFrame:
+        """FRED economic indicators features."""
+        features = pd.DataFrame(index=fred.index)
+        
+        for col in fred.columns:
+            # Level
+            features[f'{col}_level'] = fred[col].squeeze()
+            
+            # Velocity (changes over time)
+            for window in FRED_WINDOWS:
+                features[f'{col}_vel_{window}'] = fred[col].squeeze().diff(window)
+        
+        # Interaction: 10Y-2Y spread velocity (steepening/flattening)
+        if '10Y-2Y Yield Spread' in fred.columns:
+            spread = fred['10Y-2Y Yield Spread'].squeeze()
+            for window in FRED_WINDOWS:
+                features[f'yield_curve_momentum_{window}'] = spread.diff(window)
+        
+        # Inflation expectations momentum
+        if '10Y Breakeven Inflation' in fred.columns:
+            inflation = fred['10Y Breakeven Inflation'].squeeze()
+            for window in FRED_WINDOWS:
+                features[f'inflation_momentum_{window}'] = inflation.diff(window)
         
         return features
     

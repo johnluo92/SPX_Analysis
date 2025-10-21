@@ -40,10 +40,21 @@ MACRO_TICKERS = {
 FRED_SERIES = {
     'T10YIE': '10Y Breakeven Inflation',
     'T5YIFR': '5Y Forward Inflation',
-    'T10Y2Y': '10Y-2Y Yield Spread'
+    'T10Y2Y': '10Y-2Y Yield Spread',
+    'VIXCLS': 'VIX Close'
 }
 
 FRED_API_KEY_PATH = 'config.json'
+
+# ============================================================================
+# SPX PREDICTION DATA SOURCES (MINIMAL)
+# ============================================================================
+
+SPX_INDICATORS = {
+    '^VIX': 'VIX',
+}
+
+SENTIMENT_LOOKBACK = [5, 10, 21]
 
 # ============================================================================
 # SECTOR CATEGORIZATION
@@ -123,6 +134,10 @@ FORWARD_WINDOW = 21  # Days ahead to predict
 TEST_SPLIT = 0.2
 WALK_FORWARD_SPLITS = 5
 RANDOM_STATE = 42
+
+# SPX Prediction Model Parameters
+SPX_FORWARD_WINDOWS = [7, 14, 21]  # Multiple prediction horizons
+SPX_RANGE_THRESHOLDS = [0.02, 0.03, 0.05]  # ±2%, ±3%, ±5% range prediction
 
 # ============================================================================
 # DATA PARAMETERS

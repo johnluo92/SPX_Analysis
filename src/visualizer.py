@@ -12,7 +12,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from config import LOOKBACK_YEARS
-from data import DataFetcher
+from UnifiedDataFetcher import UnifiedDataFetcher
 from features import FeatureEngine
 from model import SectorModel
 from panel_cone import ProbabilityConePanel
@@ -65,7 +65,7 @@ class Dashboard:
     
     def __init__(self, config=None):
         self.config = config or DashboardConfig()
-        self.data_fetcher = DataFetcher()
+        self.data_fetcher = UnifiedDataFetcher()
         self.regime_analyzer = RegimeAnalyzer()
         self.cone_panel = ProbabilityConePanel()
         self.rotation_panel = SectorRotationPanel()
@@ -98,12 +98,18 @@ class Dashboard:
         sectors = self.data_fetcher.fetch_sectors(start_str, end_str)
         macro = self.data_fetcher.fetch_macro(start_str, end_str)
         vix = self.data_fetcher.fetch_vix(start_str, end_str)
+        fred = self.data_fetcher.fetch_fred_multiple(start_str, end_str)
         
-        sectors, macro, vix = self.data_fetcher.align(sectors, macro, vix)
+        # Align data
+        if not fred.empty:
+            sectors, macro, vix, fred = self.data_fetcher.align(sectors, macro, vix, fred)
+        else:
+            sectors, macro, vix = self.data_fetcher.align(sectors, macro, vix)
+            fred = None
         
         # Build features
         engine = FeatureEngine()
-        features = engine.build(sectors, macro, vix)
+        features = engine.build(sectors, macro, vix, fred)
         features_scaled = engine.scale(features)
         
         # Train model
@@ -199,8 +205,16 @@ class Dashboard:
         current_regime = self.regime_analyzer.classify_regime(current_vix)
         velocity = self.regime_analyzer.calculate_velocity(vix_recent).iloc[-1]
         
-        # IV/RV analysis
-        iv_rv_data = self.iv_rv_panel.calculate_iv_rv_spread(lookback_years=iv_rv_years)
+        # IV/RV analysis - fetch data for it
+        iv_rv_start = (end_date - timedelta(days=iv_rv_years * 365 + 60)).strftime('%Y-%m-%d')
+        spx_for_iv = self.data_fetcher.fetch_spx(iv_rv_start, end_str)
+        vix_for_iv = self.data_fetcher.fetch_vix(iv_rv_start, end_str)
+        
+        iv_rv_data = self.iv_rv_panel.calculate_iv_rv_spread(
+            lookback_years=iv_rv_years,
+            cached_spx=spx_for_iv,
+            cached_vix=vix_for_iv
+        )
         iv_stats = self.iv_rv_panel.calculate_statistics(iv_rv_data, current_vix)
         
         print(f"✅ Data ready (as of {last_date.strftime('%Y-%m-%d')})\n")

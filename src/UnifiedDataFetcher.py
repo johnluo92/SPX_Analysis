@@ -1,43 +1,61 @@
 import os
+import json
 import requests
 import pandas as pd
 import yfinance as yf
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Union, Dict, List
+
+from config import SECTOR_ETFS, MACRO_TICKERS, FRED_SERIES, FRED_API_KEY_PATH, CACHE_DIR
 
 class UnifiedDataFetcher:
     """
     Unified data fetcher for FRED economic data and Yahoo Finance market data.
-    Supports VIX, SPX, and any FRED series for options backtesting.
+    Supports VIX, SPX, sectors, macro, and FRED series with caching.
     """
     
-    def __init__(self, fred_api_key_path='fred_api_key.txt'):
-        """
-        Initialize the unified fetcher.
-        
-        Args:
-            fred_api_key_path: Path to FRED API key file
-        """
+    def __init__(self, cache_dir: str = CACHE_DIR):
         self.fred_base_url = 'https://api.stlouisfed.org/fred/series/observations'
-        self.fred_api_key = self._read_fred_api_key(fred_api_key_path)
+        self.fred_api_key = self._read_fred_api_key()
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(exist_ok=True)
         
-    def _read_fred_api_key(self, api_key_path: str) -> str:
-        """Read FRED API key from file."""
+    def _read_fred_api_key(self) -> str:
+        """Read FRED API key from config.json."""
         try:
-            expanded_path = os.path.expanduser(api_key_path)
-            with open(expanded_path, 'r') as file:
-                return file.read().strip()
+            with open(FRED_API_KEY_PATH, 'r') as f:
+                config = json.load(f)
+                return config.get('fred_api_key')
         except FileNotFoundError:
-            print(f"⚠️  FRED API key not found at {api_key_path}")
+            print(f"⚠️  FRED API key not found at {FRED_API_KEY_PATH}")
             print("    FRED data fetching will be disabled.")
             return None
+    
+    def _cache_path(self, name: str, start: str, end: str) -> Path:
+        """Generate cache file path."""
+        return self.cache_dir / f"{name}_{start}_{end}.parquet"
+    
+    def _is_cached_today(self, path: Path) -> bool:
+        """Check if cache file was created today."""
+        try:
+            if not path.exists():
+                return False
+            file_date = datetime.fromtimestamp(path.stat().st_mtime).date()
+            is_fresh = file_date == datetime.now().date()
+            if is_fresh:
+                print(f"✓ Using cached: {path.name}")
+            return is_fresh
+        except Exception as e:
+            print(f"⚠️  Cache check failed for {path.name}: {e}")
+            return False
     
     # ==================== FRED DATA METHODS ====================
     
     def fetch_fred(self, series_id: str, start_date: Optional[str] = None, 
                    end_date: Optional[str] = None) -> pd.Series:
         """
-        Fetch data from FRED API.
+        Fetch data from FRED API with caching.
         
         Args:
             series_id: FRED series ID (e.g., 'VIXCLS', 'DFF', 'T10Y2Y')
@@ -49,6 +67,12 @@ class UnifiedDataFetcher:
         """
         if not self.fred_api_key:
             raise ValueError("FRED API key not configured")
+        
+        # Check cache
+        cache_path = self._cache_path(f'fred_{series_id}', start_date or 'none', end_date or 'none')
+        if self._is_cached_today(cache_path):
+            df = pd.read_parquet(cache_path)
+            return df[series_id]
         
         url = f'{self.fred_base_url}?series_id={series_id}&api_key={self.fred_api_key}&file_type=json'
         
@@ -81,10 +105,46 @@ class UnifiedDataFetcher:
             series.index = pd.to_datetime(series.index)
             series.name = series_id
             
+            # Cache it
+            df = pd.DataFrame(series)
+            df.to_parquet(cache_path)
+            
             return series
             
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to fetch FRED data for {series_id}: {str(e)}")
+    
+    def fetch_fred_multiple(self, start_date: str, end_date: str) -> pd.DataFrame:
+        """Fetch multiple FRED series defined in config."""
+        cache_path = self._cache_path('fred_all', start_date, end_date)
+        
+        if self._is_cached_today(cache_path):
+            return pd.read_parquet(cache_path)
+        
+        if not self.fred_api_key:
+            print("⚠️  FRED API key missing, skipping FRED data")
+            return pd.DataFrame()
+        
+        print(f"Fetching FRED: {start_date} to {end_date}")
+        
+        series_list = []
+        
+        for series_id, name in FRED_SERIES.items():
+            try:
+                s = self.fetch_fred(series_id, start_date, end_date)
+                s.name = name
+                series_list.append(s)
+            except Exception as e:
+                print(f"Failed {name}: {e}")
+        
+        if not series_list:
+            return pd.DataFrame()
+        
+        df = pd.concat(series_list, axis=1, join='outer')
+        df.index = pd.to_datetime(df.index).normalize()
+        
+        df.to_parquet(cache_path)
+        return df
     
     def fetch_fred_latest(self, series_id: str) -> Optional[float]:
         """
@@ -118,7 +178,7 @@ class UnifiedDataFetcher:
     def fetch_yahoo(self, ticker: str, start_date: Optional[str] = None, 
                     end_date: Optional[str] = None, interval: str = '1d') -> pd.DataFrame:
         """
-        Fetch data from Yahoo Finance.
+        Fetch data from Yahoo Finance with caching.
         
         Args:
             ticker: Yahoo Finance ticker (e.g., '^GSPC' for SPX, '^VIX' for VIX)
@@ -129,6 +189,11 @@ class UnifiedDataFetcher:
         Returns:
             pandas DataFrame with OHLCV data
         """
+        # Check cache
+        cache_path = self._cache_path(f'yahoo_{ticker}', start_date or 'none', end_date or 'none')
+        if self._is_cached_today(cache_path):
+            return pd.read_parquet(cache_path)
+        
         try:
             # Set default dates if not provided
             if not start_date:
@@ -145,6 +210,10 @@ class UnifiedDataFetcher:
             
             # Clean up the DataFrame
             df.index.name = 'Date'
+            df.index = pd.to_datetime(df.index).normalize()
+            
+            # Cache it
+            df.to_parquet(cache_path)
             
             return df
             
@@ -175,12 +244,71 @@ class UnifiedDataFetcher:
         series.name = f"{ticker}_{column}"
         return series
     
+    # ==================== SECTOR & MACRO METHODS ====================
+    
+    def fetch_sectors(self, start_date: str, end_date: str) -> pd.DataFrame:
+        """Fetch sector ETFs including SPY with caching."""
+        cache_path = self._cache_path('sectors', start_date, end_date)
+        
+        if self._is_cached_today(cache_path):
+            return pd.read_parquet(cache_path)
+        
+        print(f"Fetching sectors: {start_date} to {end_date}")
+        
+        tickers = list(SECTOR_ETFS.keys()) + ['SPY']
+        series_list = []
+        
+        for ticker in tickers:
+            try:
+                df = self.fetch_yahoo(ticker, start_date, end_date)
+                if not df.empty:
+                    s = df['Close'].squeeze()
+                    s.name = ticker
+                    series_list.append(s)
+            except Exception as e:
+                print(f"Failed {ticker}: {e}")
+        
+        if not series_list:
+            raise ValueError("No sector data")
+        
+        df = pd.concat(series_list, axis=1, join='outer')
+        df.to_parquet(cache_path)
+        return df
+    
+    def fetch_macro(self, start_date: str, end_date: str) -> pd.DataFrame:
+        """Fetch macro factors from Yahoo Finance with caching."""
+        cache_path = self._cache_path('macro', start_date, end_date)
+        
+        if self._is_cached_today(cache_path):
+            return pd.read_parquet(cache_path)
+        
+        print(f"Fetching macro: {start_date} to {end_date}")
+        
+        series_list = []
+        
+        for ticker, name in MACRO_TICKERS.items():
+            try:
+                df = self.fetch_yahoo(ticker, start_date, end_date)
+                if not df.empty:
+                    s = df['Close'].squeeze()
+                    s.name = name
+                    series_list.append(s)
+            except Exception as e:
+                print(f"Failed {name}: {e}")
+        
+        if not series_list:
+            raise ValueError("No macro data")
+        
+        df = pd.concat(series_list, axis=1, join='outer')
+        df.to_parquet(cache_path)
+        return df
+    
     # ==================== CONVENIENCE METHODS FOR OPTIONS TRADING ====================
     
     def fetch_vix(self, start_date: Optional[str] = None, 
                   end_date: Optional[str] = None, source: str = 'yahoo') -> pd.Series:
         """
-        Fetch VIX data from either FRED or Yahoo Finance.
+        Fetch VIX data from either FRED or Yahoo Finance with caching.
         
         Args:
             start_date: Start date
@@ -191,14 +319,26 @@ class UnifiedDataFetcher:
             pandas Series of VIX values
         """
         if source.lower() == 'fred':
-            return self.fetch_fred('VIXCLS', start_date, end_date)
+            s = self.fetch_fred('VIXCLS', start_date, end_date)
+            s.name = 'VIX'
+            return s
         else:
-            return self.fetch_yahoo_series('^VIX', 'Close', start_date, end_date)
+            cache_path = self._cache_path('vix', start_date or 'none', end_date or 'none')
+            if self._is_cached_today(cache_path):
+                df = pd.read_parquet(cache_path)
+                return df['VIX']
+            
+            s = self.fetch_yahoo_series('^VIX', 'Close', start_date, end_date)
+            s.name = 'VIX'
+            
+            df = pd.DataFrame(s)
+            df.to_parquet(cache_path)
+            return s
     
     def fetch_spx(self, start_date: Optional[str] = None, 
                   end_date: Optional[str] = None) -> pd.DataFrame:
         """
-        Fetch SPX price data (OHLCV).
+        Fetch SPX price data (OHLCV) with caching.
         
         Args:
             start_date: Start date
@@ -259,6 +399,30 @@ class UnifiedDataFetcher:
             pandas Series of daily effective fed funds rate
         """
         return self.fetch_fred('DFF', start_date, end_date)
+    
+    # ==================== ALIGNMENT METHOD ====================
+    
+    def align(self, sectors: pd.DataFrame, macro: pd.DataFrame, 
+              vix: pd.Series, fred: pd.DataFrame = None) -> tuple:
+        """Align all data to common dates."""
+        common_dates = sectors.index.intersection(macro.index).intersection(vix.index)
+        
+        if fred is not None and not fred.empty:
+            common_dates = common_dates.intersection(fred.index)
+        
+        sectors_aligned = sectors.loc[common_dates].ffill().dropna()
+        common_dates = sectors_aligned.index
+        
+        macro_aligned = macro.loc[common_dates].ffill()
+        vix_aligned = vix.loc[common_dates].ffill()
+        
+        if fred is not None and not fred.empty:
+            fred_aligned = fred.loc[common_dates].ffill()
+            print(f"Aligned: {len(sectors_aligned)} days ({common_dates.min().date()} to {common_dates.max().date()})")
+            return sectors_aligned, macro_aligned, vix_aligned, fred_aligned
+        
+        print(f"Aligned: {len(sectors_aligned)} days ({common_dates.min().date()} to {common_dates.max().date()})")
+        return sectors_aligned, macro_aligned, vix_aligned
     
     # ==================== BATCH FETCHING ====================
     
@@ -330,67 +494,3 @@ class UnifiedDataFetcher:
             df = df.fillna(method='ffill')
         
         return df
-
-
-# ==================== USAGE EXAMPLES ====================
-
-if __name__ == "__main__":
-    # Initialize fetcher
-    fetcher = UnifiedDataFetcher()
-    
-    print("=" * 60)
-    print("UNIFIED DATA FETCHER - EXAMPLES")
-    print("=" * 60)
-    
-    # Example 1: Fetch SPX and VIX for backtesting
-    print("\n📊 Example 1: Fetch SPX and VIX (last 2 years)")
-    start = '2023-01-01'
-    
-    spx = fetcher.fetch_spx_close(start_date=start)
-    vix = fetcher.fetch_vix(start_date=start, source='yahoo')
-    
-    print(f"SPX: {len(spx)} observations")
-    print(f"VIX: {len(vix)} observations")
-    print(f"Latest SPX: ${spx.iloc[-1]:.2f}")
-    print(f"Latest VIX: {vix.iloc[-1]:.2f}")
-    
-    # Example 2: Fetch economic indicators
-    print("\n📈 Example 2: Fetch Treasury rates and Fed Funds")
-    
-    treasury_10y = fetcher.fetch_treasury_rate('10Y', start_date=start)
-    fed_funds = fetcher.fetch_fed_funds_rate(start_date=start)
-    
-    print(f"10Y Treasury: {len(treasury_10y)} observations")
-    print(f"Fed Funds: {len(fed_funds)} observations")
-    
-    # Example 3: Batch fetch
-    print("\n🔄 Example 3: Batch fetch multiple series")
-    
-    specs = [
-        {'source': 'yahoo', 'ticker': '^GSPC', 'column': 'Close', 'name': 'SPX'},
-        {'source': 'yahoo', 'ticker': '^VIX', 'column': 'Close', 'name': 'VIX'},
-        {'source': 'fred', 'series_id': 'DFF', 'name': 'FedFunds'},
-        {'source': 'fred', 'series_id': 'DGS10', 'name': 'Treasury10Y'},
-    ]
-    
-    data = fetcher.fetch_multiple(specs)
-    
-    for name, series in data.items():
-        print(f"{name}: {len(series)} observations")
-    
-    # Example 4: Align series for analysis
-    print("\n🔗 Example 4: Align series to common dates")
-    
-    aligned = fetcher.align_series(
-        data['SPX'],
-        data['VIX'],
-        data['FedFunds'],
-        method='inner'
-    )
-    
-    print(f"Aligned DataFrame: {len(aligned)} rows x {len(aligned.columns)} columns")
-    print(f"Date range: {aligned.index[0].date()} to {aligned.index[-1].date()}")
-    print("\nFirst 5 rows:")
-    print(aligned.head())
-    
-    print("\n✅ All examples completed successfully!")
