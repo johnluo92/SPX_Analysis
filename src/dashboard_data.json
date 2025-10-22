@@ -1,0 +1,108 @@
+{
+  "current_date": "2025-10-21",
+  "spx_price": 6735.1298828125,
+  "vix": 18.229999542236328,
+  "available_horizons": [
+    "8d",
+    "13d",
+    "21d",
+    "34d"
+  ],
+  "available_ranges": [
+    "2pct",
+    "3pct",
+    "5pct",
+    "8pct",
+    "13pct",
+    "21pct"
+  ],
+  "directional": {
+    "8d": {
+      "prob": 0.6646093302389093,
+      "confidence": "MEDIUM"
+    },
+    "13d": {
+      "prob": 0.6430925374237958,
+      "confidence": "MEDIUM"
+    },
+    "21d": {
+      "prob": 0.5795127523440231,
+      "confidence": "MEDIUM"
+    },
+    "34d": {
+      "prob": 0.7153976389863914,
+      "confidence": "HIGH"
+    }
+  },
+  "range_bound": {
+    "8d": {
+      "2pct": 0.7583134142104521,
+      "3pct": 0.955803783451556,
+      "5pct": 0.9984637358818059,
+      "8pct": 1.0,
+      "13pct": 1.0,
+      "21pct": 1.0
+    },
+    "13d": {
+      "2pct": 0.4865797616488649,
+      "3pct": 0.821746915572471,
+      "5pct": 0.995105690588302,
+      "8pct": 0.9993301546658486,
+      "13pct": 0.9997333333333333,
+      "21pct": 1.0
+    },
+    "21d": {
+      "2pct": 0.3315147415644596,
+      "3pct": 0.5695050887707729,
+      "5pct": 0.9634722460133218,
+      "8pct": 0.9991179301171688,
+      "13pct": 0.9984211754537597,
+      "21pct": 0.9967732049443128
+    },
+    "34d": {
+      "2pct": 0.2672745733376059,
+      "3pct": 0.3866700423890841,
+      "5pct": 0.6939298084982514,
+      "8pct": 0.9676133188089601,
+      "13pct": 0.9979511690946922,
+      "21pct": 0.9957310508320102
+    }
+  },
+  "top_features": {
+    "iv_rv_spread": 0.1933,
+    "iv_rv_vs_avg": 0.13,
+    "iv_rv_momentum_21": 0.0681,
+    "yield_spread_change_63": 0.0472,
+    "yield_slope": 0.0411
+  },
+  "trade_signals": [
+    {
+      "type": "Iron Condor",
+      "confidence": 0.9957310508320102,
+      "action": "SELL",
+      "dte": 34,
+      "strikes": "5315/5320/8150/8155",
+      "credit": "$2.45",
+      "risk": "$252.55",
+      "roi": "0.97%",
+      "rationale": "99.6% prob stays within \u00b121% range"
+    },
+    {
+      "type": "Bull Put Spread",
+      "confidence": 0.7153976389863914,
+      "action": "SELL",
+      "dte": 34,
+      "strikes": "6535/6540",
+      "credit": "$1.85",
+      "risk": "$313.15",
+      "roi": "0.59%",
+      "rationale": "71.5% bullish probability"
+    }
+  ],
+  "model_health": {
+    "walk_forward_accuracy": 0.903,
+    "std_dev": 0.035,
+    "gap": -0.002,
+    "status": "EXCELLENT"
+  }
+}

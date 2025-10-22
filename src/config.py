@@ -136,8 +136,8 @@ WALK_FORWARD_SPLITS = 5
 RANDOM_STATE = 42
 
 # SPX Prediction Model Parameters
-SPX_FORWARD_WINDOWS = [7, 14, 21]  # Multiple prediction horizons
-SPX_RANGE_THRESHOLDS = [0.02, 0.03, 0.05]  # ±2%, ±3%, ±5% range prediction
+SPX_FORWARD_WINDOWS = [8, 13, 21, 34]  # Multiple prediction horizons
+SPX_RANGE_THRESHOLDS = [0.02, 0.03, 0.05, .08, .13, .21]  # ±2%, ±3%, ±5% range prediction
 
 # ============================================================================
 # DATA PARAMETERS
