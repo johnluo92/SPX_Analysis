@@ -127,33 +127,50 @@ const Dashboard = () => {
                         'SPX Prediction System'
                     ),
                     React.createElement('p', {className: 'text-slate-400 mt-1 text-sm sm:text-base'}, 
-                        'Machine Learning • 90.3% Validated • Fibonacci Horizons'
+                        'Machine Learning • Fibonacci Horizons (8, 13, 21, 34d)'
                     )
                 ),
                 React.createElement('div', {className: 'text-right'},
-                    React.createElement('div', {className: 'text-sm text-slate-400'}, 'Current Price'),
+                    React.createElement('div', {className: 'text-sm text-slate-400'}, 
+                        data.current_date + ' ' + (data.current_time || new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York'}) + ' ET')
+                    ),
                     React.createElement('div', {className: 'text-2xl sm:text-3xl font-bold text-blue-400'}, 
                         '$' + data.spx_price.toLocaleString()
                     ),
-                    React.createElement('div', {className: 'text-sm text-slate-400'}, 
-                        'VIX: ' + data.vix.toFixed(1)
+                    React.createElement('div', {className: 'text-xs text-slate-500 mt-1'}, 
+                        'Model: $' + data.spx_price_model.toLocaleString() + ' • VIX: ' + data.vix.toFixed(1)
                     )
                 )
             ),
             
-            // Model Health
-            React.createElement('div', {className: 'bg-gradient-to-r from-green-500/10 to-blue-500/10 border border-green-500/20 rounded-xl p-4'},
+            // Model Health - DYNAMIC status-based styling
+            React.createElement('div', {
+                className: 'border rounded-xl p-4 ' +
+                    (data.model_health.status === 'STRONG' ? 'bg-gradient-to-r from-green-500/10 to-blue-500/10 border-green-500/20' :
+                     data.model_health.status === 'GOOD' ? 'bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/20' :
+                     data.model_health.status === 'FAIR' ? 'bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-500/20' :
+                     'bg-gradient-to-r from-red-500/10 to-orange-500/10 border-red-500/20')
+            },
                 React.createElement('div', {className: 'flex items-center justify-between flex-wrap gap-2'},
                     React.createElement('div', {className: 'flex items-center gap-3'},
                         React.createElement(Icons.CheckCircle),
                         React.createElement('div', {},
-                            React.createElement('div', {className: 'font-semibold text-green-400'}, 
+                            React.createElement('div', {
+                                className: 'font-semibold ' +
+                                    (data.model_health.status === 'STRONG' ? 'text-green-400' :
+                                     data.model_health.status === 'GOOD' ? 'text-blue-400' :
+                                     data.model_health.status === 'FAIR' ? 'text-yellow-400' :
+                                     'text-red-400')
+                            }, 
                                 'Model Status: ' + data.model_health.status
                             ),
                             React.createElement('div', {className: 'text-xs sm:text-sm text-slate-400'},
-                                'Walk-Forward: ' + (data.model_health.walk_forward_accuracy * 100).toFixed(1) + '% ± ' +
-                                (data.model_health.std_dev * 100).toFixed(1) + '% • Gap: ' +
-                                (data.model_health.gap * 100).toFixed(1) + '% (Negative = Good)'
+                                data.model_health.message || 
+                                (data.model_health.test_accuracy ? 
+                                    'Accuracy: ' + (data.model_health.test_accuracy * 100).toFixed(1) + '% ± ' +
+                                    (data.model_health.std_dev * 100).toFixed(1) + '% • Gap: ' +
+                                    (data.model_health.gap >= 0 ? '+' : '') + (data.model_health.gap * 100).toFixed(1) + '%' 
+                                : 'No metrics available')
                             )
                         )
                     ),
@@ -163,7 +180,7 @@ const Dashboard = () => {
                 )
             ),
             
-            // Time Horizon Selector - DYNAMIC
+            // Time Horizon Selector - DYNAMIC with DTE
             React.createElement('div', {className: 'flex gap-2 bg-slate-800/50 p-2 rounded-xl border border-slate-700 w-full overflow-x-auto'},
                 data.available_horizons.map(horizon =>
                     React.createElement('button', {
@@ -173,7 +190,14 @@ const Dashboard = () => {
                             (timeHorizon === horizon 
                                 ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/50'
                                 : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700')
-                    }, horizon.toUpperCase())
+                    }, 
+                        React.createElement('div', {className: 'flex flex-col items-center'},
+                            React.createElement('div', {}, horizon.toUpperCase()),
+                            data.dte_mapping && React.createElement('div', {className: 'text-xs opacity-70'}, 
+                                '≈' + data.dte_mapping[horizon] + ' DTE'
+                            )
+                        )
+                    )
                 )
             ),
             
@@ -205,7 +229,10 @@ const Dashboard = () => {
                                     ),
                                     React.createElement('div', {},
                                         React.createElement('div', {className: 'font-semibold'}, period.toUpperCase()),
-                                        React.createElement('div', {className: 'text-xs ' + signal.color}, signal.label)
+                                        React.createElement('div', {className: 'text-xs ' + signal.color}, signal.label),
+                                        data.dte_mapping && React.createElement('div', {className: 'text-xs text-slate-500'}, 
+                                            '≈' + data.dte_mapping[period] + ' DTE'
+                                        )
                                     )
                                 ),
                                 React.createElement('div', {className: 'text-2xl font-bold ' + getConfidenceColor(pred.prob)},
@@ -279,100 +306,105 @@ const Dashboard = () => {
                 )
             ),
             
-            // Trade Signals
-            React.createElement('div', {className: 'bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6'},
-                React.createElement('h2', {className: 'text-xl font-bold mb-4 flex items-center gap-2'},
-                    React.createElement(Icons.DollarSign),
-                    'Recommended Trades'
-                ),
-                React.createElement('div', {className: 'space-y-3'},
-                    data.trade_signals.map((trade, idx) =>
-                        React.createElement('div', {
-                            key: idx,
-                            className: 'p-4 rounded-lg border transition-all ' +
-                                (trade.action === 'SELL' 
-                                    ? 'border-green-500/30 bg-green-500/5 hover:bg-green-500/10'
-                                    : 'border-yellow-500/30 bg-yellow-500/5')
-                        },
-                            React.createElement('div', {className: 'flex items-start justify-between flex-wrap gap-4'},
-                                React.createElement('div', {className: 'flex-1 min-w-0'},
-                                    React.createElement('div', {className: 'flex items-center gap-3 mb-2 flex-wrap'},
-                                        React.createElement('div', {
-                                            className: 'px-3 py-1 rounded-full text-sm font-bold ' +
-                                                (trade.action === 'SELL' 
-                                                    ? 'bg-green-500/20 text-green-400'
-                                                    : 'bg-yellow-500/20 text-yellow-400')
-                                        }, trade.action),
-                                        React.createElement('div', {className: 'font-bold text-lg'}, trade.type),
-                                        React.createElement('div', {className: 'text-slate-400 text-sm'}, trade.dte + ' DTE')
-                                    ),
-                                    React.createElement('div', {className: 'grid grid-cols-2 gap-x-6 gap-y-1 text-sm mb-2'},
-                                        React.createElement('div', {className: 'flex justify-between'},
-                                            React.createElement('span', {className: 'text-slate-400'}, 'Strikes:'),
-                                            React.createElement('span', {className: 'font-mono text-white'}, trade.strikes)
+            // Trade Signals and Feature Importance - Side by Side
+            React.createElement('div', {className: 'grid grid-cols-1 lg:grid-cols-2 gap-6'},
+                // Trade Signals
+                React.createElement('div', {className: 'bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6'},
+                    React.createElement('h2', {className: 'text-xl font-bold mb-4 flex items-center gap-2'},
+                        React.createElement(Icons.DollarSign),
+                        'Recommended Trades'
+                    ),
+                    React.createElement('div', {className: 'space-y-3'},
+                        data.trade_signals.map((trade, idx) =>
+                            React.createElement('div', {
+                                key: idx,
+                                className: 'p-4 rounded-lg border transition-all ' +
+                                    (trade.action === 'SELL' 
+                                        ? 'border-green-500/30 bg-green-500/5 hover:bg-green-500/10'
+                                        : 'border-yellow-500/30 bg-yellow-500/5')
+                            },
+                                React.createElement('div', {className: 'flex items-start justify-between flex-wrap gap-4'},
+                                    React.createElement('div', {className: 'flex-1 min-w-0'},
+                                        React.createElement('div', {className: 'flex items-center gap-3 mb-2 flex-wrap'},
+                                            React.createElement('div', {
+                                                className: 'px-3 py-1 rounded-full text-sm font-bold ' +
+                                                    (trade.action === 'SELL' 
+                                                        ? 'bg-green-500/20 text-green-400'
+                                                        : 'bg-yellow-500/20 text-yellow-400')
+                                            }, trade.action),
+                                            React.createElement('div', {className: 'font-bold text-lg'}, trade.type),
+                                            React.createElement('div', {className: 'text-slate-400 text-sm'}, 
+                                                '≈' + (data.dte_mapping[trade.dte + 'd'] || trade.dte) + ' DTE'
+                                            )
                                         ),
-                                        React.createElement('div', {className: 'flex justify-between'},
-                                            React.createElement('span', {className: 'text-slate-400'}, 'Credit:'),
-                                            React.createElement('span', {className: 'font-mono text-green-400'}, trade.credit)
+                                        React.createElement('div', {className: 'grid grid-cols-2 gap-x-6 gap-y-1 text-sm mb-2'},
+                                            React.createElement('div', {className: 'flex justify-between'},
+                                                React.createElement('span', {className: 'text-slate-400'}, 'Strikes:'),
+                                                React.createElement('span', {className: 'font-mono text-white'}, trade.strikes)
+                                            ),
+                                            React.createElement('div', {className: 'flex justify-between'},
+                                                React.createElement('span', {className: 'text-slate-400'}, 'Credit:'),
+                                                React.createElement('span', {className: 'font-mono text-green-400'}, trade.credit)
+                                            ),
+                                            React.createElement('div', {className: 'flex justify-between'},
+                                                React.createElement('span', {className: 'text-slate-400'}, 'Max Risk:'),
+                                                React.createElement('span', {className: 'font-mono text-red-400'}, trade.risk)
+                                            ),
+                                            React.createElement('div', {className: 'flex justify-between'},
+                                                React.createElement('span', {className: 'text-slate-400'}, 'ROI:'),
+                                                React.createElement('span', {className: 'font-mono text-blue-400'}, trade.roi)
+                                            )
                                         ),
-                                        React.createElement('div', {className: 'flex justify-between'},
-                                            React.createElement('span', {className: 'text-slate-400'}, 'Max Risk:'),
-                                            React.createElement('span', {className: 'font-mono text-red-400'}, trade.risk)
-                                        ),
-                                        React.createElement('div', {className: 'flex justify-between'},
-                                            React.createElement('span', {className: 'text-slate-400'}, 'ROI:'),
-                                            React.createElement('span', {className: 'font-mono text-blue-400'}, trade.roi)
+                                        React.createElement('div', {className: 'text-sm text-slate-300 italic border-l-2 border-slate-600 pl-3'},
+                                            trade.rationale
                                         )
                                     ),
-                                    React.createElement('div', {className: 'text-sm text-slate-300 italic border-l-2 border-slate-600 pl-3'},
-                                        trade.rationale
+                                    React.createElement('div', {className: 'text-right'},
+                                        React.createElement('div', {className: 'text-xs text-slate-400 mb-1'}, 'Confidence'),
+                                        React.createElement('div', {className: 'text-3xl font-bold ' + getConfidenceColor(trade.confidence)},
+                                            (trade.confidence * 100).toFixed(0) + '%'
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                ),
+                
+                // Feature Importance
+                React.createElement('div', {className: 'bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6'},
+                    React.createElement('h2', {className: 'text-xl font-bold mb-4 flex items-center gap-2'},
+                        React.createElement(Icons.Activity),
+                        'Key Signals (Deployed Feature Importances)'
+                    ),
+                    React.createElement('div', {className: 'space-y-3'},
+                        Object.entries(data.top_features).map(([feature, importance]) =>
+                            React.createElement('div', {key: feature, className: 'space-y-1'},
+                                React.createElement('div', {className: 'flex items-center justify-between text-sm'},
+                                    React.createElement('span', {className: 'text-slate-300 font-mono'}, feature),
+                                    React.createElement('span', {className: 'text-blue-400 font-bold'}, 
+                                        (importance * 100).toFixed(1) + '%'
                                     )
                                 ),
-                                React.createElement('div', {className: 'text-right'},
-                                    React.createElement('div', {className: 'text-xs text-slate-400 mb-1'}, 'Confidence'),
-                                    React.createElement('div', {className: 'text-3xl font-bold ' + getConfidenceColor(trade.confidence)},
-                                        (trade.confidence * 100).toFixed(0) + '%'
-                                    )
+                                React.createElement('div', {className: 'h-2 bg-slate-700 rounded-full overflow-hidden'},
+                                    React.createElement('div', {
+                                        className: 'h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all',
+                                        style: {width: (importance * 100) + '%'}
+                                    })
                                 )
                             )
                         )
+                    ),
+                    React.createElement('div', {className: 'mt-4 pt-4 border-t border-slate-700 text-xs text-slate-400'},
+                        'Top predictive features from current model training'
                     )
-                )
-            ),
-            
-            // Feature Importance
-            React.createElement('div', {className: 'bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6'},
-                React.createElement('h2', {className: 'text-xl font-bold mb-4 flex items-center gap-2'},
-                    React.createElement(Icons.Activity),
-                    'Key Signals (Feature Importance)'
-                ),
-                React.createElement('div', {className: 'space-y-3'},
-                    Object.entries(data.top_features).map(([feature, importance]) =>
-                        React.createElement('div', {key: feature, className: 'space-y-1'},
-                            React.createElement('div', {className: 'flex items-center justify-between text-sm'},
-                                React.createElement('span', {className: 'text-slate-300 font-mono'}, feature),
-                                React.createElement('span', {className: 'text-blue-400 font-bold'}, 
-                                    (importance * 100).toFixed(1) + '%'
-                                )
-                            ),
-                            React.createElement('div', {className: 'h-2 bg-slate-700 rounded-full overflow-hidden'},
-                                React.createElement('div', {
-                                    className: 'h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all',
-                                    style: {width: ((importance / 0.20) * 100) + '%'}
-                                })
-                            )
-                        )
-                    )
-                ),
-                React.createElement('div', {className: 'mt-4 pt-4 border-t border-slate-700 text-xs text-slate-400'},
-                    'IV-RV spread dominates with 38% combined importance'
                 )
             ),
             
             // Footer
             React.createElement('div', {className: 'text-center text-slate-500 text-sm py-4'},
-                React.createElement('p', {}, 'SPX Predictor V1.1 • Fibonacci Horizons • 90.3% ± 3.5% Accuracy'),
-                React.createElement('p', {className: 'mt-1'}, '⚠️ 55d & 89d models overfit - use 21d for best results')
+                React.createElement('p', {}, 'SPX Predictor • Fibonacci Horizons (8, 13, 21, 34 trading days)'),
+                React.createElement('p', {className: 'mt-1 text-xs'}, 'Model performance varies by market regime • Use proper risk management')
             )
         )
     );

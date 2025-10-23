@@ -21,9 +21,12 @@ class SPXFeatureEngine:
               vix: pd.Series,
               fred: pd.DataFrame = None,
               macro: pd.DataFrame = None,
-              iv_rv_spread: pd.Series = None) -> pd.DataFrame:
+              iv_rv_spread: pd.Series = None,
+              use_iv_rv_cheat=False) -> pd.DataFrame:
         """
         Build core SPX prediction features.
+        
+        All inputs must have timezone-naive DatetimeIndex.
         
         Args:
             spx: SPX closing prices
@@ -48,7 +51,7 @@ class SPXFeatureEngine:
         
         if iv_rv_spread is not None:
             feature_dfs.append(self._iv_rv_features(iv_rv_spread))
-        
+
         features = pd.concat(feature_dfs, axis=1)
         return features.dropna()
     
@@ -136,7 +139,7 @@ class SPXFeatureEngine:
             if col == '5Y Treasury':
                 continue
             for window in [10, 21]:
-                features[f'{col}_mom_{window}'] = macro[col].pct_change(window) * 100
+                features[f'{col}_mom_{window}'] = macro[col].pct_change(window, fill_method=None) * 100
         
         # Yield curve slope (if available)
         if '10Y Treasury' in macro.columns and '5Y Treasury' in macro.columns:

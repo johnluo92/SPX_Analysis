@@ -18,6 +18,7 @@ import threading
 
 from spx_predictor import SPXPredictor
 from UnifiedDataFetcher import UnifiedDataFetcher
+from cache_cleaner import CacheCleaner
 
 
 class DashboardGenerator:
@@ -27,6 +28,36 @@ class DashboardGenerator:
         self.predictor = None
         self.spx = None
         self.vix = None
+    
+    def calculate_calendar_days(self, trading_days: int) -> int:
+        """
+        Calculate exact calendar days (DTE) for a given number of trading days.
+        Uses actual market calendar to account for weekends and holidays.
+        
+        Args:
+            trading_days: Number of trading days forward
+            
+        Returns:
+            Approximate calendar days (DTE for options)
+        """
+        if self.spx is None:
+            # Rough estimate if no data
+            return int(trading_days * 1.4)
+        
+        # Get the last date in our data
+        last_date = self.spx.index[-1]
+        
+        # Count forward 'trading_days' in our actual data
+        # This accounts for real weekends and holidays
+        if trading_days < len(self.spx):
+            # Use historical data to measure actual calendar span
+            reference_date = self.spx.index[-trading_days-1]
+            calendar_span = (last_date - reference_date).days
+            return calendar_span
+        else:
+            # For longer windows, use average ratio
+            # Typically: 21 trading days = ~30 calendar days (1.43x)
+            return int(trading_days * 1.43)
         
     def train_model(self):
         """Train the predictor model."""
@@ -60,6 +91,81 @@ class DashboardGenerator:
         else:
             return "NEUTRAL"
     
+    def get_top_features(self, n=5):
+        """Extract top N features from trained model - from FEATURE SELECTION results."""
+        if self.predictor is None or self.predictor.model is None:
+            return {}
+        
+        # CRITICAL FIX: Extract from the feature selection results stored in the model
+        # This is what gets printed during training as "TOP 30 FEATURES BY IMPORTANCE"
+        if hasattr(self.predictor.model, 'feature_importances_') and self.predictor.model.feature_importances_ is not None:
+            # Use the feature selection importances
+            feature_names = self.predictor.model.selected_features
+            importances = self.predictor.model.feature_importances_
+            
+            # Create sorted dictionary
+            feature_importance = dict(zip(feature_names, importances))
+            sorted_features = sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
+            
+            # Return top N as dictionary with rounded values
+            return {feat: round(imp, 4) for feat, imp in sorted_features[:n]}
+        
+        # Fallback to 21d model if feature selection results not available
+        model_21d = self.predictor.model.directional_models.get('21d')
+        if model_21d is None:
+            return {}
+        
+        feature_names = self.predictor.model.selected_features if self.predictor.model.selected_features else self.predictor.features.columns.tolist()
+        importances = model_21d.feature_importances_
+        
+        feature_importance = dict(zip(feature_names, importances))
+        sorted_features = sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
+        
+        return {feat: round(imp, 4) for feat, imp in sorted_features[:n]}
+    
+    def get_model_health(self):
+        """Extract real model health metrics from training results."""
+        if self.predictor is None or self.predictor.model is None:
+            return {
+                "status": "NOT_TRAINED",
+                "message": "Model not trained"
+            }
+        
+        # Get results from all models
+        results = self.predictor.model.results
+        
+        # Calculate aggregate metrics
+        test_accs = [r['test_acc'] for r in results.values() if 'test_acc' in r]
+        gaps = [r['gap'] for r in results.values() if 'gap' in r]
+        
+        if not test_accs or not gaps:
+            return {
+                "status": "INCOMPLETE",
+                "message": "No model metrics available"
+            }
+        
+        avg_test_acc = sum(test_accs) / len(test_accs)
+        avg_gap = sum(gaps) / len(gaps)
+        std_dev = (sum((x - avg_test_acc) ** 2 for x in test_accs) / len(test_accs)) ** 0.5
+        
+        # Determine status based on realistic thresholds
+        if avg_test_acc >= 0.85 and avg_gap <= 0.10:
+            status = "STRONG"
+        elif avg_test_acc >= 0.75 and avg_gap <= 0.15:
+            status = "GOOD"
+        elif avg_test_acc >= 0.65:
+            status = "FAIR"
+        else:
+            status = "WEAK"
+        
+        return {
+            "test_accuracy": round(avg_test_acc, 3),
+            "std_dev": round(std_dev, 3),
+            "gap": round(avg_gap, 3),
+            "status": status,
+            "message": f"Avg Accuracy: {avg_test_acc:.1%} ± {std_dev:.1%} • Gap: {avg_gap:+.1%}"
+        }
+    
     def calculate_strikes(self, spx_price, pct_width=0.05):
         """Calculate strike prices for iron condor."""
         lower_short = int(spx_price * (1 - pct_width))
@@ -77,6 +183,7 @@ class DashboardGenerator:
     
     def generate_dashboard_data(self):
         """Generate JSON data for dashboard."""
+        fetcher = UnifiedDataFetcher()
         if self.predictor is None:
             raise ValueError("Model not trained. Call train_model() first.")
         
@@ -87,9 +194,20 @@ class DashboardGenerator:
         predictions = self.predictor.predict_current()
         
         # Current market data
-        current_spx = float(self.spx.iloc[-1])
-        current_vix = float(self.vix.iloc[-1])
+        current_spx_model = float(self.spx.iloc[-1])  # Last historical price used by model
         current_date = datetime.now().strftime("%Y-%m-%d")
+        current_time = datetime.now().strftime("%H:%M:%S ET")  # Add timestamp
+        
+        # Fetch real-time SPX and VIX prices
+        current_spx_realtime = fetcher.fetch_price('^GSPC')
+        if current_spx_realtime is None:
+            print("⚠️  Could not fetch real-time SPX price, using model price")
+            current_spx_realtime = current_spx_model
+            
+        current_vix = fetcher.fetch_price('^VIX')
+        if current_vix is None:
+            print("⚠️  Could not fetch real-time VIX price, using model price")
+            current_vix = float(self.vix.iloc[-1])
         
         # DYNAMIC: Format directional predictions from config
         directional = {}
@@ -116,14 +234,18 @@ class DashboardGenerator:
         available_horizons = [f"{w}d" for w in SPX_FORWARD_WINDOWS]
         available_ranges = [f"{int(t*100)}pct" for t in SPX_RANGE_THRESHOLDS]
         
-        # Top features (from training)
-        top_features = {
-            "iv_rv_spread": 0.1933,
-            "iv_rv_vs_avg": 0.1300,
-            "iv_rv_momentum_21": 0.0681,
-            "yield_spread_change_63": 0.0472,
-            "yield_slope": 0.0411
-        }
+        # Calculate exact DTE (calendar days) for each trading day window
+        dte_mapping = {}
+        for window in SPX_FORWARD_WINDOWS:
+            dte_mapping[f"{window}d"] = self.calculate_calendar_days(window)
+        
+        # Top features (DYNAMIC - from actual trained model)
+        top_features = self.get_top_features(n=5)
+        
+        # Debug: Print feature importances to verify they match training output
+        print(f"\n📊 Top Features for Dashboard:")
+        for feat, imp in top_features.items():
+            print(f"   {feat}: {imp*100:.2f}%")
         
         # Generate trade signals (use longest horizon for trades)
         longest_horizon = f"{max(SPX_FORWARD_WINDOWS)}d"
@@ -137,7 +259,7 @@ class DashboardGenerator:
         
         # Iron Condor recommendation
         if range_long_best >= 0.90:
-            ic_strikes = self.calculate_strikes(current_spx, max(SPX_RANGE_THRESHOLDS))
+            ic_strikes = self.calculate_strikes(current_spx_model, max(SPX_RANGE_THRESHOLDS))
             trade_signals.append({
                 "type": "Iron Condor",
                 "confidence": float(range_long_best),
@@ -151,7 +273,7 @@ class DashboardGenerator:
             })
         
         # Bull Put Spread recommendation
-        bps_lower = int(current_spx * 0.97)
+        bps_lower = int(current_spx_model * 0.97)
         bps_upper = bps_lower + 5
         bps_lower = round(bps_lower / 5) * 5
         bps_upper = round(bps_upper / 5) * 5
@@ -181,21 +303,19 @@ class DashboardGenerator:
                 "rationale": f"Only {prob_long*100:.1f}% bullish - wait for 65%+ signal"
             })
         
-        # Model health
-        model_health = {
-            "walk_forward_accuracy": 0.903,
-            "std_dev": 0.035,
-            "gap": -0.002,
-            "status": "EXCELLENT"
-        }
+        # Model health (DYNAMIC - from actual training results)
+        model_health = self.get_model_health()
         
         # Assemble final data with DYNAMIC CONFIG
         data = {
             "current_date": current_date,
-            "spx_price": current_spx,
+            "current_time": current_time,  # Add timestamp for display
+            "spx_price": current_spx_realtime,  # Current real-time price for display
+            "spx_price_model": current_spx_model,  # Price model used for predictions
             "vix": current_vix,
             "available_horizons": available_horizons,  # ← DYNAMIC from config
             "available_ranges": available_ranges,      # ← DYNAMIC from config
+            "dte_mapping": dte_mapping,  # ← Trading days to calendar days (DTE)
             "directional": directional,
             "range_bound": range_bound,
             "top_features": top_features,
@@ -271,9 +391,25 @@ def serve_dashboard(port=8000):
 
 def main():
     """Main entry point."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='SPX Live Dashboard')
+    parser.add_argument('--clean-cache', action='store_true',
+                       help='Clean old cache files before starting (removes files older than 30 days)')
+    parser.add_argument('--cache-days', type=int, default=30,
+                       help='Max age of cache files to keep in days (default: 30)')
+    
+    args = parser.parse_args()
+    
     print("\n" + "="*70)
     print("SPX LIVE DASHBOARD - SETUP")
     print("="*70)
+    
+    # Optional: Clean old cache files
+    if args.clean_cache:
+        print("\n🧹 Cleaning old cache files...")
+        cleaner = CacheCleaner()
+        cleaner.clean_old_files(max_age_days=args.cache_days, verbose=True)
     
     # Step 1: Train model
     generator = DashboardGenerator()

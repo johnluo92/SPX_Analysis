@@ -1,28 +1,10 @@
 """
-Configuration - All constants in one place.
-Twin Pillars: Simplicity & Consistency
+SPX Prediction System - Configuration
+All constants and parameters for SPX forecasting
 """
 
 # ============================================================================
-# SECTOR DEFINITIONS
-# ============================================================================
-
-SECTOR_ETFS = {
-    'XLK': 'Technology',
-    'XLF': 'Financials',
-    'XLE': 'Energy',
-    'XLV': 'Health Care',
-    'XLI': 'Industrials',
-    'XLY': 'Consumer Discretionary',
-    'XLP': 'Consumer Staples',
-    'XLU': 'Utilities',
-    'XLRE': 'Real Estate',
-    'XLC': 'Communication Services',
-    'XLB': 'Materials'
-}
-
-# ============================================================================
-# MACRO FACTORS (Yahoo Finance)
+# MACRO FACTORS (Yahoo Finance Tickers)
 # ============================================================================
 
 MACRO_TICKERS = {
@@ -34,7 +16,7 @@ MACRO_TICKERS = {
 }
 
 # ============================================================================
-# FRED SERIES (Economic Data)
+# FRED ECONOMIC SERIES
 # ============================================================================
 
 FRED_SERIES = {
@@ -47,101 +29,44 @@ FRED_SERIES = {
 FRED_API_KEY_PATH = 'config.json'
 
 # ============================================================================
-# SPX PREDICTION DATA SOURCES (MINIMAL)
+# SPX PREDICTION PARAMETERS
 # ============================================================================
 
-SPX_INDICATORS = {
-    '^VIX': 'VIX',
-}
+# Fibonacci-based prediction horizons (trading days)
+SPX_FORWARD_WINDOWS = [8, 13, 21, 34]
 
-SENTIMENT_LOOKBACK = [5, 10, 21]
-
-# ============================================================================
-# SECTOR CATEGORIZATION
-# ============================================================================
-
-SECTOR_CATEGORIES = {
-    'XLF': 'FINANCIALS',
-    'XLE': 'MACRO_SENSITIVE',
-    'XLP': 'MACRO_SENSITIVE',
-    'XLRE': 'MACRO_SENSITIVE',
-    'XLB': 'MACRO_SENSITIVE',
-    'XLY': 'SENTIMENT_DRIVEN',
-    'XLC': 'SENTIMENT_DRIVEN',
-    'XLV': 'SENTIMENT_DRIVEN',
-    'XLI': 'SENTIMENT_DRIVEN',
-    'XLK': 'MIXED',
-    'XLU': 'MIXED',
-}
-
-# Sectors that benefit from longer lookback windows
-LONG_HORIZON_SECTORS = ['XLF', 'XLE', 'XLRE', 'XLB', 'XLP', 'XLU']
+# Range prediction thresholds (±2%, ±3%, ±5%, ±8%, ±13%)
+SPX_RANGE_THRESHOLDS = [0.02, 0.03, 0.05, 0.08, 0.13]
 
 # ============================================================================
-# HYPERPARAMETERS BY CATEGORY
+# FEATURE ENGINEERING WINDOWS
 # ============================================================================
 
-HYPERPARAMETERS = {
-    'FINANCIALS': {
-        'n_estimators': 150,
-        'max_depth': 5,
-        'min_samples_split': 40,
-        'min_samples_leaf': 35,
-        'max_features': 'sqrt',
-    },
-    'MACRO_SENSITIVE': {
-        'n_estimators': 150,
-        'max_depth': 5,
-        'min_samples_split': 40,
-        'min_samples_leaf': 30,
-        'max_features': 'sqrt',
-    },
-    'SENTIMENT_DRIVEN': {
-        'n_estimators': 150,
-        'max_depth': 4,
-        'min_samples_split': 50,
-        'min_samples_leaf': 50,
-        'max_features': 'sqrt',
-    },
-    'MIXED': {
-        'n_estimators': 150,
-        'max_depth': 4,
-        'min_samples_split': 45,
-        'min_samples_leaf': 40,
-        'max_features': 'sqrt',
-    }
+VIX_WINDOWS = [5, 21]           # VIX change windows
+FRED_WINDOWS = [21, 63]         # Economic indicator windows
+MACRO_WINDOWS = [21, 63]        # Macro momentum windows
+
+# ============================================================================
+# MODEL TRAINING PARAMETERS
+# ============================================================================
+
+TEST_SPLIT = 0.1                # 10% holdout for testing
+RANDOM_STATE = 42               # Reproducibility seed
+
+# RandomForest hyperparameters (optimized for SPX)
+MODEL_PARAMS = {
+    'n_estimators': 200,
+    'max_depth': 6,
+    'min_samples_split': 50,
+    'min_samples_leaf': 30,
+    'max_features': 'sqrt',
+    'random_state': RANDOM_STATE,
+    'n_jobs': -1
 }
 
 # ============================================================================
-# FEATURE ENGINEERING SPECS
+# DATA COLLECTION PARAMETERS
 # ============================================================================
 
-# Windows for different feature types
-RS_WINDOWS_SHORT = [21, 63]
-RS_WINDOWS_LONG = [21, 63, 126]
-MACRO_WINDOWS = [21, 63]
-VIX_WINDOWS = [5, 21]
-FRED_WINDOWS = [21, 63]
-
-# Feature importance threshold
-FEATURE_IMPORTANCE_THRESHOLD = 0.008
-
-# ============================================================================
-# MODEL PARAMETERS
-# ============================================================================
-
-FORWARD_WINDOW = 21  # Days ahead to predict
-TEST_SPLIT = 0.2
-WALK_FORWARD_SPLITS = 5
-RANDOM_STATE = 42
-
-# SPX Prediction Model Parameters
-SPX_FORWARD_WINDOWS = [8, 13, 21, 34]  # Multiple prediction horizons
-SPX_RANGE_THRESHOLDS = [0.02, 0.03, 0.05, .08, .13, .21]  # ±2%, ±3%, ±5% range prediction
-
-# ============================================================================
-# DATA PARAMETERS
-# ============================================================================
-
-LOOKBACK_YEARS = 7
-CACHE_DIR = '.cache_sector_data'
+LOOKBACK_YEARS = 7              # Historical data window
+CACHE_DIR = '.cache_sector_data'  # Directory for cached data

@@ -1,36 +1,27 @@
 """
-SPX Feature Explorer - EXPERIMENTAL FEATURES
-Test new feature interactions WITHOUT touching production code
+SPX Feature Explorer - UNIFIED EDITION
+Single file to test both legitimate vol features AND interaction features
 
-Usage:
+Usage from Jupyter:
+    from spx_feature_explorer import SPXFeatureExplorer
+    
     explorer = SPXFeatureExplorer()
     
-    # Load your existing trained predictor
-    predictor = SPXPredictor()
-    predictor.train(years=7)
+    # Option 1: Test everything
+    results = explorer.run_complete_analysis(years=7)
     
-    # Generate interaction features
-    new_features = explorer.generate_interactions(predictor.features_scaled)
+    # Option 2: Just vol features
+    results = explorer.run_vol_feature_test(years=7)
     
-    # Test if they improve performance
-    accept, results = explorer.test_features(
-        predictor.features_scaled, 
-        new_features, 
-        predictor.model
-    )
-    
-    # Walk-forward validation for stability
-    stability = explorer.walk_forward_validation(
-        predictor.features_scaled,
-        new_features,
-        spx_series
-    )
+    # Option 3: Just interactions
+    results = explorer.run_interaction_test(years=7)
 """
 
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from typing import Dict, Tuple, List
+from sklearn.preprocessing import StandardScaler
+from typing import Dict, Tuple, List, Optional
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -39,21 +30,235 @@ from config import RANDOM_STATE, TEST_SPLIT
 
 class SPXFeatureExplorer:
     """
-    Experimental feature discovery WITHOUT touching production code.
+    Comprehensive feature testing pipeline.
     
-    Philosophy:
-    - Generate interaction features
-    - Test rigorously (A/B test vs baseline)
-    - Validate stability (walk-forward)
-    - Only promote to production if proven
+    Tests TWO types of new features:
+    1. Legitimate Vol Features (VIX vs Past RV - NO lookahead)
+    2. Interaction Features (combinations of existing features)
+    
+    All data fetching and orchestration handled internally.
     """
     
     def __init__(self):
         self.baseline_results = None
         self.test_results = None
+        self.spx = None
+        self.vix = None
+        self.predictor = None
     
     # ========================================
-    # PHASE 1: FEATURE GENERATION
+    # DATA FETCHING (Internal)
+    # ========================================
+    
+    def _fetch_data(self, years: int = 7) -> Tuple[pd.Series, pd.Series]:
+        """
+        Fetch SPX and VIX data internally.
+        
+        Returns:
+            (spx, vix) - both timezone-naive
+        """
+        print("\n" + "="*70)
+        print("FETCHING DATA")
+        print("="*70)
+        
+        from UnifiedDataFetcher import UnifiedDataFetcher
+        from datetime import datetime, timedelta
+        
+        fetcher = UnifiedDataFetcher()
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=years * 365)
+        
+        start_str = start_date.strftime('%Y-%m-%d')
+        end_str = end_date.strftime('%Y-%m-%d')
+        
+        print(f"\n📊 Date Range: {start_str} to {end_str}")
+        
+        # Fetch SPX
+        print("   Fetching SPX...")
+        spx_df = fetcher.fetch_spx(start_str, end_str)
+        spx = spx_df['Close'].squeeze()
+        
+        if spx.index.tz is not None:
+            spx.index = spx.index.tz_localize(None)
+        
+        # Fetch VIX
+        print("   Fetching VIX...")
+        vix = fetcher.fetch_vix(start_str, end_str)
+        
+        if vix.index.tz is not None:
+            vix.index = vix.index.tz_localize(None)
+        
+        print(f"\n✅ SPX: {len(spx)} days")
+        print(f"✅ VIX: {len(vix)} days")
+        
+        self.spx = spx
+        self.vix = vix
+        
+        return spx, vix
+    
+    def _train_baseline(self, years: int = 7) -> 'SPXPredictor':
+        """
+        Train baseline model internally.
+        
+        Returns:
+            Trained SPXPredictor
+        """
+        print("\n" + "="*70)
+        print("TRAINING BASELINE MODEL")
+        print("="*70)
+        
+        from spx_predictor import SPXPredictor
+        
+        predictor = SPXPredictor(use_iv_rv_cheat=False)
+        predictor.train(years=years)
+        
+        self.predictor = predictor
+        
+        return predictor
+    
+    # ========================================
+    # VOL FEATURES (VIX vs Past RV)
+    # ========================================
+    
+    def generate_vix_vs_rv_features(self, 
+                                     spx: pd.Series, 
+                                     vix: pd.Series) -> pd.DataFrame:
+        """
+        Generate VIX vs Historical Realized Volatility features.
+        NO LOOKAHEAD BIAS - uses only backward-looking data.
+        
+        Args:
+            spx: SPX closing prices (raw, not scaled)
+            vix: VIX levels (raw, not scaled)
+        
+        Returns:
+            DataFrame with legitimate vol features
+        """
+        print("\n" + "="*70)
+        print("GENERATING LEGITIMATE VOL FEATURES")
+        print("="*70)
+        print("📊 VIX vs Past Realized Volatility (No Lookahead)")
+        
+        features = pd.DataFrame(index=vix.index)
+        returns = spx.pct_change()
+        
+        # ========================================
+        # 1. VIX vs Past Realized Vol (Multiple Horizons)
+        # ========================================
+        print("\n1️⃣ VIX Premium over Past Realized Vol")
+        
+        for window in [21, 30, 63]:
+            # Past realized vol (annualized)
+            past_rv = returns.rolling(window).std() * np.sqrt(252) * 100
+            
+            # Spread: VIX - Past RV
+            features[f'vix_vs_rv_{window}d'] = vix - past_rv
+            
+            # Ratio: VIX / Past RV
+            features[f'vix_rv_ratio_{window}d'] = vix / past_rv.replace(0, np.nan)
+            
+            print(f"   ✓ Created: vix_vs_rv_{window}d, vix_rv_ratio_{window}d")
+        
+        # ========================================
+        # 2. VIX vs Weighted Average RV (Robust Measure)
+        # ========================================
+        print("\n2️⃣ VIX vs Weighted Average RV")
+        
+        rv_21 = returns.rolling(21).std() * np.sqrt(252) * 100
+        rv_30 = returns.rolling(30).std() * np.sqrt(252) * 100
+        rv_63 = returns.rolling(63).std() * np.sqrt(252) * 100
+        
+        avg_rv = (rv_21 * 0.4 + rv_30 * 0.35 + rv_63 * 0.25)
+        
+        features['vix_vs_avg_rv'] = vix - avg_rv
+        features['vix_avg_rv_ratio'] = vix / avg_rv.replace(0, np.nan)
+        
+        print("   ✓ Created: vix_vs_avg_rv, vix_avg_rv_ratio")
+        
+        # ========================================
+        # 3. Historical Context of Spread
+        # ========================================
+        print("\n3️⃣ Historical Context")
+        
+        spread_21 = vix - rv_21
+        features['vix_rv_spread_percentile'] = spread_21.rolling(252).apply(
+            lambda x: pd.Series(x).rank(pct=True).iloc[-1] * 100
+        )
+        
+        # Z-score of spread
+        features['vix_rv_spread_zscore'] = (
+            (spread_21 - spread_21.rolling(252).mean()) / 
+            spread_21.rolling(252).std()
+        )
+        
+        print("   ✓ Created: vix_rv_spread_percentile, vix_rv_spread_zscore")
+        
+        # ========================================
+        # 4. VIX Velocity & Regime Features
+        # ========================================
+        print("\n4️⃣ VIX Dynamics")
+        
+        # How fast is VIX moving?
+        features['vix_velocity_5d'] = vix.diff(5)
+        features['vix_velocity_21d'] = vix.diff(21)
+        
+        # VIX term structure proxy
+        vix_ma_5 = vix.rolling(5).mean()
+        vix_ma_21 = vix.rolling(21).mean()
+        features['vix_term_structure'] = vix - vix_ma_21
+        features['vix_term_structure_slope'] = vix_ma_5 - vix_ma_21
+        
+        # VIX stability (how volatile is volatility?)
+        features['vix_stability_21d'] = vix.rolling(21).std()
+        features['vix_stability_63d'] = vix.rolling(63).std()
+        
+        print("   ✓ Created: vix_velocity, vix_term_structure, vix_stability")
+        
+        # ========================================
+        # 5. Mean Reversion Signals
+        # ========================================
+        print("\n5️⃣ Mean Reversion Signals")
+        
+        for window in [21, 63, 126, 252]:
+            vix_ma = vix.rolling(window).mean()
+            features[f'vix_reversion_{window}d'] = (
+                (vix - vix_ma) / vix_ma.replace(0, np.nan) * 100
+            )
+        
+        print("   ✓ Created: vix_reversion features (4 windows)")
+        
+        # ========================================
+        # 6. Regime Classification (Enhanced)
+        # ========================================
+        print("\n6️⃣ Enhanced Regime Features")
+        
+        # Basic regime (same as production)
+        features['vix_regime'] = pd.cut(
+            vix, 
+            bins=[0, 15, 20, 30, 100], 
+            labels=[0, 1, 2, 3]
+        ).astype(int)
+        
+        # Days in regime
+        regime_change = features['vix_regime'] != features['vix_regime'].shift(1)
+        regime_id = regime_change.cumsum()
+        features['days_in_regime'] = regime_id.groupby(regime_id).cumcount() + 1
+        
+        # Regime transition flag
+        features['regime_transition'] = regime_change.astype(int)
+        
+        print("   ✓ Created: vix_regime, days_in_regime, regime_transition")
+        
+        # Drop NaNs
+        features = features.dropna()
+        
+        print(f"\n✅ Generated {len(features.columns)} legitimate vol features")
+        print(f"   Samples: {len(features)} (after dropna)")
+        
+        return features
+    
+    # ========================================
+    # INTERACTION FEATURES
     # ========================================
     
     def generate_interactions(self, features_df: pd.DataFrame) -> pd.DataFrame:
@@ -99,15 +304,6 @@ class SPXFeatureExplorer:
                     df['iv_rv_spread'] * df['yield_slope']
                 )
                 print("  ✓ Created: iv_rv_x_yield")
-            
-            # Spread acceleration = regime shift
-            # DISABLED: Creates 21-day data loss, misaligns train/test split
-            # if 'iv_rv_momentum_21' in df.columns:
-            #     interactions['iv_rv_acceleration'] = (
-            #         df['iv_rv_momentum_21'] - 
-            #         df['iv_rv_momentum_21'].shift(21)
-            #     )
-            #     print("  ✓ Created: iv_rv_acceleration")
         
         # ========================================
         # GROUP 2: Macro Regime Interactions
@@ -179,7 +375,7 @@ class SPXFeatureExplorer:
         # ========================================
         # GROUP 5: Technical Regime Features
         # ========================================
-        print("\n📐 Group 5: Technical Regime Features")
+        print("\n🔧 Group 5: Technical Regime Features")
         
         # Distance from MA + momentum = trend strength
         if 'spx_vs_ma200' in df.columns and 'spx_ret_63' in df.columns:
@@ -204,7 +400,7 @@ class SPXFeatureExplorer:
         return interactions
     
     # ========================================
-    # PHASE 2: RIGOROUS TESTING
+    # TESTING FRAMEWORK
     # ========================================
     
     def test_features(self, 
@@ -222,7 +418,7 @@ class SPXFeatureExplorer:
         
         Args:
             base_features: Current production features
-            new_features: New interaction features to test
+            new_features: New features to test
             spx: SPX series for creating targets
             target: Which target to use for testing
         
@@ -292,7 +488,7 @@ class SPXFeatureExplorer:
         }
         
         # ========================================
-        # NEW: With interaction features
+        # NEW: With new features
         # ========================================
         print(f"\n2️⃣ WITH NEW FEATURES (+{len(new_features.columns)} features)")
         
@@ -361,7 +557,7 @@ class SPXFeatureExplorer:
             print(f"\n   ✅ ACCEPT: Meaningful improvement, controlled gap, relevant features")
             accept = True
         elif improvement > 0.002 and gap_increase < 0.05:
-            print(f"\n   ⚠️  MARGINAL: Slight improvement, but watch carefully")
+            print(f"\n   ⚠️ MARGINAL: Slight improvement, but watch carefully")
             accept = False
         else:
             print(f"\n   ❌ REJECT: No improvement or overfitting risk")
@@ -374,10 +570,6 @@ class SPXFeatureExplorer:
             'gap_increase': gap_increase
         }
     
-    # ========================================
-    # PHASE 3: WALK-FORWARD VALIDATION
-    # ========================================
-    
     def walk_forward_validation(self,
                                features: pd.DataFrame,
                                spx: pd.Series,
@@ -385,9 +577,6 @@ class SPXFeatureExplorer:
                                target: str = 'direction_21d') -> pd.DataFrame:
         """
         Rolling window validation: Does accuracy hold as time progresses?
-        
-        If accuracy varies wildly (70% one split, 95% another),
-        your signal is unstable. If it's consistently 85-92%, you're golden.
         
         Args:
             features: Feature matrix to test
@@ -518,7 +707,7 @@ class SPXFeatureExplorer:
             print("✅ STABLE: Model is consistent across time periods")
             stability = "STABLE"
         elif std_test < 0.10:
-            print("⚠️  MODERATE: Model shows some variation across time")
+            print("⚠️ MODERATE: Model shows some variation across time")
             stability = "MODERATE"
         else:
             print("❌ UNSTABLE: High variance across splits - use with caution")
@@ -529,7 +718,196 @@ class SPXFeatureExplorer:
         return df_results
     
     # ========================================
-    # CONVENIENCE METHODS
+    # HIGH-LEVEL API (Single Command)
+    # ========================================
+    
+    def run_complete_analysis(self, 
+                             years: int = 7,
+                             target: str = 'direction_21d',
+                             test_vol: bool = True,
+                             test_interactions: bool = True) -> Dict:
+        """
+        🚀 ONE-COMMAND ANALYSIS
+        
+        Tests both vol features AND interactions.
+        Handles all data fetching and model training internally.
+        
+        Usage from Jupyter:
+            explorer = SPXFeatureExplorer()
+            results = explorer.run_complete_analysis(years=7)
+        
+        Args:
+            years: Years of data to use
+            target: Prediction target (default: direction_21d)
+            test_vol: Test legitimate vol features?
+            test_interactions: Test interaction features?
+        
+        Returns:
+            Dict with all results
+        """
+        print("\n" + "🎯"*35)
+        print("COMPLETE FEATURE ANALYSIS PIPELINE")
+        print("🎯"*35)
+        
+        # Step 1: Fetch data
+        spx, vix = self._fetch_data(years)
+        
+        # Step 2: Train baseline
+        predictor = self._train_baseline(years)
+        
+        results = {}
+        
+        # ========================================
+        # TEST 1: Legitimate Vol Features
+        # ========================================
+        if test_vol:
+            print("\n" + "="*70)
+            print("TEST 1: LEGITIMATE VOL FEATURES (VIX vs Past RV)")
+            print("="*70)
+            
+            # Generate vol features
+            vol_features = self.generate_vix_vs_rv_features(spx, vix)
+            
+            # Align with base features
+            vol_features = vol_features.reindex(predictor.features_scaled.index)
+            
+            # Scale vol features
+            scaler = StandardScaler()
+            vol_features_scaled = pd.DataFrame(
+                scaler.fit_transform(vol_features.fillna(0)),
+                index=vol_features.index,
+                columns=vol_features.columns
+            )
+            
+            # Test
+            accept_vol, test_res_vol = self.test_features(
+                predictor.features_scaled,
+                vol_features_scaled,
+                spx,
+                target
+            )
+            
+            results['vol_features'] = {
+                'accept': accept_vol,
+                'test_results': test_res_vol,
+                'features': vol_features_scaled
+            }
+            
+            # Walk-forward if promising
+            if accept_vol or test_res_vol['improvement'] > 0:
+                print("\n↪️ Running walk-forward validation...")
+                combined = pd.concat([predictor.features_scaled, vol_features_scaled], axis=1)
+                stability = self.walk_forward_validation(combined, spx, 5, target)
+                results['vol_features']['stability'] = stability
+        
+        # ========================================
+        # TEST 2: Interaction Features
+        # ========================================
+        if test_interactions:
+            print("\n" + "="*70)
+            print("TEST 2: INTERACTION FEATURES")
+            print("="*70)
+            
+            # Generate interactions
+            interaction_features = self.generate_interactions(predictor.features_scaled)
+            
+            # Test
+            accept_int, test_res_int = self.test_features(
+                predictor.features_scaled,
+                interaction_features,
+                spx,
+                target
+            )
+            
+            results['interactions'] = {
+                'accept': accept_int,
+                'test_results': test_res_int,
+                'features': interaction_features
+            }
+            
+            # Walk-forward if promising
+            if accept_int or test_res_int['improvement'] > 0:
+                print("\n↪️ Running walk-forward validation...")
+                combined = pd.concat([predictor.features_scaled, interaction_features], axis=1)
+                stability = self.walk_forward_validation(combined, spx, 5, target)
+                results['interactions']['stability'] = stability
+        
+        # ========================================
+        # FINAL RECOMMENDATIONS
+        # ========================================
+        print("\n" + "="*70)
+        print("💡 FINAL RECOMMENDATIONS")
+        print("="*70)
+        
+        if test_vol and 'vol_features' in results:
+            vol_improvement = results['vol_features']['test_results']['improvement']
+            vol_accept = results['vol_features']['accept']
+            
+            print(f"\n📊 VOL FEATURES:")
+            print(f"   Improvement: {vol_improvement:+.1%}")
+            print(f"   Decision: {'✅ ACCEPT' if vol_accept else '❌ REJECT'}")
+            
+            if vol_accept:
+                print("\n   → Add vol features to spx_features.py")
+                print(f"   → Expected 21d accuracy: ~{results['vol_features']['test_results']['with_new']['test_acc']:.1%}")
+        
+        if test_interactions and 'interactions' in results:
+            int_improvement = results['interactions']['test_results']['improvement']
+            int_accept = results['interactions']['accept']
+            
+            print(f"\n🔗 INTERACTION FEATURES:")
+            print(f"   Improvement: {int_improvement:+.1%}")
+            print(f"   Decision: {'✅ ACCEPT' if int_accept else '❌ REJECT'}")
+            
+            if int_accept:
+                print("\n   → Add interaction features to spx_features.py")
+                print(f"   → Expected 21d accuracy: ~{results['interactions']['test_results']['with_new']['test_acc']:.1%}")
+        
+        # Best combo?
+        if test_vol and test_interactions and 'vol_features' in results and 'interactions' in results:
+            if vol_accept and int_accept:
+                print(f"\n🚀 BOTH ACCEPTED - Test combo:")
+                print(f"   → Combine both feature sets")
+                print(f"   → Re-run test to check for interaction effects")
+        
+        print("\n" + "="*70)
+        print("ANALYSIS COMPLETE")
+        print("="*70)
+        
+        return results
+    
+    def run_vol_feature_test(self, years: int = 7, target: str = 'direction_21d') -> Dict:
+        """
+        🎯 Test ONLY legitimate vol features.
+        
+        Usage:
+            explorer = SPXFeatureExplorer()
+            results = explorer.run_vol_feature_test(years=7)
+        """
+        return self.run_complete_analysis(
+            years=years,
+            target=target,
+            test_vol=True,
+            test_interactions=False
+        )
+    
+    def run_interaction_test(self, years: int = 7, target: str = 'direction_21d') -> Dict:
+        """
+        🎯 Test ONLY interaction features.
+        
+        Usage:
+            explorer = SPXFeatureExplorer()
+            results = explorer.run_interaction_test(years=7)
+        """
+        return self.run_complete_analysis(
+            years=years,
+            target=target,
+            test_vol=False,
+            test_interactions=True
+        )
+    
+    # ========================================
+    # BACKWARDS COMPATIBLE API
     # ========================================
     
     def run_full_analysis(self,
@@ -537,10 +915,9 @@ class SPXFeatureExplorer:
                          spx: pd.Series,
                          target: str = 'direction_21d') -> Dict:
         """
-        Run complete feature discovery pipeline:
-        1. Generate interactions
-        2. A/B test vs baseline
-        3. Walk-forward validation (if accepted)
+        LEGACY METHOD: For manual orchestration (backward compatible)
+        
+        Use run_complete_analysis() instead for automatic orchestration.
         
         Args:
             base_features: Production feature matrix
@@ -551,10 +928,11 @@ class SPXFeatureExplorer:
             Dict with all results
         """
         print("\n" + "="*70)
-        print("FULL FEATURE DISCOVERY PIPELINE")
+        print("FULL FEATURE DISCOVERY PIPELINE (LEGACY)")
         print("="*70)
+        print("⚠️  Note: Consider using run_complete_analysis() for auto-orchestration")
         
-        # Phase 1: Generate
+        # Phase 1: Generate interactions
         new_features = self.generate_interactions(base_features)
         
         # Phase 2: Test
@@ -567,7 +945,7 @@ class SPXFeatureExplorer:
         
         # Phase 3: Validate (only if accepted or marginal)
         if accept or test_results['improvement'] > 0:
-            print("\n⏩ Proceeding to walk-forward validation...")
+            print("\n↪️ Proceeding to walk-forward validation...")
             combined = pd.concat([base_features, new_features], axis=1)
             stability_results = self.walk_forward_validation(
                 combined, 
@@ -576,7 +954,7 @@ class SPXFeatureExplorer:
                 target=target
             )
         else:
-            print("\n⏸️  Skipping walk-forward (features rejected)")
+            print("\n⏸️ Skipping walk-forward (features rejected)")
             stability_results = None
         
         return {
@@ -587,39 +965,138 @@ class SPXFeatureExplorer:
         }
 
 
+# ========================================
+# EXAMPLE USAGE & DOCUMENTATION
+# ========================================
+
 def main():
     """
-    Example usage - run after training your SPXPredictor
+    Quick start guide for SPXFeatureExplorer
     """
     print("\n" + "="*70)
-    print("SPX FEATURE EXPLORER - Example Usage")
+    print("SPX FEATURE EXPLORER - Quick Start")
     print("="*70)
     print("""
-This is a standalone exploration tool. Use it like this:
+🚀 RECOMMENDED: Single Command Analysis
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+From Jupyter/IPython:
+
+    from spx_feature_explorer import SPXFeatureExplorer
+    
+    explorer = SPXFeatureExplorer()
+    results = explorer.run_complete_analysis(years=7)
+    
+That's it! It will:
+  ✓ Fetch SPX/VIX data
+  ✓ Train baseline model
+  ✓ Test vol features (VIX vs Past RV)
+  ✓ Test interaction features
+  ✓ Run walk-forward validation
+  ✓ Give you clear recommendations
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+📊 Test ONLY Vol Features:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    explorer = SPXFeatureExplorer()
+    results = explorer.run_vol_feature_test(years=7)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+🔗 Test ONLY Interactions:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    explorer = SPXFeatureExplorer()
+    results = explorer.run_interaction_test(years=7)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+📈 Check Results:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # Vol features
+    if 'vol_features' in results:
+        print(results['vol_features']['test_results'])
+        
+        # Top vol features
+        importance = results['vol_features']['test_results']['with_new']['new_feature_importance']
+        top_5 = sorted(importance.items(), key=lambda x: x[1], reverse=True)[:5]
+        print("\\nTop 5 Vol Features:")
+        for feat, imp in top_5:
+            print(f"  {feat}: {imp*100:.2f}%")
+    
+    # Interactions
+    if 'interactions' in results:
+        print(results['interactions']['test_results'])
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+⏱️  Expected Runtime:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Data fetch:            ~10 seconds
+  Baseline training:     ~30 seconds
+  Vol feature test:      ~20 seconds
+  Interaction test:      ~20 seconds
+  Walk-forward (each):   ~60 seconds
+  
+  TOTAL: ~3-4 minutes for complete analysis
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+💡 What You'll Get:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✓ Clear ACCEPT/REJECT decision for each feature set
+  ✓ Test accuracy improvement (baseline vs new)
+  ✓ Feature importance rankings
+  ✓ Walk-forward stability metrics
+  ✓ Actionable recommendations for production
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+🔧 Advanced: Manual Orchestration (Legacy)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+If you prefer manual control:
 
     from spx_predictor import SPXPredictor
     from spx_feature_explorer import SPXFeatureExplorer
+    from UnifiedDataFetcher import UnifiedDataFetcher
+    from datetime import datetime, timedelta
     
-    # 1. Train your baseline model
+    # Manual setup
     predictor = SPXPredictor()
     predictor.train(years=7)
     
-    # 2. Explore new features
+    fetcher = UnifiedDataFetcher()
+    end = datetime.now()
+    start = end - timedelta(days=7*365)
+    
+    spx_df = fetcher.fetch_spx(start.strftime('%Y-%m-%d'), 
+                               end.strftime('%Y-%m-%d'))
+    spx = spx_df['Close'].squeeze()
+    spx.index = spx.index.tz_localize(None)
+    
+    # Test
     explorer = SPXFeatureExplorer()
     results = explorer.run_full_analysis(
         base_features=predictor.features_scaled,
-        spx=predictor.features.index.to_series(),  # Need actual SPX
+        spx=spx,
         target='direction_21d'
     )
-    
-    # 3. Decide whether to promote to production
-    if results['accept']:
-        print("✅ Features are ready for production!")
-        # Manually add to spx_features.py
-    else:
-        print("❌ Keep experimenting")
-    
-Run this file to see this message.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Run: python -c "from spx_feature_explorer import main; main()"
     """)
 
 

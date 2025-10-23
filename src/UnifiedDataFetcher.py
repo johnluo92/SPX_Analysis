@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Union, Dict, List
 
-from config import SECTOR_ETFS, MACRO_TICKERS, FRED_SERIES, FRED_API_KEY_PATH, CACHE_DIR
+from config import MACRO_TICKERS, FRED_SERIES, FRED_API_KEY_PATH, CACHE_DIR
 
 class UnifiedDataFetcher:
     """
@@ -244,36 +244,7 @@ class UnifiedDataFetcher:
         series.name = f"{ticker}_{column}"
         return series
     
-    # ==================== SECTOR & MACRO METHODS ====================
-    
-    def fetch_sectors(self, start_date: str, end_date: str) -> pd.DataFrame:
-        """Fetch sector ETFs including SPY with caching."""
-        cache_path = self._cache_path('sectors', start_date, end_date)
-        
-        if self._is_cached_today(cache_path):
-            return pd.read_parquet(cache_path)
-        
-        print(f"Fetching sectors: {start_date} to {end_date}")
-        
-        tickers = list(SECTOR_ETFS.keys()) + ['SPY']
-        series_list = []
-        
-        for ticker in tickers:
-            try:
-                df = self.fetch_yahoo(ticker, start_date, end_date)
-                if not df.empty:
-                    s = df['Close'].squeeze()
-                    s.name = ticker
-                    series_list.append(s)
-            except Exception as e:
-                print(f"Failed {ticker}: {e}")
-        
-        if not series_list:
-            raise ValueError("No sector data")
-        
-        df = pd.concat(series_list, axis=1, join='outer')
-        df.to_parquet(cache_path)
-        return df
+    # ==================== MACRO METHODS ====================
     
     def fetch_macro(self, start_date: str, end_date: str) -> pd.DataFrame:
         """Fetch macro factors from Yahoo Finance with caching."""
@@ -362,6 +333,18 @@ class UnifiedDataFetcher:
             pandas Series of SPX close prices
         """
         return self.fetch_yahoo_series('^GSPC', 'Close', start_date, end_date)
+    
+    def fetch_price(self, ticker: str) -> Optional[float]:
+        """
+        Fetch current real-time (or 15-min delayed) price for a given ticker.
+        """
+        try:
+            data = yf.Ticker(ticker)
+            return float(data.fast_info["last_price"])
+        except Exception as e:
+            print(f"⚠️  Failed to fetch price for {ticker}: {e}")
+            return None
+
     
     def fetch_treasury_rate(self, maturity: str = '10Y', 
                            start_date: Optional[str] = None,

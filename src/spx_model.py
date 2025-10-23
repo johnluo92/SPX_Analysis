@@ -11,7 +11,7 @@ from typing import Dict, Tuple
 
 from config import (
     SPX_FORWARD_WINDOWS, SPX_RANGE_THRESHOLDS,
-    TEST_SPLIT, WALK_FORWARD_SPLITS, RANDOM_STATE
+    TEST_SPLIT, RANDOM_STATE, MODEL_PARAMS
 )
 
 
@@ -23,6 +23,7 @@ class SPXModel:
         self.range_models = {}  # One model per threshold
         self.results = {}
         self.selected_features = None
+        self.feature_importances = None  # Store feature importances from selection
     
     def create_targets(self, spx: pd.Series) -> Dict[str, pd.Series]:
         """
@@ -68,16 +69,8 @@ class SPXModel:
             X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
             y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
             
-            # Train model
-            model = RandomForestClassifier(
-                n_estimators=200,
-                max_depth=6,
-                min_samples_split=50,
-                min_samples_leaf=30,
-                max_features='sqrt',
-                random_state=RANDOM_STATE,
-                n_jobs=-1
-            )
+            # Train model using centralized parameters
+            model = RandomForestClassifier(**MODEL_PARAMS)
             
             model.fit(X_train, y_train)
             
@@ -118,16 +111,8 @@ class SPXModel:
                 X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
                 y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
                 
-                # Train model
-                model = RandomForestClassifier(
-                    n_estimators=200,
-                    max_depth=6,
-                    min_samples_split=50,
-                    min_samples_leaf=30,
-                    max_features='sqrt',
-                    random_state=RANDOM_STATE,
-                    n_jobs=-1
-                )
+                # Train model using centralized parameters
+                model = RandomForestClassifier(**MODEL_PARAMS)
                 
                 model.fit(X_train, y_train)
                 
@@ -186,10 +171,13 @@ class SPXModel:
         )
         model.fit(X, y)
         
-        # Get top features
+        # Get top features and store importances
         importance = pd.Series(model.feature_importances_, index=X.columns)
         importance_sorted = importance.sort_values(ascending=False)
         top_features = importance_sorted.head(top_n).index.tolist()
+        
+        # Store feature importances as dict for easy access
+        self.feature_importances = importance_sorted.head(top_n).to_dict()
         
         print(f"✅ Selected {len(top_features)} features")
         print(f"\n📊 TOP {top_n} FEATURES BY IMPORTANCE:")
@@ -213,12 +201,24 @@ class SPXModel:
         
         # Directional predictions
         for key, model in self.directional_models.items():
-            prob = model.predict_proba(features)[:, 1][0]
+            proba = model.predict_proba(features)
+            if proba.shape[1] == 1:
+                # Only 1 class present (all same outcome)
+                prob = proba[0, 0]
+            else:
+                # Normal case: get probability of positive class
+                prob = proba[0, 1]
             predictions[f'direction_{key}'] = prob
         
         # Range predictions
         for key, model in self.range_models.items():
-            prob = model.predict_proba(features)[:, 1][0]
+            proba = model.predict_proba(features)
+            if proba.shape[1] == 1:
+                # Only 1 class present
+                prob = proba[0, 0]
+            else:
+                # Normal case
+                prob = proba[0, 1]
             predictions[f'range_{key}'] = prob
         
         return predictions
@@ -228,3 +228,20 @@ class SPXModel:
         df = pd.DataFrame(self.results).T
         df = df.sort_values('gap')
         return df[['type', 'test_acc', 'gap']]
+    
+    def get_feature_importance(self, top_n: int = 10) -> Dict[str, float]:
+        """
+        Get top N most important features.
+        
+        Args:
+            top_n: Number of top features to return
+            
+        Returns:
+            Dictionary of {feature_name: importance_score} sorted by importance
+        """
+        if self.feature_importances is None:
+            return {}
+        
+        # Return top N from stored importances
+        items = list(self.feature_importances.items())[:top_n]
+        return dict(items)
