@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Score Distribution - Statistical Thresholds</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: transparent;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #333;
+            background: rgba(10, 10, 10, 0.5);
+            flex-shrink: 0;
+        }
+        
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .section-subtitle {
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+        }
+        
+        .chart-container {
+            flex: 1;
+            padding: 24px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chart-body {
+            flex: 1;
+            min-height: 0;
+        }
+        
+        .legend-note {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 6px;
+            border-left: 3px solid #3b82f6;
+            font-size: 11px;
+            color: #999;
+            line-height: 1.6;
+        }
+        
+        .legend-note strong {
+            color: #3b82f6;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="section-header">
+        <div>
+            <div class="section-title">Score Distribution Analysis</div>
+            <div class="section-subtitle">Historical Anomaly Score with Statistical Thresholds</div>
+        </div>
+    </div>
+    
+    <div class="chart-container">
+        <div id="distributionChart" class="chart-body"></div>
+        <div class="legend-note">
+            <strong>Statistical Thresholds:</strong> Based on 85th, 92nd, and 98th percentiles of historical data. 
+            Provides probabilistic interpretation where p-value indicates the probability that the current score falls within the normal range.
+            Lower p-values indicate more anomalous conditions.
+        </div>
+    </div>
+
+    <script>
+        let currentData = null;
+        
+        async function loadData() {
+            try {
+                const timestamp = Date.now();
+                const [anomaly, historical] = await Promise.all([
+                    fetch(`../../json_data/anomaly_report.json?t=${timestamp}`).then(r => r.json()),
+                    fetch(`../../json_data/historical_anomaly_scores.json?t=${timestamp}`).then(r => r.json())
+                ]);
+                
+                currentData = { anomaly, historical };
+                renderDistribution();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                currentData = {
+                    anomaly: {
+                        ensemble: { score: 0.563 },
+                        classification: {
+                            statistical: {
+                                level: 'NORMAL',
+                                percentile: 0.42,
+                                thresholds: { moderate: 0.725, high: 0.805, critical: 0.914 }
+                            }
+                        }
+                    },
+                    historical: {
+                        ensemble_scores: generateSampleScores()
+                    }
+                };
+                renderDistribution();
+            }
+        }
+        
+        function generateSampleScores() {
+            const scores = [];
+            for (let i = 0; i < 500; i++) {
+                const random = Math.random();
+                if (random < 0.7) {
+                    scores.push(0.2 + Math.random() * 0.4);
+                } else if (random < 0.9) {
+                    scores.push(0.5 + Math.random() * 0.2);
+                } else {
+                    scores.push(0.7 + Math.random() * 0.3);
+                }
+            }
+            return scores;
+        }
+        
+        function renderDistribution() {
+            if (!currentData) return;
+            
+            const { anomaly, historical } = currentData;
+            const scores = historical.ensemble_scores;
+            const currentScore = anomaly.ensemble.score;
+            
+            const thresholds = anomaly.classification?.statistical?.thresholds || 
+                { moderate: 0.725, high: 0.805, critical: 0.914 };
+            
+            // Histogram trace
+            const histTrace = {
+                x: scores,
+                type: 'histogram',
+                name: 'Score Distribution',
+                nbinsx: 40,
+                marker: {
+                    color: '#3b82f6',
+                    line: { color: '#1e40af', width: 1 }
+                },
+                opacity: 0.7
+            };
+            
+            // KDE trace
+            const kde = calculateKDE(scores, 100);
+            const kdeTrace = {
+                x: kde.x,
+                y: kde.y,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Density',
+                line: { color: '#10b981', width: 3 },
+                yaxis: 'y2',
+                fill: 'tozeroy',
+                fillcolor: 'rgba(16, 185, 129, 0.2)'
+            };
+            
+            const shapes = [];
+            const annotations = [];
+            
+            // Background regions
+            shapes.push(
+                {
+                    type: 'rect',
+                    xref: 'x', yref: 'paper',
+                    x0: 0, x1: thresholds.moderate,
+                    y0: 0, y1: 1,
+                    fillcolor: '#10b981',
+                    opacity: 0.08,
+                    line: { width: 0 }
+                },
+                {
+                    type: 'rect',
+                    xref: 'x', yref: 'paper',
+                    x0: thresholds.moderate, x1: thresholds.high,
+                    y0: 0, y1: 1,
+                    fillcolor: '#f59e0b',
+                    opacity: 0.08,
+                    line: { width: 0 }
+                },
+                {
+                    type: 'rect',
+                    xref: 'x', yref: 'paper',
+                    x0: thresholds.high, x1: thresholds.critical,
+                    y0: 0, y1: 1,
+                    fillcolor: '#ef4444',
+                    opacity: 0.08,
+                    line: { width: 0 }
+                },
+                {
+                    type: 'rect',
+                    xref: 'x', yref: 'paper',
+                    x0: thresholds.critical, x1: 1,
+                    y0: 0, y1: 1,
+                    fillcolor: '#dc2626',
+                    opacity: 0.12,
+                    line: { width: 0 }
+                }
+            );
+            
+            // Threshold lines
+            shapes.push(
+                {
+                    type: 'line',
+                    x0: thresholds.moderate, x1: thresholds.moderate,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#3b82f6', width: 3, dash: 'solid' }
+                },
+                {
+                    type: 'line',
+                    x0: thresholds.high, x1: thresholds.high,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#3b82f6', width: 3, dash: 'solid' }
+                },
+                {
+                    type: 'line',
+                    x0: thresholds.critical, x1: thresholds.critical,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#3b82f6', width: 3, dash: 'solid' }
+                }
+            );
+            
+            // Current score line
+            shapes.push({
+                type: 'line',
+                x0: currentScore,
+                x1: currentScore,
+                y0: 0,
+                y1: 1,
+                yref: 'paper',
+                line: { color: '#ffffff', width: 4 }
+            });
+            
+            // Labels
+            annotations.push(
+                {
+                    x: thresholds.moderate / 2,
+                    y: 1.05, yref: 'paper',
+                    text: 'NORMAL',
+                    showarrow: false,
+                    font: { color: '#10b981', size: 12, weight: 700 }
+                },
+                {
+                    x: (thresholds.moderate + thresholds.high) / 2,
+                    y: 1.05, yref: 'paper',
+                    text: 'MODERATE',
+                    showarrow: false,
+                    font: { color: '#f59e0b', size: 11, weight: 700 }
+                },
+                {
+                    x: (thresholds.high + thresholds.critical) / 2,
+                    y: 1.05, yref: 'paper',
+                    text: 'HIGH',
+                    showarrow: false,
+                    font: { color: '#ef4444', size: 11, weight: 700 }
+                },
+                {
+                    x: (thresholds.critical + 1) / 2,
+                    y: 1.05, yref: 'paper',
+                    text: 'CRITICAL',
+                    showarrow: false,
+                    font: { color: '#dc2626', size: 11, weight: 700 }
+                },
+                {
+                    x: currentScore,
+                    y: 1.15,
+                    yref: 'paper',
+                    xanchor: 'center',
+                    text: `CURRENT: ${currentScore.toFixed(3)}`,
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 2,
+                    arrowcolor: '#ffffff',
+                    ax: 0,
+                    ay: 20,
+                    font: { color: '#ffffff', size: 12, weight: 700 },
+                    bgcolor: 'rgba(0, 0, 0, 0.9)',
+                    bordercolor: '#ffffff',
+                    borderwidth: 2,
+                    borderpad: 4
+                }
+            );
+            
+            const layout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(20,20,30,0.3)',
+                font: { color: '#e0e0e0', family: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' },
+                margin: { l: 60, r: 60, t: 100, b: 50 },
+                xaxis: {
+                    title: { text: 'Anomaly Score', font: { size: 14 } },
+                    gridcolor: '#2a2a2a',
+                    range: [0, 1]
+                },
+                yaxis: {
+                    title: { text: 'Frequency', font: { size: 14 } },
+                    gridcolor: '#2a2a2a'
+                },
+                yaxis2: {
+                    overlaying: 'y',
+                    side: 'right',
+                    showgrid: false,
+                    title: { text: 'Density', font: { size: 14 } }
+                },
+                shapes: shapes,
+                annotations: annotations,
+                legend: {
+                    x: 0.02,
+                    y: 0.98,
+                    bgcolor: 'rgba(20, 20, 30, 0.8)',
+                    bordercolor: '#333',
+                    borderwidth: 1
+                },
+                autosize: true
+            };
+            
+            const config = { 
+                responsive: true, 
+                displayModeBar: false 
+            };
+            
+            Plotly.newPlot('distributionChart', [histTrace, kdeTrace], layout, config);
+            
+            window.addEventListener('resize', () => {
+                Plotly.Plots.resize('distributionChart');
+            });
+        }
+        
+        function calculateKDE(data, points) {
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            const bandwidth = 0.05;
+            
+            const x = [];
+            const y = [];
+            
+            for (let i = 0; i <= points; i++) {
+                const xi = min + (max - min) * i / points;
+                x.push(xi);
+                
+                let density = 0;
+                for (const point of data) {
+                    const u = (xi - point) / bandwidth;
+                    density += Math.exp(-0.5 * u * u) / Math.sqrt(2 * Math.PI);
+                }
+                y.push(density / (data.length * bandwidth));
+            }
+            
+            const maxY = Math.max(...y);
+            const normalized = y.map(val => (val / maxY) * data.length * 0.3);
+            
+            return { x, y: normalized };
+        }
+        
+        loadData();
+        setInterval(loadData, 15 * 60 * 1000);
+    </script>
+</body>
+</html>

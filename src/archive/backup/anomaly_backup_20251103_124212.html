@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Market Anomaly Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemBox, 'Segoe UI', Roboto, sans-serif;
+            background: transparent;
+            color: #e0e0e0;
+            overflow-x: hidden;
+            padding: 24px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: rgba(20, 20, 30, 0.95);
+            border: 1px solid #333;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 24px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 8px 32px rgba(59, 130, 246, 0.1);
+        }
+        
+        /* IFRAME CONTAINERS */
+        .iframe-container {
+            width: 100%;
+            border: none;
+            background: transparent;
+            display: block;
+            overflow: hidden;
+        }
+        
+        .hero-frame {
+            height: 480px;
+        }
+        
+        .persistence-frame {
+            height: 250px;
+        }
+        
+        .historical-frame {
+            height: 980px; /* Reduced to eliminate dead space */
+        }
+        
+        .side-by-side-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .side-card {
+            background: rgba(20, 20, 30, 0.95);
+            border: 1px solid #333;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .side-card:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 8px 32px rgba(59, 130, 246, 0.1);
+        }
+        
+        .distribution-frame {
+            height: 660px;
+        }
+        
+        .ranking-frame {
+            height: 660px;
+        }
+        
+        .forward-returns-frame {
+            height: 620px;
+        }
+        
+        /* LOADING STATE */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 400px;
+            color: #666;
+            gap: 12px;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #333;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 900px) {
+            .side-by-side-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HERO SECTION -->
+        <div class="card">
+            <iframe 
+                src="subcharts/detector_grid_hero.html" 
+                class="iframe-container hero-frame"
+                frameborder="0"
+                scrolling="no"
+                title="Hero Section">
+            </iframe>
+        </div>
+
+        <!-- HISTORICAL ANALYSIS -->
+        <div class="card">
+            <iframe 
+                src="subcharts/historical_analysis.html" 
+                class="iframe-container historical-frame"
+                frameborder="0"
+                scrolling="no"
+                title="Historical Analysis">
+            </iframe>
+        </div>
+
+        <!-- SIDE BY SIDE: SCORE DISTRIBUTION & DETECTOR RANKING -->
+        <div class="side-by-side-container">
+            <!-- SCORE DISTRIBUTION -->
+            <div class="side-card">
+                <iframe 
+                    src="subcharts/score_distribution.html" 
+                    class="iframe-container distribution-frame"
+                    frameborder="0"
+                    scrolling="no"
+                    title="Score Distribution">
+                </iframe>
+            </div>
+
+            <!-- DETECTOR RANKING -->
+            <div class="side-card">
+                <iframe 
+                    src="subcharts/detector_ranking.html" 
+                    class="iframe-container ranking-frame"
+                    frameborder="0"
+                    scrolling="no"
+                    title="Detector Ranking">
+                </iframe>
+            </div>
+        </div>
+
+        <!-- FORWARD RETURNS ANALYSIS -->
+        <div class="card">
+            <iframe 
+                src="subcharts/forward_returns.html" 
+                class="iframe-container forward-returns-frame"
+                frameborder="0"
+                scrolling="no"
+                title="Forward Returns Analysis">
+            </iframe>
+        </div>
+
+        <!-- PERSISTENCE TRACKER -->
+        <div class="card">
+            <iframe 
+                src="subcharts/persistence_tracker.html" 
+                class="iframe-container persistence-frame"
+                frameborder="0"
+                scrolling="no"
+                title="Persistence Tracker">
+            </iframe>
+        </div>
+    </div>
+
+
+    <script>
+        // Handle dynamic iframe resizing
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'resize' && event.data.height) {
+                const iframe = event.source.frameElement;
+                if (iframe) {
+                    iframe.style.height = event.data.height + 'px';
+                    console.log(`📐 Resized iframe to ${event.data.height}px`);
+                }
+            }
+        });
+
+        // Log iframe load status
+        document.querySelectorAll('iframe').forEach((iframe, index) => {
+            iframe.addEventListener('load', () => {
+                console.log(`✓ Loaded: ${iframe.src}`);
+            });
+            
+            iframe.addEventListener('error', () => {
+                console.error(`✗ Failed to load: ${iframe.src}`);
+            });
+        });
+        
+        console.log('🎨 Anomaly Diagnostic Dashboard initialized');
+    </script>
+</body>
+</html>

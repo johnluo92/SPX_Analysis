@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIX Market Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+        }
+        
+        .unified-bar {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-bottom: 2px solid #2a3f5f;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        
+        .unified-content {
+            padding: 16px 32px;
+            max-width: 1920px;
+            margin: 0 auto;
+        }
+        
+
+        
+        .row-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        
+        .metric {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 16px 18px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.08);
+            transition: all 0.2s;
+            height: 100px;
+        }
+        
+        .metric:hover {
+            transform: translateY(-2px);
+            border-color: rgba(59, 130, 246, 0.4);
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .metric-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #8b92a7;
+            font-weight: 600;
+        }
+        
+        .metric-value {
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .metric-change {
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .metric-change.positive {
+            color: #10b981;
+        }
+        
+        .metric-change.negative {
+            color: #ef4444;
+        }
+        
+        .metric-sublabel {
+            font-size: 11px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        
+        .ensemble-score {
+            font-size: 38px !important;
+            text-shadow: 0 0 20px currentColor;
+        }
+        
+        .ensemble-score.normal { 
+            color: #10b981; 
+        }
+        
+        .ensemble-score.moderate { 
+            color: #f59e0b; 
+        }
+        
+        .ensemble-score.high { 
+            color: #ef4444;
+            animation: pulse 2s infinite;
+        }
+        
+        .ensemble-score.critical {
+            color: #dc2626;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.9; }
+        }
+        
+        .regime-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: 2px solid;
+        }
+        
+        .regime-badge.regime-0 {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+            color: #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+        }
+        
+        .regime-badge.regime-1 {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+            color: #3b82f6;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
+        }
+        
+        .regime-badge.regime-2 {
+            background: rgba(245, 158, 11, 0.2);
+            border-color: #f59e0b;
+            color: #f59e0b;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+        }
+        
+        .regime-badge.regime-3 {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+            color: #ef4444;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: 2px solid;
+        }
+        
+        .status-badge.normal {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+            color: #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+        }
+        
+        .status-badge.moderate {
+            background: rgba(245, 158, 11, 0.2);
+            border-color: #f59e0b;
+            color: #f59e0b;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+        }
+        
+        .status-badge.high {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+            color: #ef4444;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+        }
+        
+        .status-badge.critical {
+            background: rgba(220, 38, 38, 0.25);
+            border-color: #dc2626;
+            color: #dc2626;
+            box-shadow: 0 0 12px rgba(220, 38, 38, 0.4);
+        }
+        
+        .detector-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        
+        .detector-badge.firing {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid #ef4444;
+        }
+        
+        .detector-badge.normal {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .timestamp {
+            font-size: 11px;
+            color: #6b7280;
+            text-align: center;
+            margin-top: 16px;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .loading {
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        @media (max-width: 1400px) {
+            .metrics-row {
+                grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            }
+            
+            .ensemble-score {
+                font-size: 32px !important;
+            }
+        }
+        
+        @media (max-width: 1024px) {
+            .metrics-row {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .metrics-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .unified-content {
+                padding: 16px 20px;
+            }
+            
+            .ensemble-score {
+                font-size: 28px !important;
+            }
+            
+            .metric-value {
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="unified-bar">
+        <div class="unified-content">
+            <div class="row-container" id="rowContainer">
+                <div class="loading">Loading market data...</div>
+            </div>
+            
+            <div class="timestamp" id="timestamp">Loading...</div>
+        </div>
+    </div>
+    
+    <script>
+        const REGIME_NAMES = {
+            0: 'Low Vol',
+            1: 'Normal',
+            2: 'Elevated',
+            3: 'Crisis'
+        };
+        
+        async function loadData() {
+            try {
+                const basePaths = [
+                    '../json_data/',
+                    '../../json_data/',
+                    'json_data/',
+                    '/json_data/'
+                ];
+                
+                let marketData = null;
+                let anomalyData = null;
+                let regimeStats = null;
+                let historicalData = null;
+                
+                for (const basePath of basePaths) {
+                    try {
+                        const [marketResp, anomalyResp] = await Promise.all([
+                            fetch(basePath + 'market_state.json?' + Date.now()),
+                            fetch(basePath + 'anomaly_report.json?' + Date.now())
+                        ]);
+                        
+                        if (marketResp.ok && anomalyResp.ok) {
+                            marketData = await marketResp.json();
+                            anomalyData = await anomalyResp.json();
+                            console.log('Loaded data from:', basePath);
+                            
+                            try {
+                                const [regimeResp, histResp] = await Promise.all([
+                                    fetch(basePath + 'regime_statistics.json?' + Date.now()),
+                                    fetch(basePath + 'historical_anomaly_scores.json?' + Date.now())
+                                ]);
+                                
+                                if (regimeResp.ok) regimeStats = await regimeResp.json();
+                                if (histResp.ok) historicalData = await histResp.json();
+                            } catch (e) {
+                                console.log('Optional data not available');
+                            }
+                            break;
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+                
+                if (!marketData || !anomalyData) {
+                    throw new Error('Could not find required JSON files');
+                }
+                
+                renderMetrics(marketData, anomalyData, regimeStats, historicalData);
+                
+            } catch (error) {
+                document.getElementById('rowContainer').innerHTML = `
+                    <div style="color: #ef4444; font-size: 12px;">
+                        Error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        function calculatePercentile(value, array) {
+            if (!array || array.length === 0) return null;
+            const sorted = [...array].sort((a, b) => a - b);
+            const below = sorted.filter(x => x <= value).length;
+            return Math.round((below / sorted.length) * 100);
+        }
+        
+        function renderMetrics(market, anomaly, regimeStats, historical) {
+            const vix = market.market_data?.vix || market.vix_structure?.current_vix;
+            const spx = market.market_data?.spx;
+            const regime = market.market_data?.vix_regime?.id || market.vix_structure?.regime;
+            const daysInRegime = market.vix_structure?.days_in_regime;
+            const vixChange = market.vix_structure?.velocity_5d;
+            const spxChange = market.market_data?.spx_change_today;
+            
+            const ensembleScore = anomaly.ensemble.score;
+            const persistence = anomaly.persistence;
+            const thresholds = anomaly.classification.thresholds;
+            
+            let level = 'normal';
+            let levelText = 'NORMAL';
+            
+            if (ensembleScore >= thresholds.critical) {
+                level = 'critical';
+                levelText = 'CRITICAL';
+            } else if (ensembleScore >= thresholds.high) {
+                level = 'high';
+                levelText = 'HIGH';
+            } else if (ensembleScore >= thresholds.moderate) {
+                level = 'moderate';
+                levelText = 'ELEVATED';
+            }
+            
+            // Calculate persistence and next regime
+            let persistenceProb = null;
+            let nextRegime = null;
+            
+            if (regimeStats && regime !== null && regime !== undefined) {
+                const currentRegimeData = regimeStats.regimes.find(r => r.id === regime);
+                if (currentRegimeData?.transitions_5d) {
+                    persistenceProb = currentRegimeData.transitions_5d.persistence?.probability;
+                    
+                    const transitions = currentRegimeData.transitions_5d.to_other_regimes;
+                    if (transitions) {
+                        let maxProb = 0;
+                        let maxRegimeId = null;
+                        
+                        Object.entries(transitions).forEach(([regimeId, data]) => {
+                            const prob = data.probability;
+                            if (prob > maxProb) {
+                                maxProb = prob;
+                                maxRegimeId = parseInt(regimeId);
+                            }
+                        });
+                        
+                        if (maxRegimeId !== null && maxProb > 0) {
+                            nextRegime = {
+                                regime: maxRegimeId,
+                                probability: maxProb
+                            };
+                        }
+                    }
+                }
+            }
+            
+            // ROW 1: Market Data
+            let row1 = '<div class="metrics-row">';
+            
+            // VIX Level
+            row1 += `
+                <div class="metric">
+                    <div class="metric-label">VIX Level</div>
+                    <div class="metric-value">
+                        ${vix ? vix.toFixed(2) : '--'}
+                        ${vixChange ? `
+                            <span class="metric-change ${vixChange >= 0 ? 'positive' : 'negative'}">
+                                ${vixChange >= 0 ? '+' : ''}${vixChange.toFixed(2)}
+                            </span>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // S&P 500
+            row1 += `
+                <div class="metric">
+                    <div class="metric-label">S&P 500</div>
+                    <div class="metric-value">
+                        ${spx ? spx.toFixed(2) : '--'}
+                        ${spxChange ? `
+                            <span class="metric-change ${spxChange >= 0 ? 'positive' : 'negative'}">
+                                ${spxChange >= 0 ? '+' : ''}${spxChange.toFixed(2)}%
+                            </span>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // Current Regime
+            if (regime !== null && regime !== undefined) {
+                row1 += `
+                    <div class="metric">
+                        <div class="metric-label">VIX Regime</div>
+                        <div class="metric-value">
+                            <span class="regime-badge regime-${regime}">
+                                ${REGIME_NAMES[regime]}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Days in Regime
+            if (daysInRegime) {
+                row1 += `
+                    <div class="metric">
+                        <div class="metric-label">Days in Regime</div>
+                        <div class="metric-value">
+                            ${daysInRegime}
+                            <span class="metric-sublabel">days</span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Stay in Regime
+            if (persistenceProb !== null && regime !== null && regime !== undefined) {
+                const prob = (persistenceProb * 100).toFixed(0);
+                row1 += `
+                    <div class="metric">
+                        <div class="metric-label">Stay in Regime (5d)</div>
+                        <div class="metric-value">
+                            <span class="regime-badge regime-${regime}">
+                                ${prob}%
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Next Transition
+            if (nextRegime) {
+                const prob = (nextRegime.probability * 100).toFixed(0);
+                row1 += `
+                    <div class="metric">
+                        <div class="metric-label">If Transition (5d)</div>
+                        <div class="metric-value">
+                            <span class="regime-badge regime-${nextRegime.regime}">
+                                ${REGIME_NAMES[nextRegime.regime]} ${prob}%
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            row1 += '</div>';
+            
+            // ROW 2: Anomaly Data
+            let row2 = '<div class="metrics-row">';
+            
+            // Ensemble Score
+            row2 += `
+                <div class="metric">
+                    <div class="metric-label">Ensemble Score</div>
+                    <div class="metric-value ensemble-score ${level}">
+                        ${ensembleScore.toFixed(3)}
+                    </div>
+                </div>
+            `;
+            
+            // Detectors Firing
+            row2 += `
+                <div class="metric">
+                    <div class="metric-label">Detectors Firing</div>
+                    <div class="metric-value">
+                        ${persistence.current_count}/${persistence.max_possible}
+                        <span class="detector-badge ${persistence.current_count >= 5 ? 'firing' : 'normal'}">
+                            ${(persistence.percentage * 100).toFixed(0)}%
+                        </span>
+                    </div>
+                </div>
+            `;
+            
+            // Anomaly Streak
+            row2 += `
+                <div class="metric">
+                    <div class="metric-label">Anomaly Streak</div>
+                    <div class="metric-value">
+                        ${persistence.historical_stats.current_streak}
+                        <span class="metric-sublabel">days</span>
+                    </div>
+                </div>
+            `;
+            
+            // Historical Percentile
+            if (historical && historical.ensemble_scores) {
+                const percentile = calculatePercentile(ensembleScore, historical.ensemble_scores);
+                row2 += `
+                    <div class="metric">
+                        <div class="metric-label">Score Percentile</div>
+                        <div class="metric-value">
+                            ${percentile !== null ? percentile : '--'}
+                            <span class="metric-sublabel">%ile</span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Random Detector 5
+            const random5 = anomaly.top_anomalies.find(a => a.name === 'random_5');
+            if (random5) {
+                row2 += `
+                    <div class="metric">
+                        <div class="metric-label">Random Detector 5</div>
+                        <div class="metric-value">
+                            ${random5.score.toFixed(3)}
+                            <span class="detector-badge ${random5.score >= thresholds.moderate ? 'firing' : 'normal'}">
+                                ${random5.score >= thresholds.high ? 'HIGH' : random5.score >= thresholds.moderate ? 'MOD' : 'LOW'}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Random Detector 3
+            const random3 = anomaly.top_anomalies.find(a => a.name === 'random_3');
+            if (random3) {
+                row2 += `
+                    <div class="metric">
+                        <div class="metric-label">Random Detector 3</div>
+                        <div class="metric-value">
+                            ${random3.score.toFixed(3)}
+                            <span class="detector-badge ${random3.score >= thresholds.moderate ? 'firing' : 'normal'}">
+                                ${random3.score >= thresholds.high ? 'HIGH' : random3.score >= thresholds.moderate ? 'MOD' : 'LOW'}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            row2 += '</div>';
+            
+            document.getElementById('rowContainer').innerHTML = row1 + row2;
+            
+            // Update timestamp
+            const timestamp = new Date(market.timestamp || anomaly.timestamp).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            document.getElementById('timestamp').textContent = `Updated ${timestamp}`;
+        }
+        
+        loadData();
+        setInterval(loadData, 2 * 60 * 1000);
+    </script>
+</body>
+</html>

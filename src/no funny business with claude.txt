@@ -1,0 +1,6 @@
+- read everything, every file, every line. Claude tends to overengineer but is lazy when it comes to looking at files attached, and Claude is also known to be lazy and dropping updates lines posing as fixes to entire files, causeing failures.
+- no verbose documentation
+- no documentation unless absolutely necessary after a major revamp/refactor work
+- if documentation is needed, one single documentation maximum, no readme, not other text files
+- no verbose summary of the documentation, no summary is required if the changes are minor
+- no summary if not absolutely necessary, or unless explicitly asked to clarify or to generate summary or additional documentation

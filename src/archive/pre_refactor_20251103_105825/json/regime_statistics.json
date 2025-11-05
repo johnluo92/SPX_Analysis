@@ -1,0 +1,181 @@
+{
+  "metadata": {
+    "total_trading_days": 9026,
+    "start_date": "1990-01-02",
+    "end_date": "2025-10-31",
+    "generated_at": "2025-11-02T13:18:14.482116"
+  },
+  "regime_boundaries": [
+    0,
+    16.77,
+    24.4,
+    39.67,
+    100
+  ],
+  "regimes": [
+    {
+      "id": 0,
+      "name": "Low Vol",
+      "vix_range": [
+        0.0,
+        16.77
+      ],
+      "statistics": {
+        "total_days": 4058,
+        "frequency": 0.44959007312209176,
+        "mean_duration": 15.8515625,
+        "median_duration": 3.0,
+        "max_duration": 309,
+        "mean_vix": 13.65824790139572,
+        "std_vix": 1.8031986923116539
+      },
+      "transitions_5d": {
+        "persistence": {
+          "probability": 0.8730276134122288,
+          "observations": 3541,
+          "total_opportunities": 4056
+        },
+        "to_other_regimes": {
+          "1": {
+            "probability": 0.12179487179487179,
+            "observations": 494,
+            "total_opportunities": 4056
+          },
+          "2": {
+            "probability": 0.004930966469428008,
+            "observations": 20,
+            "total_opportunities": 4056
+          },
+          "3": {
+            "probability": 0.0002465483234714004,
+            "observations": 1,
+            "total_opportunities": 4056
+          }
+        }
+      }
+    },
+    {
+      "id": 1,
+      "name": "Normal",
+      "vix_range": [
+        16.77,
+        24.4
+      ],
+      "statistics": {
+        "total_days": 3223,
+        "frequency": 0.35707954797252384,
+        "mean_duration": 7.495348837209303,
+        "median_duration": 2.0,
+        "max_duration": 179,
+        "mean_vix": 20.20803598302734,
+        "std_vix": 2.1747652642541215
+      },
+      "transitions_5d": {
+        "persistence": {
+          "probability": 0.7360248447204969,
+          "observations": 2370,
+          "total_opportunities": 3220
+        },
+        "to_other_regimes": {
+          "0": {
+            "probability": 0.15931677018633542,
+            "observations": 513,
+            "total_opportunities": 3220
+          },
+          "2": {
+            "probability": 0.10248447204968944,
+            "observations": 330,
+            "total_opportunities": 3220
+          },
+          "3": {
+            "probability": 0.002173913043478261,
+            "observations": 7,
+            "total_opportunities": 3220
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "name": "Elevated",
+      "vix_range": [
+        24.4,
+        39.67
+      ],
+      "statistics": {
+        "total_days": 1530,
+        "frequency": 0.16951030356747174,
+        "mean_duration": 7.320574162679426,
+        "median_duration": 2.0,
+        "max_duration": 69,
+        "mean_vix": 29.024986952738047,
+        "std_vix": 3.6916767177961254
+      },
+      "transitions_5d": {
+        "persistence": {
+          "probability": 0.7320261437908496,
+          "observations": 1120,
+          "total_opportunities": 1530
+        },
+        "to_other_regimes": {
+          "0": {
+            "probability": 0.00261437908496732,
+            "observations": 4,
+            "total_opportunities": 1530
+          },
+          "1": {
+            "probability": 0.23137254901960785,
+            "observations": 354,
+            "total_opportunities": 1530
+          },
+          "3": {
+            "probability": 0.03398692810457516,
+            "observations": 52,
+            "total_opportunities": 1530
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "name": "Crisis",
+      "vix_range": [
+        39.67,
+        100.0
+      ],
+      "statistics": {
+        "total_days": 215,
+        "frequency": 0.023820075337912697,
+        "mean_duration": 6.142857142857143,
+        "median_duration": 2.0,
+        "max_duration": 64,
+        "mean_vix": 49.8614884664846,
+        "std_vix": 10.27104623580028
+      },
+      "transitions_5d": {
+        "persistence": {
+          "probability": 0.7209302325581395,
+          "observations": 155,
+          "total_opportunities": 215
+        },
+        "to_other_regimes": {
+          "0": {
+            "probability": 0.0,
+            "observations": 0,
+            "total_opportunities": 215
+          },
+          "1": {
+            "probability": 0.0,
+            "observations": 0,
+            "total_opportunities": 215
+          },
+          "2": {
+            "probability": 0.27906976744186046,
+            "observations": 60,
+            "total_opportunities": 215
+          }
+        }
+      }
+    }
+  ]
+}

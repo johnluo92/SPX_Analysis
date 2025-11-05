@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="../../data_service.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forward Returns Analysis</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            overflow-y: auto;
+            min-height: 100vh;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            background: rgba(10, 10, 20, 0.8);
+            border-bottom: 2px solid #2563eb;
+            backdrop-filter: blur(10px);
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.02em;
+        }
+        
+        .section-subtitle {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 4px;
+            font-weight: 400;
+        }
+        
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .status-loading {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .status-ready {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .status-error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .forward-returns-section {
+            padding: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .returns-grid {
+            display: grid;
+            grid-template-columns: 1.6fr 1fr;
+            gap: 24px;
+            align-items: start;
+        }
+        
+        .chart-container {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .returns-chart {
+            min-height: 480px;
+            width: 100%;
+        }
+        
+        .returns-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        
+        .returns-stat-box {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            border-radius: 10px;
+            padding: 16px 14px;
+            text-align: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .returns-stat-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .returns-stat-box:hover {
+            border-color: #3b82f6;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+        }
+        
+        .returns-stat-box:hover::before {
+            opacity: 1;
+        }
+        
+        .returns-stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: #3b82f6;
+            margin-bottom: 6px;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+        }
+        
+        .returns-stat-label {
+            font-size: 10px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            line-height: 1.4;
+            font-weight: 500;
+        }
+        
+        .loading, .error, .no-data {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 400px;
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(59, 130, 246, 0.2);
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        
+        .error {
+            color: #f87171;
+        }
+        
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .error-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .error-details {
+            font-size: 13px;
+            color: #94a3b8;
+            max-width: 500px;
+            line-height: 1.6;
+        }
+        
+        .file-upload-area {
+            margin-top: 24px;
+            padding: 32px;
+            border: 2px dashed rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.4);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .file-upload-area:hover {
+            border-color: #3b82f6;
+            background: rgba(15, 23, 42, 0.6);
+        }
+        
+        .file-upload-area input {
+            display: none;
+        }
+        
+        .upload-prompt {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 900px) {
+            .returns-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .returns-stats {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        
+        @media (max-width: 600px) {
+            .returns-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="section-header">
+        <div>
+            <div class="section-title">Forward Returns Analysis</div>
+            <div class="section-subtitle">10-Day SPX Returns for Similar Anomaly Scores (±0.10)</div>
+        </div>
+        <div class="status-badge status-loading" id="statusBadge">Loading</div>
+    </div>
+    
+    <div class="forward-returns-section">
+        <div id="forwardReturnsContent">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">Loading market data...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let hasData = false;
+
+        async function loadData() {
+            const content = document.getElementById('forwardReturnsContent');
+            const statusBadge = document.getElementById('statusBadge');
+            
+            try {
+                statusBadge.className = 'status-badge status-loading';
+                statusBadge.textContent = 'Loading';
+                
+                // Initialize data service
+                await window.dataService.init();
+                
+                const anomaly = {
+                    ensemble: {
+                        score: window.dataService.getAnomalyState().ensemble_score
+                    }
+                };
+                
+                const historical = {
+                    ensemble_scores: window.dataService.getHistoricalData().ensemble_scores,
+                    spx_forward_10d: window.dataService.getHistoricalData().spx_forward_10d
+                };
+                
+                statusBadge.className = 'status-badge status-ready';
+                statusBadge.textContent = 'Ready';
+                hasData = true;
+                
+                renderForwardReturns(anomaly, historical);
+            } catch (error) {
+                console.error('Error loading data:', error);
+                statusBadge.className = 'status-badge status-error';
+                statusBadge.textContent = 'Error';
+                
+                content.innerHTML = `
+                    <div class="error">
+                        <div class="error-icon">⚠️</div>
+                        <div class="error-title">Data Not Available</div>
+                        <div class="error-details">
+                            Could not load required data files.<br><br>
+                            <strong>Error:</strong> ${error.message}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        let uploadedData = {
+            anomaly: null,
+            historical: null
+        };
+        
+        async function handleFileUpload(event) {
+            const files = event.target.files;
+            
+            for (const file of files) {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                
+                if (file.name.includes('anomaly_report')) {
+                    uploadedData.anomaly = data;
+                } else if (file.name.includes('historical_anomaly')) {
+                    uploadedData.historical = data;
+                }
+            }
+            
+            if (uploadedData.anomaly && uploadedData.historical) {
+                document.getElementById('statusBadge').className = 'status-badge status-ready';
+                document.getElementById('statusBadge').textContent = 'Ready';
+                hasData = true;
+                renderForwardReturns(uploadedData.anomaly, uploadedData.historical);
+            }
+        }
+        
+        function renderForwardReturns(anomaly, historical) {
+            const currentScore = anomaly.anomaly?.ensemble_score || 0;
+            const similar = [];
+            
+            const ensembleScores = historical.historical?.ensemble_scores || [];
+            const forwardReturns = historical.historical?.spx_forward_10d || [];
+            
+            for (let i = 0; i < ensembleScores.length; i++) {
+                const score = ensembleScores[i];
+                const fwd10d = forwardReturns[i];
+                
+                if (Math.abs(score - currentScore) <= 0.10 && fwd10d != null && !isNaN(fwd10d)) {
+                    similar.push(fwd10d);
+                }
+            }
+            
+            if (similar.length < 5) {
+                document.getElementById('forwardReturnsContent').innerHTML = `
+                    <div class="no-data">
+                        <div class="error-icon">📊</div>
+                        <div class="error-title">Insufficient Data</div>
+                        <div class="error-details">
+                            Found only ${similar.length} historical periods with similar anomaly scores.<br>
+                            Need at least 5 periods for meaningful analysis.<br><br>
+                            Current anomaly score: ${currentScore.toFixed(3)}<br>
+                            Search range: ${(currentScore - 0.10).toFixed(3)} to ${(currentScore + 0.10).toFixed(3)}
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Calculate statistics
+            const mean = similar.reduce((a, b) => a + b, 0) / similar.length;
+            const median = calculateMedian(similar);
+            const variance = similar.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / similar.length;
+            const stdDev = Math.sqrt(variance);
+            const positive = similar.filter(x => x > 0).length;
+            const negative = similar.filter(x => x < 0).length;
+            const minReturn = Math.min(...similar);
+            const maxReturn = Math.max(...similar);
+            const range = maxReturn - minReturn;
+            
+            // Dynamic bin sizing
+            const numBins = Math.max(20, Math.min(50, Math.ceil(range / 0.5)));
+            
+            const trace = {
+                x: similar,
+                type: 'histogram',
+                nbinsx: numBins,
+                marker: {
+                    color: '#3b82f6',
+                    line: { color: '#1e40af', width: 1 }
+                },
+                opacity: 0.85,
+                hovertemplate: 'Return: %{x:.2f}%<br>Count: %{y}<extra></extra>'
+            };
+            
+            const layout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(15, 23, 42, 0.3)',
+                font: { 
+                    color: '#e0e0e0', 
+                    family: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+                    size: 12
+                },
+                margin: { l: 60, r: 30, t: 50, b: 60 },
+                xaxis: {
+                    title: { 
+                        text: 'SPX 10-Day Forward Return (%)',
+                        font: { size: 13, weight: 600 }
+                    },
+                    gridcolor: 'rgba(51, 65, 85, 0.3)',
+                    zerolinecolor: 'rgba(148, 163, 184, 0.5)',
+                    zerolinewidth: 2
+                },
+                yaxis: {
+                    title: { 
+                        text: 'Frequency',
+                        font: { size: 13, weight: 600 }
+                    },
+                    gridcolor: 'rgba(51, 65, 85, 0.3)'
+                },
+                shapes: [{
+                    type: 'line',
+                    x0: median,
+                    x1: median,
+                    y0: 0,
+                    y1: 1,
+                    yref: 'paper',
+                    line: { color: '#f59e0b', width: 3, dash: 'dash' }
+                }],
+                annotations: [{
+                    x: median,
+                    y: 1.08,
+                    yref: 'paper',
+                    text: `Median: ${median.toFixed(2)}%`,
+                    showarrow: false,
+                    font: { color: '#f59e0b', size: 13, weight: 700 },
+                    bgcolor: 'rgba(245, 158, 11, 0.1)',
+                    bordercolor: '#f59e0b',
+                    borderwidth: 1,
+                    borderpad: 6
+                }],
+                showlegend: false,
+                autosize: true,
+                height: 480
+            };
+            
+            const statsHTML = `
+                <div class="returns-grid">
+                    <div class="chart-container">
+                        <div class="returns-chart" id="returnsChart"></div>
+                    </div>
+                    <div class="returns-stats">
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value">${similar.length}</div>
+                            <div class="returns-stat-label">Sample Size</div>
+                        </div>
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value">${mean.toFixed(2)}%</div>
+                            <div class="returns-stat-label">Mean Return</div>
+                        </div>
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value">${median.toFixed(2)}%</div>
+                            <div class="returns-stat-label">Median Return</div>
+                        </div>
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value">${stdDev.toFixed(2)}%</div>
+                            <div class="returns-stat-label">Std Deviation</div>
+                        </div>
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value">${minReturn.toFixed(2)}%</div>
+                            <div class="returns-stat-label">Minimum</div>
+                        </div>
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value">${maxReturn.toFixed(2)}%</div>
+                            <div class="returns-stat-label">Maximum</div>
+                        </div>
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value">${range.toFixed(2)}%</div>
+                            <div class="returns-stat-label">Range</div>
+                        </div>
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value" style="color: #10b981">${positive}</div>
+                            <div class="returns-stat-label">Positive Days</div>
+                        </div>
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value" style="color: #ef4444">${negative}</div>
+                            <div class="returns-stat-label">Negative Days</div>
+                        </div>
+                        <div class="returns-stat-box">
+                            <div class="returns-stat-value">${((positive / similar.length) * 100).toFixed(1)}%</div>
+                            <div class="returns-stat-label">Win Rate</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('forwardReturnsContent').innerHTML = statsHTML;
+            
+            setTimeout(() => {
+                Plotly.newPlot('returnsChart', [trace], layout, { 
+                    responsive: true, 
+                    displayModeBar: false 
+                });
+            }, 100);
+        }
+        
+        function calculateMedian(array) {
+            const sorted = [...array].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 === 0 
+                ? (sorted[mid - 1] + sorted[mid]) / 2 
+                : sorted[mid];
+        }
+        
+        // Initial load
+        loadData();
+        
+        // Auto-refresh every 15 minutes if data loaded successfully
+        setInterval(() => {
+            if (hasData) {
+                loadData();
+            }
+        }, 15 * 60 * 1000);
+    </script>
+</body>
+</html>

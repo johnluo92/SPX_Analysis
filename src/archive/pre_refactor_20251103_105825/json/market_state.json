@@ -1,0 +1,255 @@
+{
+  "timestamp": "2025-11-03T10:44:25.083064",
+  "market_data": {
+    "spx": 6840.85009765625,
+    "spx_model": 6840.2001953125,
+    "spx_change_today": 0.009501218168956072,
+    "vix": 18.729999542236328,
+    "vix_regime": {
+      "id": 1,
+      "name": "Normal",
+      "range": [
+        16.77,
+        24.4
+      ]
+    }
+  },
+  "vix_structure": {
+    "current_level": 18.729999542236328,
+    "vs_ma21": -0.7628565742855997,
+    "vs_ma63": 0.9295243005903941,
+    "zscore_63d": 0.47542556675920356,
+    "percentile_252d": 50.39682539682539,
+    "regime": 1,
+    "days_in_regime": 3,
+    "velocity_5d": 1.0699996948242188
+  },
+  "spx_structure": {
+    "price_action": {
+      "vs_ma50": 3.1608092925513316,
+      "vs_ma200": 12.004709798874567,
+      "momentum_10d": 1.2399319795920483,
+      "realized_vol_21d": 14.25706924971486
+    },
+    "vix_relationship": {
+      "corr_21d": -0.8301172926301446,
+      "vix_rv_ratio_21d": 1.2232528459105587
+    }
+  },
+  "vix_predictions": {
+    "regime_persistence": {
+      "probability": 0.7360248447204969,
+      "expected_duration": 7.495348837209303
+    },
+    "transition_risk": {
+      "elevated": false,
+      "direction": "higher",
+      "confidence": "low"
+    }
+  },
+  "anomaly_analysis": {
+    "ensemble": {
+      "score": 0.46130566364029396,
+      "std": 0.3324854650590552,
+      "severity": "NORMAL",
+      "severity_message": "Normal bounds",
+      "interpretation": "Behavior consistent with historical patterns"
+    },
+    "domain_anomalies": {
+      "vix_mean_reversion": {
+        "score": 0.01621271076524,
+        "percentile": 1.6212710765240002,
+        "level": "NORMAL",
+        "coverage": 1.0,
+        "weight": 1.0
+      },
+      "vix_momentum": {
+        "score": 0.374189364461738,
+        "percentile": 37.4189364461738,
+        "level": "NORMAL",
+        "coverage": 1.0,
+        "weight": 1.0
+      },
+      "vix_regime_structure": {
+        "score": 0.11608300907911806,
+        "percentile": 11.608300907911806,
+        "level": "NORMAL",
+        "coverage": 1.0,
+        "weight": 1.0
+      },
+      "cboe_options_flow": {
+        "score": 0.2016861219195849,
+        "percentile": 20.16861219195849,
+        "level": "NORMAL",
+        "coverage": 1.0,
+        "weight": 1.0
+      },
+      "vix_spx_relationship": {
+        "score": 0.005836575875486361,
+        "percentile": 0.5836575875486361,
+        "level": "NORMAL",
+        "coverage": 1.0,
+        "weight": 1.0
+      },
+      "spx_price_action": {
+        "score": 0.771076523994812,
+        "percentile": 77.1076523994812,
+        "level": "MODERATE",
+        "coverage": 1.0,
+        "weight": 1.0
+      },
+      "spx_volatility_regime": {
+        "score": 0.02853437094682232,
+        "percentile": 2.853437094682232,
+        "level": "NORMAL",
+        "coverage": 1.0,
+        "weight": 1.0
+      },
+      "macro_rates": {
+        "score": 0.4850843060959793,
+        "percentile": 48.50843060959793,
+        "level": "NORMAL",
+        "coverage": 1.0,
+        "weight": 1.0
+      },
+      "commodities_stress": {
+        "score": 0.8748378728923476,
+        "percentile": 87.48378728923475,
+        "level": "HIGH",
+        "coverage": 1.0,
+        "weight": 1.0
+      },
+      "cross_asset_divergence": {
+        "score": 0.21271076523994814,
+        "percentile": 21.271076523994815,
+        "level": "NORMAL",
+        "coverage": 1.0,
+        "weight": 1.0
+      }
+    },
+    "top_anomalies": [
+      {
+        "name": "commodities_stress",
+        "score": 0.8748378728923476
+      },
+      {
+        "name": "spx_price_action",
+        "score": 0.771076523994812
+      },
+      {
+        "name": "macro_rates",
+        "score": 0.4850843060959793
+      },
+      {
+        "name": "vix_momentum",
+        "score": 0.374189364461738
+      },
+      {
+        "name": "cross_asset_divergence",
+        "score": 0.21271076523994814
+      }
+    ],
+    "persistence": {
+      "current_streak": 0,
+      "mean_duration": 0.0,
+      "max_duration": 0,
+      "total_anomaly_days": 0,
+      "anomaly_rate": 0.0,
+      "num_episodes": 0
+    },
+    "data_availability": {
+      "cboe_indicators": true,
+      "cross_asset_data": true,
+      "overall_confidence": "HIGH",
+      "confidence_message": "All detectors operational"
+    }
+  },
+  "model_diagnostics": {
+    "vix_accuracy": 0.65,
+    "anomaly_detectors_active": 15,
+    "anomaly_detectors_total": 15,
+    "memory_status": {
+      "current_mb": 319.75,
+      "baseline_mb": 284.53125,
+      "growth_mb": 35.21875,
+      "vms_mb": 403596.828125,
+      "status": "NORMAL",
+      "history": {
+        "measurements": 3,
+        "total_growth_mb": 11.34375,
+        "avg_growth_per_cycle": 3.78125,
+        "recent_samples": [
+          {
+            "timestamp": "2025-11-03T10:43:25.369171",
+            "memory_mb": 284.53125,
+            "type": "baseline"
+          },
+          {
+            "timestamp": "2025-11-03T10:43:25.920071",
+            "memory_mb": 311.78125,
+            "type": "post-feature-engineering"
+          },
+          {
+            "timestamp": "2025-11-03T10:44:24.210234",
+            "memory_mb": 295.875,
+            "type": "post-training"
+          }
+        ]
+      },
+      "gc_stats": {
+        "collections": [
+          2,
+          1,
+          0
+        ],
+        "tracked_objects": 243834,
+        "top_types": [
+          {
+            "type": "function",
+            "count": 54123
+          },
+          {
+            "type": "tuple",
+            "count": 29460
+          },
+          {
+            "type": "dict",
+            "count": 25167
+          },
+          {
+            "type": "list",
+            "count": 15042
+          },
+          {
+            "type": "ReferenceType",
+            "count": 14048
+          },
+          {
+            "type": "cell",
+            "count": 11945
+          },
+          {
+            "type": "getset_descriptor",
+            "count": 7832
+          },
+          {
+            "type": "builtin_function_or_method",
+            "count": 6663
+          },
+          {
+            "type": "Parameter",
+            "count": 6276
+          },
+          {
+            "type": "type",
+            "count": 5866
+          }
+        ]
+      },
+      "thresholds": {
+        "warning_mb": 50,
+        "critical_mb": 200
+      }
+    }
+  }
+}

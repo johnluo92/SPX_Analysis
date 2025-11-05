@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Analysis</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            height: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemBox, 'Segoe UI', Roboto, sans-serif;
+            background: transparent;
+            color: #e0e0e0;
+        }
+        
+        .chart-container {
+            padding: 24px;
+            min-height: 100%;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            position: sticky;
+            top: 0;
+            background: rgba(15, 15, 20, 0.95);
+            padding: 12px;
+            border-radius: 8px;
+            z-index: 100;
+        }
+        
+        .timeframe-btn {
+            padding: 8px 16px;
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid #444;
+            color: #e0e0e0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .timeframe-btn:hover {
+            background: rgba(50, 50, 60, 0.9);
+            border-color: #666;
+        }
+        
+        .timeframe-btn.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+        
+        .chart-section {
+            margin-bottom: 40px;
+        }
+        
+        .chart-body {
+            min-height: 400px;
+            margin-bottom: 10px;
+        }
+        
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="chart-container">
+        <div class="controls">
+            <button class="timeframe-btn" data-days="30">1M</button>
+            <button class="timeframe-btn" data-days="90">3M</button>
+            <button class="timeframe-btn" data-days="180">6M</button>
+            <button class="timeframe-btn active" data-days="365">1Y</button>
+            <button class="timeframe-btn" data-days="730">2Y</button>
+            <button class="timeframe-btn" data-days="1095">3Y</button>
+            <button class="timeframe-btn" data-days="1825">5Y</button>
+            <button class="timeframe-btn" data-days="3650">10Y</button>
+            <button class="timeframe-btn" data-days="99999">ALL</button>
+        </div>
+        
+        <div class="chart-section">
+            <div class="chart-title">S&P 500 Price</div>
+            <div id="spxChart" class="chart-body"></div>
+        </div>
+        
+        <div class="chart-section">
+            <div class="chart-title">Anomaly Score</div>
+            <div id="anomalyChart" class="chart-body"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentTimeframe = 365;
+        let fullData = null;
+        let currentRange = null;
+        
+        async function loadData() {
+            try {
+                const timestamp = Date.now();
+                const historical = await fetch(`../../json_data/historical_anomaly_scores.json?t=${timestamp}`).then(r => r.json());
+                fullData = historical;
+                renderCharts();
+                
+                // Notify parent of content height
+                if (window.parent !== window) {
+                    setTimeout(() => {
+                        const height = document.body.scrollHeight;
+                        window.parent.postMessage({
+                            type: 'resize',
+                            height: height
+                        }, '*');
+                    }, 500);
+                }
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+        
+        function filterData(days) {
+            const { dates, ensemble_scores, spx_close } = fullData;
+            
+            if (days >= 10000) {
+                return {
+                    dates,
+                    scores: ensemble_scores,
+                    spx: spx_close
+                };
+            } else {
+                const startIdx = Math.max(0, dates.length - days);
+                return {
+                    dates: dates.slice(startIdx),
+                    scores: ensemble_scores.slice(startIdx),
+                    spx: spx_close.slice(startIdx)
+                };
+            }
+        }
+        
+        function renderCharts() {
+            if (!fullData) return;
+            
+            const data = currentRange || filterData(currentTimeframe);
+            console.log(`Rendering ${data.dates.length} data points for timeframe: ${currentTimeframe} days`);
+            
+            // SPX Chart
+            const spxTrace = {
+                x: data.dates,
+                y: data.spx,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'SPX',
+                line: { color: '#10b981', width: 2 },
+                hovertemplate: '<b>SPX</b>: %{y:.2f}<br>%{x}<extra></extra>'
+            };
+            
+            const spxLayout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { color: '#e0e0e0', family: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' },
+                margin: { l: 60, r: 40, t: 10, b: 40 },
+                hovermode: 'x unified',
+                xaxis: {
+                    gridcolor: '#2a2a2a',
+                    showticklabels: true
+                },
+                yaxis: {
+                    gridcolor: '#2a2a2a',
+                    tickfont: { color: '#10b981' }
+                },
+                showlegend: false,
+                dragmode: 'zoom'
+            };
+            
+            // Anomaly Chart
+            const anomalyTrace = {
+                x: data.dates,
+                y: data.scores,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Anomaly Score',
+                line: { color: '#3b82f6', width: 2 },
+                hovertemplate: '<b>Anomaly</b>: %{y:.3f}<br>%{x}<extra></extra>'
+            };
+            
+            const thresholdTrace = {
+                x: [data.dates[0], data.dates[data.dates.length - 1]],
+                y: [0.70, 0.70],
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Threshold',
+                line: { color: '#ef4444', width: 2, dash: 'dash' },
+                hoverinfo: 'skip',
+                showlegend: false
+            };
+            
+            const anomalyLayout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { color: '#e0e0e0', family: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' },
+                margin: { l: 60, r: 40, t: 10, b: 40 },
+                hovermode: 'x unified',
+                xaxis: {
+                    gridcolor: '#2a2a2a',
+                    showticklabels: true
+                },
+                yaxis: {
+                    gridcolor: '#2a2a2a',
+                    range: [0, 1],
+                    tickfont: { color: '#3b82f6' }
+                },
+                showlegend: false,
+                dragmode: 'zoom'
+            };
+            
+            const config = { 
+                responsive: true, 
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                displaylogo: false
+            };
+            
+            Plotly.newPlot('spxChart', [spxTrace], spxLayout, config);
+            Plotly.newPlot('anomalyChart', [anomalyTrace, thresholdTrace], anomalyLayout, config);
+            
+            // Sync zoom between charts
+            const spxDiv = document.getElementById('spxChart');
+            const anomalyDiv = document.getElementById('anomalyChart');
+            
+            spxDiv.on('plotly_relayout', function(eventdata) {
+                if (eventdata['xaxis.range[0]'] && eventdata['xaxis.range[1]']) {
+                    const start = eventdata['xaxis.range[0]'];
+                    const end = eventdata['xaxis.range[1]'];
+                    
+                    const startIdx = data.dates.findIndex(d => d >= start);
+                    const endIdx = data.dates.findIndex(d => d > end);
+                    
+                    if (startIdx !== -1) {
+                        const actualEnd = endIdx === -1 ? data.dates.length : endIdx;
+                        currentRange = {
+                            dates: data.dates.slice(startIdx, actualEnd),
+                            scores: data.scores.slice(startIdx, actualEnd),
+                            spx: data.spx.slice(startIdx, actualEnd)
+                        };
+                        
+                        Plotly.relayout('anomalyChart', {
+                            'xaxis.range': [start, end]
+                        });
+                    }
+                } else if (eventdata['xaxis.autorange']) {
+                    currentRange = null;
+                    renderCharts();
+                }
+            });
+            
+            anomalyDiv.on('plotly_relayout', function(eventdata) {
+                if (eventdata['xaxis.range[0]'] && eventdata['xaxis.range[1]']) {
+                    const start = eventdata['xaxis.range[0]'];
+                    const end = eventdata['xaxis.range[1]'];
+                    
+                    const startIdx = data.dates.findIndex(d => d >= start);
+                    const endIdx = data.dates.findIndex(d => d > end);
+                    
+                    if (startIdx !== -1) {
+                        const actualEnd = endIdx === -1 ? data.dates.length : endIdx;
+                        currentRange = {
+                            dates: data.dates.slice(startIdx, actualEnd),
+                            scores: data.scores.slice(startIdx, actualEnd),
+                            spx: data.spx.slice(startIdx, actualEnd)
+                        };
+                        
+                        Plotly.relayout('spxChart', {
+                            'xaxis.range': [start, end]
+                        });
+                    }
+                } else if (eventdata['xaxis.autorange']) {
+                    currentRange = null;
+                    renderCharts();
+                }
+            });
+        }
+        
+        // Timeframe button handlers
+        document.querySelectorAll('.timeframe-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                
+                currentTimeframe = parseInt(this.dataset.days);
+                currentRange = null;
+                renderCharts();
+            });
+        });
+        
+        // Listen for timeframe changes from parent (for backwards compatibility)
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'timeframeChange') {
+                currentTimeframe = event.data.days;
+                currentRange = null;
+                loadData();
+            }
+        });
+        
+        loadData();
+        setInterval(loadData, 15 * 60 * 1000);
+    </script>
+</body>
+</html>

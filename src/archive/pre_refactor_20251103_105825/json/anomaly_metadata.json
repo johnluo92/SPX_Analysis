@@ -1,0 +1,103 @@
+{
+  "timestamp": "2025-11-02T13:19:40.313730",
+  "version": "1.0",
+  "domains": {
+    "vix_mean_reversion": {
+      "name": "VIX Mean Reversion",
+      "description": "Detects when VIX is stretched far from historical average.",
+      "key_signals": [
+        "VIX vs 21-day MA",
+        "VIX vs 63-day MA",
+        "Z-score",
+        "Distance from regime mean"
+      ]
+    },
+    "vix_momentum": {
+      "name": "VIX Momentum",
+      "description": "Tracks velocity and acceleration of VIX changes.",
+      "key_signals": [
+        "5-day velocity",
+        "10-day rate of change",
+        "Gap vs previous close",
+        "Acceleration"
+      ]
+    },
+    "vix_regime_structure": {
+      "name": "VIX Regime Structure",
+      "description": "Monitors stability of volatility regime.",
+      "key_signals": [
+        "Days in regime",
+        "VIX percentile",
+        "Regime displacement",
+        "Transition probability"
+      ]
+    },
+    "cboe_options_flow": {
+      "name": "CBOE Options Flow",
+      "description": "Analyzes CBOE indicators for hedging stress.",
+      "key_signals": [
+        "SKEW",
+        "Put/Call ratio",
+        "Correlation indices",
+        "VIX term structure"
+      ]
+    },
+    "vix_spx_relationship": {
+      "name": "VIX-SPX Relationship",
+      "description": "Measures correlation breakdown between VIX and SPX.",
+      "key_signals": [
+        "21-day correlation",
+        "VIX vs SPX divergence",
+        "Beta instability"
+      ]
+    },
+    "spx_price_action": {
+      "name": "SPX Price Action",
+      "description": "Detects unusual price patterns and momentum extremes.",
+      "key_signals": [
+        "SPX vs MAs",
+        "Rate of change",
+        "Gap behavior",
+        "Support/resistance"
+      ]
+    },
+    "spx_volatility_regime": {
+      "name": "SPX Volatility Regime",
+      "description": "Tracks realized volatility vs implied (VIX).",
+      "key_signals": [
+        "21-day realized vol",
+        "VIX vs RV spread",
+        "Vol-of-vol",
+        "Historical vol percentile"
+      ]
+    },
+    "macro_rates": {
+      "name": "Macro Rates",
+      "description": "Monitors treasury yields and yield curve for macro stress.",
+      "key_signals": [
+        "10Y yield",
+        "2Y-10Y curve",
+        "Rate volatility",
+        "Real yields"
+      ]
+    },
+    "commodities_stress": {
+      "name": "Commodities Stress",
+      "description": "Tracks oil, gold, and commodity volatility.",
+      "key_signals": [
+        "Oil momentum",
+        "Gold vs SPX correlation",
+        "Commodity vol spikes"
+      ]
+    },
+    "cross_asset_divergence": {
+      "name": "Cross-Asset Divergence",
+      "description": "Detects when equities, bonds, commodities send conflicting signals.",
+      "key_signals": [
+        "Equity-bond correlation",
+        "Dollar strength",
+        "Cross-asset vol dispersion"
+      ]
+    }
+  }
+}

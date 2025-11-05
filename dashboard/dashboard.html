@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Market Intelligence Dashboard</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // ==================== DATA LOADING (NO HARDCODING) ====================
+        const loadMarketData = async () => {
+            const paths = ['market_state.json', '../market_state.json', '../../market_state.json'];
+            
+            for (const path of paths) {
+                try {
+                    const response = await fetch(path + '?' + Date.now());
+                    if (response.ok) {
+                        return await response.json();
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            
+            throw new Error('Cannot load market_state.json - make sure it is in the same directory as dashboard.html');
+        };
+
+        // ==================== UTILITY FUNCTIONS ====================
+        const formatPercent = (val) => (val * 100).toFixed(1) + '%';
+        const formatNumber = (val, decimals = 2) => val.toFixed(decimals);
+        
+        const getDirectionColor = (prob) => {
+            if (prob > 0.60) return 'text-green-400';
+            if (prob > 0.55) return 'text-green-300';
+            if (prob < 0.40) return 'text-red-400';
+            if (prob < 0.45) return 'text-red-300';
+            return 'text-gray-400';
+        };
+        
+        const getConfidenceLevel = (prob) => {
+            const edge = Math.abs(prob - 0.5);
+            if (edge > 0.15) return 'HIGH';
+            if (edge > 0.08) return 'MEDIUM';
+            return 'LOW';
+        };
+
+        // ==================== METRIC CARD ====================
+        const MetricCard = ({ title, value, subtitle, trend, colorClass = 'text-blue-400' }) => (
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-all">
+                <div className="text-gray-400 text-sm font-medium mb-2">{title}</div>
+                <div className="text-white text-2xl font-bold mb-1">{value}</div>
+                {subtitle && <div className="text-gray-500 text-xs">{subtitle}</div>}
+                {trend !== undefined && (
+                    <div className={`text-sm font-semibold mt-2 ${trend >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {trend >= 0 ? '▲' : '▼'} {Math.abs(trend).toFixed(2)}%
+                    </div>
+                )}
+            </div>
+        );
+
+        // ==================== REGIME INDICATOR ====================
+        const RegimeIndicator = ({ regime, days }) => {
+            const regimes = {
+                0: { label: 'LOW VOL', bg: 'bg-green-900/40', border: 'border-green-500', text: 'text-green-400' },
+                1: { label: 'NORMAL', bg: 'bg-blue-900/40', border: 'border-blue-500', text: 'text-blue-400' },
+                2: { label: 'ELEVATED', bg: 'bg-yellow-900/40', border: 'border-yellow-500', text: 'text-yellow-400' },
+                3: { label: 'CRISIS', bg: 'bg-red-900/40', border: 'border-red-500', text: 'text-red-400' }
+            };
+            const r = regimes[regime] || regimes[1];
+            
+            return (
+                <div className={`${r.bg} border ${r.border} rounded-lg px-4 py-3 flex items-center justify-between`}>
+                    <div>
+                        <div className={`${r.text} text-lg font-bold`}>{r.label}</div>
+                        <div className="text-gray-400 text-xs mt-1">{days} days in regime</div>
+                    </div>
+                    <div className={`w-3 h-3 rounded-full ${r.text.replace('text', 'bg')} animate-pulse`}></div>
+                </div>
+            );
+        };
+
+        // ==================== VIX CONTEXT PANEL ====================
+        const VixContextPanel = ({ vix, structure }) => {
+            const percentile = structure.percentile_252d;
+            
+            // Interpret percentile
+            let percentileMsg = '';
+            if (percentile < 20) percentileMsg = 'Very low (bottom 20%)';
+            else if (percentile < 40) percentileMsg = 'Below average';
+            else if (percentile < 60) percentileMsg = 'Average range';
+            else if (percentile < 80) percentileMsg = 'Above average';
+            else percentileMsg = 'Very high (top 20%)';
+            
+            // Interpret structure
+            const contango = structure.vs_ma21 < 0 ? 'below' : 'above';
+            const term = structure.vs_ma63 > 0 ? 'rising' : 'falling';
+            
+            return (
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+                    <h3 className="text-white text-lg font-bold mb-4">VIX Market Context</h3>
+                    
+                    <div className="space-y-4">
+                        {/* Current Level */}
+                        <div>
+                            <div className="text-gray-400 text-sm mb-1">Current Level</div>
+                            <div className="text-white text-3xl font-bold">{vix.toFixed(2)}</div>
+                        </div>
+                        
+                        {/* Percentile */}
+                        <div>
+                            <div className="text-gray-400 text-sm mb-2">1-Year Percentile: {percentile.toFixed(0)}%</div>
+                            <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                                <div 
+                                    className={`h-full ${percentile > 70 ? 'bg-red-500' : percentile > 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                                    style={{ width: `${percentile}%` }}
+                                />
+                            </div>
+                            <div className="text-gray-500 text-xs mt-1">{percentileMsg}</div>
+                        </div>
+                        
+                        {/* Term Structure */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <div className="text-gray-400 text-sm">vs 21-day MA</div>
+                                <div className={`font-bold ${structure.vs_ma21 < 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {structure.vs_ma21.toFixed(2)}
+                                </div>
+                                <div className="text-gray-500 text-xs">{structure.vs_ma21 < 0 ? 'Below mean' : 'Above mean'}</div>
+                            </div>
+                            <div>
+                                <div className="text-gray-400 text-sm">vs 63-day MA</div>
+                                <div className={`font-bold ${structure.vs_ma63 < 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {structure.vs_ma63.toFixed(2)}
+                                </div>
+                                <div className="text-gray-500 text-xs">{structure.vs_ma63 > 0 ? 'Rising trend' : 'Falling trend'}</div>
+                            </div>
+                        </div>
+                        
+                        {/* Interpretation */}
+                        <div className="bg-gray-900/50 rounded p-3">
+                            <div className="text-blue-400 text-xs font-semibold mb-1">INTERPRETATION</div>
+                            <div className="text-gray-300 text-sm">
+                                VIX is {contango} short-term average, {term} on longer timeframe. 
+                                {percentile > 70 && ' Elevated levels suggest caution.'}
+                                {percentile < 30 && ' Low levels may signal complacency.'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==================== DIRECTIONAL PREDICTIONS ====================
+        const DirectionalPanel = ({ predictions, title }) => {
+            if (!predictions || Object.keys(predictions).length === 0) {
+                return <div className="text-gray-500">No predictions available</div>;
+            }
+            
+            // Sort horizons naturally (8d, 13d, 21d, etc.)
+            const sortedHorizons = Object.keys(predictions).sort((a, b) => {
+                const numA = parseInt(a);
+                const numB = parseInt(b);
+                return numA - numB;
+            });
+            
+            return (
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+                    <h3 className="text-white text-lg font-bold mb-4">{title}</h3>
+                    
+                    <div className="space-y-4">
+                        {sortedHorizons.map(horizon => {
+                            const prob = predictions[horizon];
+                            const confidence = getConfidenceLevel(prob);
+                            const direction = prob > 0.5 ? 'BULLISH' : prob < 0.5 ? 'BEARISH' : 'NEUTRAL';
+                            const edge = Math.abs(prob - 0.5) * 100;
+                            
+                            return (
+                                <div key={horizon} className="border-b border-gray-700 pb-4 last:border-0 last:pb-0">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-white font-bold text-lg">{horizon.toUpperCase()}</span>
+                                            <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                                                confidence === 'HIGH' ? 'bg-blue-900/50 text-blue-400' :
+                                                confidence === 'MEDIUM' ? 'bg-gray-700 text-gray-300' :
+                                                'bg-gray-800 text-gray-500'
+                                            }`}>
+                                                {confidence}
+                                            </span>
+                                        </div>
+                                        <div className={`text-right ${getDirectionColor(prob)}`}>
+                                            <div className="text-2xl font-bold">{formatPercent(prob)}</div>
+                                            <div className="text-xs">{direction}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Visual bar */}
+                                    <div className="relative h-8 bg-gray-700 rounded-lg overflow-hidden">
+                                        <div className="absolute inset-0 flex">
+                                            <div 
+                                                className={`${prob < 0.5 ? 'bg-red-500' : 'bg-gray-700'}`}
+                                                style={{ width: '50%' }}
+                                            />
+                                            <div 
+                                                className={`${prob > 0.5 ? 'bg-green-500' : 'bg-gray-700'}`}
+                                                style={{ width: '50%' }}
+                                            />
+                                        </div>
+                                        <div 
+                                            className="absolute top-0 h-full w-1 bg-white shadow-lg"
+                                            style={{ left: `${prob * 100}%` }}
+                                        />
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <span className="text-white text-xs font-bold drop-shadow-lg">
+                                                {edge.toFixed(1)}% edge
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        // ==================== RANGE PREDICTIONS ====================
+        const RangePanel = ({ predictions, currentPrice, title }) => {
+            if (!predictions || Object.keys(predictions).length === 0) {
+                return <div className="text-gray-500">No predictions available</div>;
+            }
+            
+            const sortedHorizons = Object.keys(predictions).sort((a, b) => {
+                return parseInt(a) - parseInt(b);
+            });
+            
+            return (
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+                    <h3 className="text-white text-lg font-bold mb-4">{title}</h3>
+                    
+                    <div className="space-y-6">
+                        {sortedHorizons.map(horizon => {
+                            const ranges = predictions[horizon];
+                            
+                            // Sort ranges by threshold
+                            const sortedRanges = Object.entries(ranges).sort((a, b) => {
+                                return parseFloat(a[0].replace('pct', '')) - parseFloat(b[0].replace('pct', ''));
+                            });
+                            
+                            return (
+                                <div key={horizon} className="border-b border-gray-700 pb-4 last:border-0 last:pb-0">
+                                    <div className="text-white font-bold mb-3">{horizon.toUpperCase()}</div>
+                                    
+                                    <div className="space-y-3">
+                                        {sortedRanges.map(([rangeKey, prob]) => {
+                                            const pct = parseFloat(rangeKey.replace('pct', ''));
+                                            const upper = currentPrice * (1 + pct / 100);
+                                            const lower = currentPrice * (1 - pct / 100);
+                                            
+                                            const expectation = prob > 0.6 ? 'RANGE-BOUND' : prob < 0.4 ? 'BREAKOUT LIKELY' : 'UNCERTAIN';
+                                            
+                                            return (
+                                                <div key={rangeKey} className="bg-gray-900/50 rounded-lg p-3">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-gray-300 font-semibold">±{pct}% Range</span>
+                                                        <span className={`text-lg font-bold ${
+                                                            prob > 0.6 ? 'text-green-400' : 
+                                                            prob < 0.4 ? 'text-red-400' : 
+                                                            'text-gray-400'
+                                                        }`}>
+                                                            {formatPercent(prob)}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <div className="text-xs text-gray-500 mb-2">
+                                                        {lower.toFixed(2)} - {upper.toFixed(2)}
+                                                    </div>
+                                                    
+                                                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className={`h-full ${
+                                                                prob > 0.6 ? 'bg-green-500' : 
+                                                                prob < 0.4 ? 'bg-red-500' : 
+                                                                'bg-gray-500'
+                                                            }`}
+                                                            style={{ width: `${prob * 100}%` }}
+                                                        />
+                                                    </div>
+                                                    
+                                                    <div className="text-xs text-gray-400 mt-1">{expectation}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        // ==================== MAIN DASHBOARD ====================
+        const Dashboard = () => {
+            const [data, setData] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [lastUpdate, setLastUpdate] = useState(new Date());
+
+            const fetchData = async () => {
+                try {
+                    const marketData = await loadMarketData();
+                    setData(marketData);
+                    setError(null);
+                    setLastUpdate(new Date());
+                } catch (err) {
+                    setError(err.message);
+                    console.error('Failed to load data:', err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                fetchData();
+                const interval = setInterval(fetchData, 30000);
+                return () => clearInterval(interval);
+            }, []);
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-gray-900">
+                        <div className="text-white text-xl">Loading market data...</div>
+                    </div>
+                );
+            }
+
+            if (error) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-gray-900">
+                        <div className="bg-red-900/20 border border-red-500 rounded-lg p-6 max-w-lg">
+                            <div className="text-red-400 text-xl font-bold mb-2">Error Loading Data</div>
+                            <div className="text-gray-300">{error}</div>
+                            <button 
+                                onClick={fetchData}
+                                className="mt-4 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded transition-colors"
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            const { market_data, vix_structure, spx_predictions, vix_predictions, model_diagnostics } = data;
+
+            return (
+                <div className="min-h-screen bg-gray-900 p-6">
+                    <div className="max-w-7xl mx-auto space-y-6">
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h1 className="text-3xl font-bold text-white mb-1">Market Intelligence</h1>
+                                <p className="text-gray-500">Real-time analysis & predictions</p>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-gray-400 text-sm">Last Updated</div>
+                                <div className="text-white font-mono">{lastUpdate.toLocaleTimeString()}</div>
+                            </div>
+                        </div>
+
+                        {/* Key Metrics */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <MetricCard 
+                                title="S&P 500"
+                                value={formatNumber(market_data.spx)}
+                                trend={market_data.spx_change_today}
+                                colorClass="text-blue-400"
+                            />
+                            <MetricCard 
+                                title="VIX"
+                                value={formatNumber(market_data.vix)}
+                                subtitle={`${vix_structure.percentile_252d.toFixed(0)}th percentile`}
+                                colorClass="text-purple-400"
+                            />
+                            <MetricCard 
+                                title="Model Edge"
+                                value={formatPercent(model_diagnostics.predictability_edge)}
+                                subtitle="Above random baseline"
+                                colorClass="text-green-400"
+                            />
+                            <RegimeIndicator 
+                                regime={vix_structure.regime}
+                                days={vix_structure.days_in_regime}
+                            />
+                        </div>
+
+                        {/* Main Content Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* VIX Context - Full column */}
+                            <div className="lg:col-span-1">
+                                <VixContextPanel 
+                                    vix={market_data.vix}
+                                    structure={vix_structure}
+                                />
+                            </div>
+                            
+                            {/* SPX Directional */}
+                            <div className="lg:col-span-1">
+                                <DirectionalPanel 
+                                    predictions={spx_predictions.directional_bias}
+                                    title="SPX Direction Probability"
+                                />
+                            </div>
+                            
+                            {/* SPX Range */}
+                            <div className="lg:col-span-1">
+                                <RangePanel 
+                                    predictions={spx_predictions.range_containment}
+                                    currentPrice={market_data.spx}
+                                    title="SPX Range Containment"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="text-center text-gray-600 text-sm py-4">
+                            <p>Auto-refreshes every 30 seconds • Model accuracy: {formatPercent(model_diagnostics.spx_accuracy)}</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Dashboard />);
+    </script>
+</body>
+</html>

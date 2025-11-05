@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="../../data_service.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Analysis</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            height: 101%;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemBox, 'Segoe UI', Roboto, sans-serif;
+            background: transparent;
+            color: #e0e0e0;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #333;
+            background: rgba(10, 10, 10, 0.5);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .section-subtitle {
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+        }
+        
+        .chart-container {
+            padding: 24px;
+            padding-bottom: 5px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .timeframe-btn {
+            padding: 8px 16px;
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid #444;
+            color: #e0e0e0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        .timeframe-btn:hover {
+            background: rgba(50, 50, 60, 0.9);
+            border-color: #666;
+            transform: translateY(-1px);
+        }
+        
+        .timeframe-btn.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+        
+        .chart-section {
+            margin-bottom: 15px;
+        }
+        
+        .chart-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .chart-body {
+            height: 380px;
+            background: rgba(20, 20, 30, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+        }
+        
+        .chart-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #e0e0e0;
+            padding-left: 4px;
+        }
+        
+        .loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 400px;
+            color: #666;
+            gap: 12px;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #333;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            border-radius: 8px;
+            padding: 20px;
+            color: #ef4444;
+            text-align: center;
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="section-header">
+        <div>
+            <div class="section-title">Historical Analysis</div>
+            <div class="section-subtitle">SPX Price & Anomaly Score Over Time (Statistical Thresholds • Trading Days: ~252/year)</div>
+        </div>
+    </div>
+    
+    <div class="chart-container">
+        <div class="controls">
+            <button class="timeframe-btn" data-days="21">1M</button>
+            <button class="timeframe-btn" data-days="63">3M</button>
+            <button class="timeframe-btn" data-days="126">6M</button>
+            <button class="timeframe-btn active" data-days="252">1Y</button>
+            <button class="timeframe-btn" data-days="504">2Y</button>
+            <button class="timeframe-btn" data-days="756">3Y</button>
+            <button class="timeframe-btn" data-days="1260">5Y</button>
+            <button class="timeframe-btn" data-days="2520">10Y</button>
+            <button class="timeframe-btn" data-days="99999">ALL</button>
+        </div>
+        
+        <div class="chart-section">
+            <div class="chart-title">S&P 500 Price (High Anomaly Zones Shaded)</div>
+            <div id="spxChart" class="chart-body"></div>
+        </div>
+        
+        <div class="chart-section">
+            <div class="chart-title">Anomaly Score</div>
+            <div id="anomalyChart" class="chart-body"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentTimeframe = 252; // Default to 1 year of trading days
+        let fullData = null;
+        let currentRange = null;
+        let statisticalThresholds = { moderate: 0.725, high: 0.805, critical: 0.914 }; // Fallback only
+        
+        async function loadData() {
+            try {
+                // Initialize data service
+                await window.dataService.init();
+                
+                const anomaly = {
+                    classification: {
+                        statistical: {
+                            thresholds: window.dataService.getThresholds()?.base || window.dataService.getThresholds()
+                        }
+                    }
+                };
+                
+                const historical = {
+                    dates: window.dataService.getHistoricalData().dates,
+                    ensemble_scores: window.dataService.getHistoricalData().scores,
+                    spx_close: window.dataService.getHistoricalData()?.spx || []
+                };
+                
+                if (!historical || !historical.dates || !historical.ensemble_scores || !historical.spx_close || 
+                    historical.dates.length === 0) {
+                    console.warn('Incomplete historical data, using fallback');
+                    renderErrorState();
+                    return;
+                }
+                
+                // Extract statistical thresholds
+                statisticalThresholds = anomaly.classification.statistical.thresholds;
+                console.log('Using statistical thresholds:', statisticalThresholds);
+                
+                fullData = historical;
+                renderCharts();
+                
+                // Notify parent of content height for iframe sizing
+                if (window.parent !== window) {
+                    setTimeout(() => {
+                        const height = document.documentElement.scrollHeight;
+                        window.parent.postMessage({
+                            type: 'resize',
+                            height: height
+                        }, '*');
+                    }, 500);
+                }
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showError('Unable to load historical data: ' + error.message);
+            }
+        }
+        
+        function filterData(days) {
+            const { dates, ensemble_scores, spx_close } = fullData;
+            
+            if (days >= 10000) {
+                return {
+                    dates,
+                    scores: ensemble_scores,
+                    spx: spx_close
+                };
+            } else {
+                const startIdx = Math.max(0, dates.length - days);
+                return {
+                    dates: dates.slice(startIdx),
+                    scores: ensemble_scores.slice(startIdx),
+                    spx: spx_close.slice(startIdx)
+                };
+            }
+        }
+        
+        function findAnomalyZones(dates, scores, threshold) {
+            const zones = [];
+            let inZone = false;
+            let zoneStart = null;
+            
+            for (let i = 0; i < scores.length; i++) {
+                if (scores[i] >= threshold && !inZone) {
+                    // Start new zone
+                    inZone = true;
+                    zoneStart = dates[i];
+                } else if (scores[i] < threshold && inZone) {
+                    // End zone
+                    zones.push({
+                        start: zoneStart,
+                        end: dates[i - 1]
+                    });
+                    inZone = false;
+                    zoneStart = null;
+                }
+            }
+            
+            // Close any open zone
+            if (inZone && zoneStart) {
+                zones.push({
+                    start: zoneStart,
+                    end: dates[dates.length - 1]
+                });
+            }
+            
+            return zones;
+        }
+        
+        function renderErrorState() {
+            document.getElementById('anomalyChart').innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #888;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                        <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">No Data Available</div>
+                        <div style="font-size: 12px;">Historical data is required to display this chart</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderCharts() {
+            if (!fullData) {
+                showError('No data available');
+                return;
+            }
+            
+            const data = currentRange || filterData(currentTimeframe);
+            console.log(`📊 Rendering ${data.dates.length} trading days (timeframe: ${currentTimeframe} days)`);
+            
+            // Find anomaly zones above HIGH threshold
+            const anomalyZones = findAnomalyZones(data.dates, data.scores, statisticalThresholds.high);
+            console.log(`Found ${anomalyZones.length} high anomaly zones`);
+            
+            // Create shaded regions for SPX chart
+            const shapes = anomalyZones.map(zone => ({
+                type: 'rect',
+                xref: 'x',
+                yref: 'paper',
+                x0: zone.start,
+                x1: zone.end,
+                y0: 0,
+                y1: 1,
+                fillcolor: '#ef4444',
+                opacity: 0.1,
+                line: { width: 0 }
+            }));
+            
+            // SPX Chart with shaded zones
+            const spxTrace = {
+                x: data.dates,
+                y: data.spx,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'SPX',
+                line: { color: '#10b981', width: 2 },
+                hovertemplate: '<b>SPX</b>: %{y:.2f}<br>%{x}<extra></extra>'
+            };
+            
+            const spxLayout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(20,20,30,0.3)',
+                font: { color: '#e0e0e0', family: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' },
+                margin: { l: 60, r: 40, t: 10, b: 40 },
+                hovermode: 'x unified',
+                xaxis: {
+                    gridcolor: '#2a2a2a',
+                    showticklabels: true,
+                    color: '#888',
+                    range: [data.dates[0], new Date(new Date(data.dates[data.dates.length - 1]).getTime() + (data.dates.length > 1 ? (new Date(data.dates[data.dates.length - 1]) - new Date(data.dates[0])) * 0.05 : 7 * 24 * 60 * 60 * 1000))],
+                    autorange: false
+                },
+                yaxis: {
+                    gridcolor: '#2a2a2a',
+                    tickfont: { color: '#10b981' },
+                    title: { text: 'Price', font: { color: '#888', size: 11 } }
+                },
+                shapes: shapes,
+                showlegend: false,
+                dragmode: 'zoom',
+                autosize: true,
+                height: 360
+            };
+            
+            // Anomaly Chart with statistical threshold lines
+            const anomalyTrace = {
+                x: data.dates,
+                y: data.scores,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Anomaly Score',
+                line: { color: '#3b82f6', width: 2 },
+                hovertemplate: '<b>Anomaly</b>: %{y:.3f}<br>%{x}<extra></extra>'
+            };
+            
+            const criticalThresholdTrace = {
+                x: [data.dates[0], data.dates[data.dates.length - 1]],
+                y: [statisticalThresholds.critical, statisticalThresholds.critical],
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Critical (98th %ile)',
+                line: { color: '#dc2626', width: 2, dash: 'dash' },
+                hovertemplate: `<b>Critical Threshold</b>: ${statisticalThresholds.critical.toFixed(3)}<br>(98th percentile)<extra></extra>`
+            };
+            
+            const highThresholdTrace = {
+                x: [data.dates[0], data.dates[data.dates.length - 1]],
+                y: [statisticalThresholds.high, statisticalThresholds.high],
+                type: 'scatter',
+                mode: 'lines',
+                name: 'High (92nd %ile)',
+                line: { color: '#ef4444', width: 2, dash: 'dot' },
+                hovertemplate: `<b>High Threshold</b>: ${statisticalThresholds.high.toFixed(3)}<br>(92nd percentile)<extra></extra>`
+            };
+            
+            const moderateThresholdTrace = {
+                x: [data.dates[0], data.dates[data.dates.length - 1]],
+                y: [statisticalThresholds.moderate, statisticalThresholds.moderate],
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Moderate (85th %ile)',
+                line: { color: '#f59e0b', width: 1, dash: 'dot' },
+                hovertemplate: `<b>Moderate Threshold</b>: ${statisticalThresholds.moderate.toFixed(3)}<br>(85th percentile)<extra></extra>`
+            };
+            
+            const anomalyLayout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(20,20,30,0.3)',
+                font: { color: '#e0e0e0', family: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' },
+                margin: { l: 60, r: 40, t: 10, b: 40 },
+                hovermode: 'x unified',
+                xaxis: {
+                    gridcolor: '#2a2a2a',
+                    showticklabels: true,
+                    color: '#888',
+                    range: [data.dates[0], new Date(new Date(data.dates[data.dates.length - 1]).getTime() + (data.dates.length > 1 ? (new Date(data.dates[data.dates.length - 1]) - new Date(data.dates[0])) * 0.05 : 7 * 24 * 60 * 60 * 1000))],
+                    autorange: false
+                },
+                yaxis: {
+                    gridcolor: '#2a2a2a',
+                    range: [0, 1],
+                    tickfont: { color: '#3b82f6' },
+                    title: { text: 'Score', font: { color: '#888', size: 11 } }
+                },
+                showlegend: false,
+                dragmode: 'zoom',
+                autosize: true,
+                height: 360
+            };
+            
+            const config = { 
+                responsive: true, 
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                displaylogo: false
+            };
+            
+            Plotly.newPlot('spxChart', [spxTrace], spxLayout, config);
+            Plotly.newPlot('anomalyChart', [anomalyTrace, criticalThresholdTrace, highThresholdTrace, moderateThresholdTrace], anomalyLayout, config);
+            
+            // Sync zoom between charts
+            const spxDiv = document.getElementById('spxChart');
+            const anomalyDiv = document.getElementById('anomalyChart');
+            
+            spxDiv.on('plotly_relayout', function(eventdata) {
+                if (eventdata['xaxis.range[0]'] && eventdata['xaxis.range[1]']) {
+                    const start = eventdata['xaxis.range[0]'];
+                    const end = eventdata['xaxis.range[1]'];
+                    
+                    Plotly.relayout('anomalyChart', {
+                        'xaxis.range': [start, end],
+                        'xaxis.autorange': false
+                    });
+                } else if (eventdata['xaxis.autorange']) {
+                    currentRange = null;
+                    renderCharts();
+                }
+            });
+            
+            anomalyDiv.on('plotly_relayout', function(eventdata) {
+                if (eventdata['xaxis.range[0]'] && eventdata['xaxis.range[1]']) {
+                    const start = eventdata['xaxis.range[0]'];
+                    const end = eventdata['xaxis.range[1]'];
+                    
+                    Plotly.relayout('spxChart', {
+                        'xaxis.range': [start, end],
+                        'xaxis.autorange': false
+                    });
+                } else if (eventdata['xaxis.autorange']) {
+                    currentRange = null;
+                    renderCharts();
+                }
+            });
+        }
+        
+        function showError(message) {
+            document.querySelector('.chart-container').innerHTML = `
+                <div class="error-message">
+                    <strong>⚠ Error Loading Data</strong><br>
+                    ${message}
+                </div>
+            `;
+        }
+        
+        // Timeframe button handlers
+        document.querySelectorAll('.timeframe-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                
+                currentTimeframe = parseInt(this.dataset.days);
+                currentRange = null;
+                renderCharts();
+            });
+        });
+        
+        // Initialize
+        loadData();
+        setInterval(loadData, 15 * 60 * 1000); // Refresh every 15 minutes
+    </script>
+</body>
+</html>

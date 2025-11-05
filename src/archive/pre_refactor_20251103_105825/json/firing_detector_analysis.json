@@ -1,0 +1,191 @@
+{
+  "timestamp": "2025-11-01T01:24:55.506391",
+  "threshold": 0.85,
+  "firing_detectors": [
+    "random_3"
+  ],
+  "analyses": {
+    "random_3": {
+      "feature_count": 25,
+      "all_features": [
+        "PCC",
+        "spx_vs_ma50",
+        "Crude Oil_lag1",
+        "spx_ret_10d",
+        "vix_zscore_252d",
+        "days_in_regime",
+        "Treasury_30Y_lag1",
+        "Natural Gas_mom_10d",
+        "Treasury_2Y_zscore_252d",
+        "vix_momentum_z_21d",
+        "Dollar_zscore_63d",
+        "vix_rv_ratio_63d",
+        "Treasury_30Y_zscore_252d",
+        "Treasury_2Y_lag1",
+        "VXTH_zscore_63d",
+        "vix_velocity_10d",
+        "Brent Crude_mom_21d",
+        "Yield_Curve_change_21d",
+        "vix_percentile_252d",
+        "spx_vs_ma200",
+        "Dollar_Index_level",
+        "Treasuries_mom_21d",
+        "Real_Yield_10Y_zscore_63d",
+        "vix_velocity_10d_pct",
+        "Yield_Curve_zscore_63d"
+      ],
+      "categorization": {
+        "cboe": {
+          "features": [
+            "PCC",
+            "Treasury_2Y_zscore_252d",
+            "Dollar_zscore_63d",
+            "Treasury_30Y_zscore_252d",
+            "VXTH_zscore_63d",
+            "Real_Yield_10Y_zscore_63d",
+            "Yield_Curve_zscore_63d"
+          ],
+          "count": 7,
+          "percentage": 28.000000000000004
+        },
+        "spx": {
+          "features": [
+            "spx_vs_ma50",
+            "spx_ret_10d",
+            "spx_vs_ma200"
+          ],
+          "count": 3,
+          "percentage": 12.0
+        },
+        "commodities": {
+          "features": [
+            "Crude Oil_lag1",
+            "Natural Gas_mom_10d",
+            "Brent Crude_mom_21d"
+          ],
+          "count": 3,
+          "percentage": 12.0
+        },
+        "vix": {
+          "features": [
+            "vix_zscore_252d",
+            "vix_momentum_z_21d",
+            "vix_rv_ratio_63d",
+            "vix_velocity_10d",
+            "vix_percentile_252d",
+            "vix_velocity_10d_pct"
+          ],
+          "count": 6,
+          "percentage": 24.0
+        },
+        "regime": {
+          "features": [
+            "days_in_regime"
+          ],
+          "count": 1,
+          "percentage": 4.0
+        },
+        "macro": {
+          "features": [
+            "Treasury_30Y_lag1",
+            "Treasury_2Y_lag1",
+            "Yield_Curve_change_21d"
+          ],
+          "count": 3,
+          "percentage": 12.0
+        },
+        "fx": {
+          "features": [
+            "Dollar_Index_level"
+          ],
+          "count": 1,
+          "percentage": 4.0
+        },
+        "other": {
+          "features": [
+            "Treasuries_mom_21d"
+          ],
+          "count": 1,
+          "percentage": 4.0
+        }
+      },
+      "top_features": [
+        {
+          "feature": "Dollar_zscore_63d",
+          "importance": 0.07556028444843949,
+          "category": "cboe",
+          "readable_name": "Dollar Z-Score (63d)"
+        },
+        {
+          "feature": "days_in_regime",
+          "importance": 0.07072333225983421,
+          "category": "regime",
+          "readable_name": "days in regime"
+        },
+        {
+          "feature": "Yield_Curve_zscore_63d",
+          "importance": 0.054990249304068754,
+          "category": "cboe",
+          "readable_name": "Yield Curve Z-Score (63d)"
+        },
+        {
+          "feature": "Real_Yield_10Y_zscore_63d",
+          "importance": 0.05428956373718346,
+          "category": "cboe",
+          "readable_name": "Real Yield 10Y Z-Score (63d)"
+        },
+        {
+          "feature": "Yield_Curve_change_21d",
+          "importance": 0.053800985763274065,
+          "category": "macro",
+          "readable_name": "Yield Curve Change (21d)"
+        },
+        {
+          "feature": "vix_momentum_z_21d",
+          "importance": 0.04766417769911053,
+          "category": "vix",
+          "readable_name": "VIX Momentum Z (21d)"
+        },
+        {
+          "feature": "spx_vs_ma200",
+          "importance": 0.04751211766573851,
+          "category": "spx",
+          "readable_name": "SPX vs MA200"
+        },
+        {
+          "feature": "Treasuries_mom_21d",
+          "importance": 0.04730198723219804,
+          "category": "other",
+          "readable_name": "Treasuries Momentum (21d)"
+        },
+        {
+          "feature": "Treasury_30Y_lag1",
+          "importance": 0.0467958281014539,
+          "category": "macro",
+          "readable_name": "Treasury 30Y (Lag)1"
+        },
+        {
+          "feature": "VXTH_zscore_63d",
+          "importance": 0.04607500780583015,
+          "category": "cboe",
+          "readable_name": "VXTH Z-Score (63d)"
+        }
+      ],
+      "domain_coverage": {
+        "total_domains": 7,
+        "significant_domains": {
+          "cboe": 7,
+          "spx": 3,
+          "commodities": 3,
+          "vix": 6,
+          "macro": 3
+        },
+        "diversity_score": 50.0,
+        "is_multi_domain": true
+      },
+      "description": "Multi-domain ensemble with 7 cboe, 6 vix, 3 spx features, emphasizing cboe signals",
+      "random_seed": 44,
+      "interpretation": "Systemic risk across cboe, vix, spx"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": "2.0.0",
+  "generated_at": "2025-11-04T15:49:19.754641",
+  "update_frequency": "refresh_cycle",
+  "market": {
+    "timestamp": "2025-11-04T15:49:19.754537",
+    "vix": 18.729999542236328,
+    "vix_change": 1.289999008178711,
+    "spx": 6851.97021484375,
+    "spx_change": 11.77001953125,
+    "regime": "Normal",
+    "regime_days": 4
+  },
+  "anomaly": {
+    "ensemble_score": 0.4677186061801446,
+    "classification": "NORMAL",
+    "active_detectors": [
+      "spx_price_action",
+      "commodities_stress"
+    ],
+    "persistence_streak": 0,
+    "detector_scores": {
+      "vix_mean_reversion": 0.08234714003944776,
+      "vix_momentum": 0.30596646942800787,
+      "vix_regime_structure": 0.4494575936883629,
+      "cboe_options_flow": 0.5823471400394478,
+      "vix_spx_relationship": 0.015532544378698221,
+      "spx_price_action": 0.8298816568047337,
+      "spx_volatility_regime": 0.2864891518737672,
+      "macro_rates": 0.6314102564102564,
+      "commodities_stress": 0.89965483234714,
+      "cross_asset_divergence": 0.36834319526627224
+    }
+  },
+  "persistence": {
+    "current_streak": 0,
+    "mean_duration": 3.869047619047619,
+    "max_duration": 56,
+    "total_anomaly_days": 325,
+    "anomaly_rate": 0.08012820512820513,
+    "num_episodes": 84
+  },
+  "diagnostics": {
+    "active_detectors": 15,
+    "total_detectors": 15,
+    "mean_coverage": 1.0
+  }
+}

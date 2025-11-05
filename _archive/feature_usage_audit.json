@@ -1,0 +1,2103 @@
+{
+  "timestamp": "2025-10-29",
+  "summary": {
+    "total_features": 149,
+    "vix_predictor_features": 0,
+    "anomaly_detector_features": 134,
+    "dashboard_features": 14,
+    "exported_features": 139,
+    "removal_candidates": 14
+  },
+  "features": [
+    {
+      "name": "spx_lag1",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "simple",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "spx_lag5",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "simple",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "spx_ret_5d",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "spx_ret_10d",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "spx_ret_13d",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "month",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "quarter",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "day_of_week",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "day_of_month",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "is_opex_week",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": false,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "N/A"
+      ]
+    },
+    {
+      "name": "Silver_zscore_63d",
+      "usage_score": 0.0,
+      "recommendation": "REMOVE - Unused",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (SLV)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vol_21d",
+      "usage_score": 0.5,
+      "recommendation": "REMOVE - Low value",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Silver_mom_21d",
+      "usage_score": 0.5,
+      "recommendation": "REMOVE - Low value",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (SLV)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Silver_mom_63d",
+      "usage_score": 0.5,
+      "recommendation": "REMOVE - Low value",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (SLV)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix",
+      "usage_score": 2.0,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": false,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "dashboard_data.json",
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma10",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma126",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma252",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma10_pct",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma21_pct",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma63_pct",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma126_pct",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma252_pct",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_zscore_126d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_zscore_252d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_percentile_126d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "reversion_strength_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_velocity_1d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_velocity_1d_pct",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_velocity_5d_pct",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_velocity_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_velocity_10d_pct",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_velocity_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_velocity_21d_pct",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_accel_5d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vol_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_momentum_z_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_momentum_z_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_momentum_z_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_term_structure",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_displacement",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "days_since_crisis",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "elevated_flag",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_ret_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_ret_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_vs_ma20",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_realized_vol_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_realized_vol_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_vol_ratio_10_63",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_momentum_z_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_skew_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_kurt_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "ma20_vs_ma50",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "bb_width_20d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "rsi_14",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_rv_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_rv_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_rv_30d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_rv_ratio_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_rv_ratio_30d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_avg_rv",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_vix_corr_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_trend_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_trend_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "SKEW",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "SKEW_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "SKEW_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "PCCI",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "PCCI_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "PCCI_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "PCCE",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "PCCE_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "PCCE_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "PCC",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "PCC_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "PCC_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "COR1M",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "COR1M_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "COR1M_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "COR3M",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "COR3M_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "COR3M_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "VXTH",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "VXTH_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "VXTH_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "CBOE",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "pc_divergence",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "tail_risk_elevated",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "cor_term_structure",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_10Y_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_10Y_lag1",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_10Y_change_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_10Y_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_10Y_change_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_10Y_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_10Y_zscore_252d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_2Y_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_2Y_change_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_2Y_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_2Y_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_5Y_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_5Y_change_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_5Y_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_5Y_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_30Y_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_30Y_change_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Treasury_30Y_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Yield_Curve_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Yield_Curve_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Yield_Curve_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Yield_Curve_10Y3M_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Yield_Curve_10Y3M_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Real_Yield_10Y_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Real_Yield_10Y_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Inflation_Expectation_5Y_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Inflation_Expectation_5Y_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Inflation_Expectation_10Y_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Inflation_Expectation_10Y_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "High_Yield_Spread_level",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "High_Yield_Spread_change_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Gold_lag1",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "Yahoo Finance (GLD)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Gold_mom_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (GLD)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Gold_mom_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (GLD)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Gold_mom_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (GLD)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Gold_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (GLD)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Silver_lag1",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "simple",
+      "raw_source": "Yahoo Finance (SLV)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Silver_mom_10d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (SLV)",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Crude Oil_mom_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Crude Oil_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Brent Crude_mom_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Brent Crude_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Natural Gas_mom_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Natural Gas_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Dollar_mom_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Dollar_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Producer_Price_Index_mom_21d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "Producer_Price_Index_zscore_63d",
+      "usage_score": 3.5,
+      "recommendation": "REVIEW - Marginal",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": false,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "FRED",
+      "json_locations": [
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma21",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "vix_vs_ma63",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "vix_zscore_63d",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "vix_percentile_252d",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "vix_velocity_5d",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "vix_regime",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^VIX)",
+      "json_locations": [
+        "dashboard_data.json",
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "days_in_regime",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Computed",
+      "json_locations": [
+        "dashboard_data.json",
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "spx_vs_ma50",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "spx_vs_ma200",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "spx_realized_vol_21d",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "market_state.json",
+        "anomaly_feature_attribution.json"
+      ]
+    },
+    {
+      "name": "spx_momentum_z_10d",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "moderate",
+      "raw_source": "Yahoo Finance (^GSPC)",
+      "json_locations": [
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "vix_rv_ratio_21d",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Computed",
+      "json_locations": [
+        "market_state.json"
+      ]
+    },
+    {
+      "name": "spx_vix_corr_21d",
+      "usage_score": 5.0,
+      "recommendation": "KEEP - Important",
+      "used_in_vix_predictor": false,
+      "used_in_anomaly_detector": true,
+      "used_in_dashboard": true,
+      "exported_to_json": true,
+      "calculation_complexity": "complex",
+      "raw_source": "Computed",
+      "json_locations": [
+        "market_state.json"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIX Distribution by Regime</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #1a1a1a;
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #ffffff;
+        }
+        
+        .subtitle {
+            font-size: 15px;
+            color: #888;
+            margin-bottom: 24px;
+        }
+        
+        .stats-bar {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+        
+        .stat-card {
+            background: #252525;
+            padding: 16px 24px;
+            border-radius: 8px;
+            border-left: 4px solid;
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .stat-card.regime-0 { border-color: #10b981; }
+        .stat-card.regime-1 { border-color: #3b82f6; }
+        .stat-card.regime-2 { border-color: #f59e0b; }
+        .stat-card.regime-3 { border-color: #ef4444; }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .stat-subtext {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 4px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 32px 0;
+        }
+        
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .bar {
+            transition: opacity 0.2s;
+        }
+        
+        .bar:hover {
+            opacity: 0.8;
+        }
+        
+        .current-marker {
+            stroke: #fff;
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+        }
+        
+        .axis-label {
+            font-size: 12px;
+            fill: #888;
+        }
+        
+        .axis-line {
+            stroke: #333;
+            stroke-width: 1;
+        }
+        
+        .grid-line {
+            stroke: #222;
+            stroke-width: 1;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            padding: 20px;
+            background: #252525;
+            border-radius: 8px;
+            margin-top: 32px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        .legend-color.regime-0 { background: #10b981; }
+        .legend-color.regime-1 { background: #3b82f6; }
+        .legend-color.regime-2 { background: #f59e0b; }
+        .legend-color.regime-3 { background: #ef4444; }
+        
+        .legend-text {
+            font-size: 13px;
+            color: #ccc;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>VIX Distribution by Regime</h1>
+        <div class="subtitle">
+            Historical frequency distribution showing where VIX spends its time
+        </div>
+        
+        <div id="stats-bar" class="stats-bar"></div>
+        <div id="chart" class="chart-container"></div>
+        <div id="legend" class="legend"></div>
+    </div>
+    
+    <script>
+        let regimeData = null;
+        let currentVIX = null;
+        let vixHistory = [];
+        
+        const REGIME_COLORS = {
+            0: '#10b981',
+            1: '#3b82f6',
+            2: '#f59e0b',
+            3: '#ef4444'
+        };
+        
+        async function loadData() {
+            try {
+                const response = await fetch('regime_statistics.json?' + Date.now());
+                if (!response.ok) throw new Error('regime_statistics.json not found');
+                regimeData = await response.json();
+                
+                try {
+                    const marketResponse = await fetch('market_state.json?' + Date.now());
+                    if (marketResponse.ok) {
+                        const marketData = await marketResponse.json();
+                        currentVIX = marketData.vix_structure?.current_vix;
+                    }
+                } catch (e) {
+                    console.warn('Could not load current VIX');
+                }
+                
+                // Load actual VIX history for density calculation
+                await loadVIXHistory();
+                
+                renderStats();
+                renderHistogram();
+                renderLegend();
+                
+            } catch (error) {
+                document.getElementById('chart').innerHTML = `
+                    <div style="text-align: center; padding: 60px; color: #ef4444;">
+                        Error loading data: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        async function loadVIXHistory() {
+            try {
+                const response = await fetch('vix_history.json?' + Date.now());
+                if (!response.ok) {
+                    throw new Error('vix_history.json not found');
+                }
+                const data = await response.json();
+                vixHistory = data.data ? data.data.map(d => d.vix) : [];
+                
+                if (vixHistory.length === 0) {
+                    throw new Error('vix_history.json contains no data');
+                }
+                
+                console.log(`Loaded ${vixHistory.length} real VIX values`);
+            } catch (e) {
+                throw new Error(`Failed to load VIX history: ${e.message}`);
+            }
+        }
+        
+        function renderStats() {
+            const statsBar = document.getElementById('stats-bar');
+            const totalDays = regimeData.metadata.total_trading_days;
+            
+            let html = '';
+            regimeData.regimes.forEach(regime => {
+                const pct = (regime.statistics.frequency * 100).toFixed(1);
+                html += `
+                    <div class="stat-card regime-${regime.id}">
+                        <div class="stat-label">${regime.name}</div>
+                        <div class="stat-value">${pct}%</div>
+                        <div class="stat-subtext">${regime.statistics.total_days} of ${totalDays} days</div>
+                    </div>
+                `;
+            });
+            
+            statsBar.innerHTML = html;
+        }
+        
+        function renderHistogram() {
+            const container = document.getElementById('chart');
+            const width = container.clientWidth;
+            const height = 400;
+            const margin = { top: 20, right: 40, bottom: 50, left: 60 };
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+            
+            // Create bins with smaller size for better granularity
+            const binSize = 0.5;
+            const maxVIX = 60;
+            const bins = [];
+            
+            for (let i = 0; i < maxVIX; i += binSize) {
+                bins.push({ 
+                    min: i, 
+                    max: i + binSize, 
+                    count: 0, 
+                    regime: null 
+                });
+            }
+            
+            // Fill bins with actual VIX history
+            vixHistory.forEach(vix => {
+                const binIndex = Math.floor(vix / binSize);
+                if (binIndex >= 0 && binIndex < bins.length) {
+                    bins[binIndex].count++;
+                }
+            });
+            
+            // Assign regime colors to bins based on bin midpoint
+            bins.forEach(bin => {
+                const binMid = (bin.min + bin.max) / 2;
+                for (let r = 0; r < regimeData.regimes.length; r++) {
+                    const [min, max] = regimeData.regimes[r].vix_range;
+                    if (binMid >= min && binMid < max) {
+                        bin.regime = r;
+                        break;
+                    }
+                }
+            });
+            
+            // Find max count for scaling
+            const maxCount = Math.max(...bins.map(b => b.count));
+            
+            // Create SVG
+            let svg = `
+                <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+                    <g transform="translate(${margin.left}, ${margin.top})">
+            `;
+            
+            // Draw grid lines
+            const yTicks = 5;
+            for (let i = 0; i <= yTicks; i++) {
+                const y = (chartHeight / yTicks) * i;
+                svg += `
+                    <line class="grid-line" 
+                          x1="0" y1="${y}" 
+                          x2="${chartWidth}" y2="${y}" />
+                `;
+            }
+            
+            // Draw bars
+            bins.forEach(bin => {
+                if (bin.count === 0 || bin.regime === null) return;
+                
+                const x = (bin.min / maxVIX) * chartWidth;
+                const barWidth = (binSize / maxVIX) * chartWidth;
+                const barHeight = (bin.count / maxCount) * chartHeight;
+                const y = chartHeight - barHeight;
+                
+                const color = REGIME_COLORS[bin.regime];
+                
+                svg += `
+                    <rect class="bar"
+                          x="${x}" 
+                          y="${y}" 
+                          width="${barWidth}" 
+                          height="${barHeight}"
+                          fill="${color}"
+                          opacity="0.7">
+                        <title>VIX ${bin.min.toFixed(1)}-${bin.max.toFixed(1)}: ${bin.count} days</title>
+                    </rect>
+                `;
+            });
+            
+            // Draw current VIX marker
+            if (currentVIX && currentVIX <= maxVIX) {
+                const x = (currentVIX / maxVIX) * chartWidth;
+                svg += `
+                    <line class="current-marker"
+                          x1="${x}" y1="0"
+                          x2="${x}" y2="${chartHeight}" />
+                    <text x="${x}" y="-5" 
+                          text-anchor="middle" 
+                          fill="#fff" 
+                          font-size="12px" 
+                          font-weight="700">
+                        ▼ ${currentVIX.toFixed(2)}
+                    </text>
+                `;
+            }
+            
+            // Draw axes
+            svg += `
+                <line class="axis-line" 
+                      x1="0" y1="${chartHeight}" 
+                      x2="${chartWidth}" y2="${chartHeight}" />
+                <line class="axis-line" 
+                      x1="0" y1="0" 
+                      x2="0" y2="${chartHeight}" />
+            `;
+            
+            // X-axis labels
+            const xTicks = [0, 10, 20, 30, 40, 50];
+            xTicks.forEach(tick => {
+                const x = (tick / maxVIX) * chartWidth;
+                svg += `
+                    <text class="axis-label" 
+                          x="${x}" 
+                          y="${chartHeight + 20}" 
+                          text-anchor="middle">
+                        ${tick}
+                    </text>
+                `;
+            });
+            
+            // Y-axis label
+            svg += `
+                <text class="axis-label" 
+                      x="${-chartHeight/2}" 
+                      y="-40" 
+                      text-anchor="middle"
+                      transform="rotate(-90 -${chartHeight/2} -40)">
+                    Trading Days
+                </text>
+                <text class="axis-label" 
+                      x="${chartWidth/2}" 
+                      y="${chartHeight + 40}" 
+                      text-anchor="middle">
+                    VIX Level
+                </text>
+            `;
+            
+            svg += `
+                    </g>
+                </svg>
+            `;
+            
+            container.innerHTML = svg;
+        }
+        
+        function renderLegend() {
+            const legend = document.getElementById('legend');
+            
+            legend.innerHTML = regimeData.regimes.map(regime => {
+                const [min, max] = regime.vix_range;
+                return `
+                    <div class="legend-item">
+                        <div class="legend-color regime-${regime.id}"></div>
+                        <div class="legend-text">${regime.name} (${min.toFixed(0)}-${max.toFixed(0)})</div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        loadData();
+        
+        // Refresh every 5 minutes during market hours
+        setInterval(loadData, 5 * 60 * 1000);
+    </script>
+</body>
+</html>

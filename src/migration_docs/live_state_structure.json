@@ -1,0 +1,187 @@
+{
+  "filename": "live_state.json",
+  "size_kb": 1.33,
+  "modified": "2025-11-03T18:30:11.506575",
+  "structure": {
+    "type": "object",
+    "properties": {
+      "schema_version": {
+        "type": "string",
+        "sample": "2.0.0",
+        "length": 5
+      },
+      "generated_at": {
+        "type": "string",
+        "sample": "2025-11-03T18:30:11.505735",
+        "length": 26
+      },
+      "update_frequency": {
+        "type": "string",
+        "sample": "refresh_cycle",
+        "length": 13
+      },
+      "market": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "sample": "2025-11-03T18:30:11.505621",
+            "length": 26
+          },
+          "vix": {
+            "type": "float",
+            "sample": 17.17
+          },
+          "vix_change": {
+            "type": "float",
+            "sample": 0.26
+          },
+          "spx": {
+            "type": "float",
+            "sample": 6851.9702
+          },
+          "spx_change": {
+            "type": "float",
+            "sample": 29.6304
+          },
+          "regime": {
+            "type": "string",
+            "sample": "Normal",
+            "length": 6
+          },
+          "regime_days": {
+            "type": "integer",
+            "sample": 3
+          }
+        }
+      },
+      "anomaly": {
+        "type": "object",
+        "properties": {
+          "ensemble_score": {
+            "type": "float",
+            "sample": 0.4519
+          },
+          "classification": {
+            "type": "string",
+            "sample": "NORMAL",
+            "length": 6
+          },
+          "active_detectors": {
+            "type": "array",
+            "length": 1,
+            "items": {
+              "type": "string",
+              "sample": "commodities_stress",
+              "length": 18
+            }
+          },
+          "persistence_streak": {
+            "type": "integer",
+            "sample": 0
+          },
+          "detector_scores": {
+            "type": "object",
+            "properties": {
+              "vix_mean_reversion": {
+                "type": "float",
+                "sample": 0.0162
+              },
+              "vix_momentum": {
+                "type": "float",
+                "sample": 0.3742
+              },
+              "vix_regime_structure": {
+                "type": "float",
+                "sample": 0.1161
+              },
+              "cboe_options_flow": {
+                "type": "float",
+                "sample": 0.2017
+              },
+              "vix_spx_relationship": {
+                "type": "float",
+                "sample": 0.0104
+              },
+              "spx_price_action": {
+                "type": "float",
+                "sample": 0.7711
+              },
+              "spx_volatility_regime": {
+                "type": "float",
+                "sample": 0.0285
+              },
+              "macro_rates": {
+                "type": "float",
+                "sample": 0.4851
+              },
+              "commodities_stress": {
+                "type": "float",
+                "sample": 0.8748
+              },
+              "cross_asset_divergence": {
+                "type": "float",
+                "sample": 0.2127
+              }
+            }
+          }
+        }
+      },
+      "persistence": {
+        "type": "object",
+        "properties": {
+          "current_streak": {
+            "type": "integer",
+            "sample": 0
+          },
+          "mean_duration": {
+            "type": "float",
+            "sample": 3.3514
+          },
+          "max_duration": {
+            "type": "integer",
+            "sample": 51
+          },
+          "total_anomaly_days": {
+            "type": "integer",
+            "sample": 124
+          },
+          "anomaly_rate": {
+            "type": "float",
+            "sample": 0.0804
+          },
+          "num_episodes": {
+            "type": "integer",
+            "sample": 37
+          }
+        }
+      },
+      "diagnostics": {
+        "type": "object",
+        "properties": {
+          "active_detectors": {
+            "type": "integer",
+            "sample": 15
+          },
+          "total_detectors": {
+            "type": "integer",
+            "sample": 15
+          },
+          "mean_coverage": {
+            "type": "float",
+            "sample": 1.0
+          }
+        }
+      }
+    }
+  },
+  "raw_keys": [
+    "schema_version",
+    "generated_at",
+    "update_frequency",
+    "market",
+    "anomaly",
+    "persistence",
+    "diagnostics"
+  ]
+}

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="../../data_service.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Persistence Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemBox, 'Segoe UI', Roboto, sans-serif;
+            background: transparent;
+            color: #e0e0e0;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #333;
+            background: rgba(10, 10, 10, 0.5);
+        }
+        
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .section-subtitle {
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+        }
+        
+        .persistence-streak {
+            font-size: 13px;
+            padding: 6px 12px;
+            background: rgba(59, 130, 246, 0.2);
+            border-radius: 12px;
+            font-weight: 600;
+            color: #3b82f6;
+        }
+        
+        .persistence-tracker {
+            padding: 24px;
+        }
+        
+        .persistence-timeline {
+            display: flex;
+            gap: 3px;
+            margin-bottom: 12px;
+        }
+        
+        .timeline-day {
+            flex: 1;
+            height: 50px;
+            background: #1a1a2e;
+            border-radius: 3px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        .timeline-day:hover {
+            transform: translateY(-3px);
+            border-color: #3b82f6;
+            z-index: 10;
+        }
+        
+        .timeline-day.anomalous {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border-color: #ef4444;
+            box-shadow: 0 3px 8px rgba(239, 68, 68, 0.3);
+        }
+        
+        .timeline-day-score {
+            font-size: 11px;
+            font-weight: 700;
+            color: #fff;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .timeline-day-date {
+            font-size: 8px;
+            color: #888;
+            margin-top: 3px;
+        }
+        
+        .persistence-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        
+        .persistence-stat {
+            background: rgba(20, 20, 30, 0.8);
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        
+        .persistence-stat:hover {
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+        }
+        
+        .persistence-stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #3b82f6;
+            margin-bottom: 4px;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .persistence-stat-label {
+            font-size: 10px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="section-header">
+        <div>
+            <div class="section-title">Anomaly Persistence</div>
+            <div class="section-subtitle">Last 30 Days • Statistical Thresholds</div>
+        </div>
+        <div class="persistence-streak">
+            <span id="streakDisplay">--</span>
+        </div>
+    </div>
+    
+    <div class="persistence-tracker">
+        <div id="persistenceTimeline" class="persistence-timeline"></div>
+        <div class="persistence-stats">
+            <div class="persistence-stat">
+                <div class="persistence-stat-value" id="meanDuration">--</div>
+                <div class="persistence-stat-label">Mean Duration</div>
+            </div>
+            <div class="persistence-stat">
+                <div class="persistence-stat-value" id="maxDuration">--</div>
+                <div class="persistence-stat-label">Max Streak</div>
+            </div>
+            <div class="persistence-stat">
+                <div class="persistence-stat-value" id="anomalyRate">--</div>
+                <div class="persistence-stat-label">Anomaly Rate</div>
+            </div>
+            <div class="persistence-stat">
+                <div class="persistence-stat-value" id="totalAnomalies">--</div>
+                <div class="persistence-stat-label">Total Days</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let statisticalThresholds = { moderate: 0.725, high: 0.805, critical: 0.914 }; // Fallback only
+        
+        async function loadData() {
+            try {
+                // Initialize data service
+                await window.dataService.init();
+                
+                const anomaly = {
+                    persistence: window.dataService.getPersistenceState(),
+                    classification: {
+                        statistical: {
+                            thresholds: window.dataService.getThresholds()
+                        }
+                    }
+                };
+                
+                const historical = {
+                    ensemble_scores: window.dataService.getHistoricalData().ensemble_scores,
+                    dates: window.dataService.getHistoricalData().dates
+                };
+                
+                // Extract statistical thresholds - handle different structures
+                const thresholds = window.dataService.getThresholds();
+                statisticalThresholds = thresholds.base || thresholds;
+                console.log('Using statistical thresholds:', statisticalThresholds);
+                
+                renderPersistence(anomaly, historical);
+            } catch (error) {
+                console.error('Error loading data:', error);
+                renderErrorState();
+            }
+        }
+        
+        function renderErrorState() {
+            document.getElementById('streakDisplay').textContent = 'No Data';
+            document.getElementById('meanDuration').textContent = '--';
+            document.getElementById('maxDuration').textContent = '--';
+            document.getElementById('anomalyRate').textContent = '--';
+            document.getElementById('totalAnomalies').textContent = '--';
+            document.getElementById('persistenceTimeline').innerHTML = `
+                <div style="flex: 1; display: flex; align-items: center; justify-content: center; color: #666; font-size: 12px;">
+                    Data unavailable
+                </div>
+            `;
+        }
+        
+        function renderPersistence(anomaly, historical) {
+            const persistence = anomaly?.persistence;
+            if (!persistence || !persistence.historical_stats) {
+                console.error('Missing persistence data structure');
+                document.getElementById('streakDisplay').textContent = 'No Data';
+                document.getElementById('meanDuration').textContent = '--';
+                document.getElementById('maxDuration').textContent = '--';
+                document.getElementById('anomalyRate').textContent = '--';
+                document.getElementById('totalAnomalies').textContent = '--';
+                return;
+            }
+            
+            const historicalStats = persistence.historical_stats;
+            
+            document.getElementById('streakDisplay').textContent = 
+                `Current Streak: ${historicalStats.current_streak} days`;
+            
+            document.getElementById('meanDuration').textContent = 
+                historicalStats.mean_duration.toFixed(1);
+            document.getElementById('maxDuration').textContent = 
+                historicalStats.max_duration;
+            document.getElementById('anomalyRate').textContent = 
+                `${(historicalStats.anomaly_rate * 100).toFixed(1)}%`;
+            document.getElementById('totalAnomalies').textContent = 
+                historicalStats.total_anomaly_days;
+            
+            const scores = historical.ensemble_scores.slice(-30);
+            const dates = historical.dates.slice(-30);
+            
+            const timelineHTML = scores.map((score, i) => {
+                // Use statistical threshold for anomaly classification
+                const isAnomalous = score >= statisticalThresholds.high;
+                const className = isAnomalous ? 'timeline-day anomalous' : 'timeline-day';
+                const date = new Date(dates[i]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                
+                return `
+                    <div class="${className}" title="${date}: ${score.toFixed(3)}">
+                        <div class="timeline-day-score">${score.toFixed(2)}</div>
+                        <div class="timeline-day-date">${date}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('persistenceTimeline').innerHTML = timelineHTML;
+        }
+        
+        loadData();
+        setInterval(loadData, 15 * 60 * 1000);
+    </script>
+</body>
+</html>

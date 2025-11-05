@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIX Market System - Output Data Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .section {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        
+        .section-title {
+            color: #667eea;
+            font-size: 22px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .metric-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .metric-description {
+            font-size: 12px;
+            color: #888;
+            line-height: 1.4;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .badge-critical {
+            background: #ff4757;
+            color: white;
+        }
+        
+        .badge-high {
+            background: #ffa502;
+            color: white;
+        }
+        
+        .badge-moderate {
+            background: #ffd32a;
+            color: #333;
+        }
+        
+        .badge-normal {
+            background: #2ed573;
+            color: white;
+        }
+        
+        .regime-indicator {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .regime-box {
+            flex: 1;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            opacity: 0.3;
+            transition: opacity 0.3s;
+        }
+        
+        .regime-box.active {
+            opacity: 1;
+            transform: scale(1.05);
+        }
+        
+        .regime-0 { background: #2ed573; color: white; }
+        .regime-1 { background: #48dbfb; color: white; }
+        .regime-2 { background: #ffa502; color: white; }
+        .regime-3 { background: #ff4757; color: white; }
+        
+        .domain-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        
+        .domain-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .domain-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .domain-score {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .domain-level {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .alert-card {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        
+        .alert-title {
+            font-weight: bold;
+            color: #856404;
+            margin-bottom: 5px;
+        }
+        
+        .persistence-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .stat-box {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #1976d2;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 VIX Market System - Output Data Dashboard</h1>
+            <p class="subtitle">All available output data points from your system</p>
+            <p class="subtitle" id="lastUpdate">Last Updated: Loading...</p>
+        </header>
+
+        <!-- CURRENT STATE SECTION -->
+        <div class="section">
+            <h2 class="section-title">🎯 Current Market State</h2>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-label">VIX Level</div>
+                    <div class="metric-value" id="vix">--</div>
+                    <div class="metric-description">Current CBOE Volatility Index</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-label">SPX Close</div>
+                    <div class="metric-value" id="spx">--</div>
+                    <div class="metric-description">S&P 500 Index closing price</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-label">Anomaly Score</div>
+                    <div class="metric-value" id="anomalyScore">--</div>
+                    <div class="metric-description">Ensemble anomaly score (0-1)</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-label">Anomaly Severity</div>
+                    <div class="metric-value" id="anomalySeverity">
+                        <span class="badge badge-normal">LOADING</span>
+                    </div>
+                    <div class="metric-description">Current severity classification</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIX REGIME SECTION - COMBINED -->
+        <div class="section">
+            <h2 class="section-title">🔄 VIX Regime Analysis & Transition Probabilities</h2>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Current Regime</div>
+                    <div class="metric-value" id="vixRegime">--</div>
+                    <div class="metric-description" id="vixRegimeName">Loading...</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-label">Days in Regime</div>
+                    <div class="metric-value" id="daysInRegime">--</div>
+                    <div class="metric-description">Consecutive days in current regime</div>
+                </div>
+            </div>
+            
+            <div class="regime-indicator">
+                <div class="regime-box regime-0" id="regime0">
+                    <strong>0: Low Vol</strong>
+                    <div style="font-size: 12px; margin-top: 5px;">VIX &lt; 15</div>
+                    <div style="font-size: 11px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 8px;">
+                        <div id="regime0-stats">Loading...</div>
+                    </div>
+                </div>
+                <div class="regime-box regime-1" id="regime1">
+                    <strong>1: Normal</strong>
+                    <div style="font-size: 12px; margin-top: 5px;">VIX 15-20</div>
+                    <div style="font-size: 11px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 8px;">
+                        <div id="regime1-stats">Loading...</div>
+                    </div>
+                </div>
+                <div class="regime-box regime-2" id="regime2">
+                    <strong>2: Elevated</strong>
+                    <div style="font-size: 12px; margin-top: 5px;">VIX 20-30</div>
+                    <div style="font-size: 11px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 8px;">
+                        <div id="regime2-stats">Loading...</div>
+                    </div>
+                </div>
+                <div class="regime-box regime-3" id="regime3">
+                    <strong>3: Crisis</strong>
+                    <div style="font-size: 12px; margin-top: 5px;">VIX &gt; 30</div>
+                    <div style="font-size: 11px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 8px;">
+                        <div id="regime3-stats">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ANOMALY PERSISTENCE SECTION -->
+        <div class="section">
+            <h2 class="section-title">⏱️ Anomaly Persistence</h2>
+            <div class="persistence-stats" id="persistenceStats">
+                <div class="stat-box">
+                    <div class="stat-value" id="currentStreak">--</div>
+                    <div class="stat-label">Current Streak (days)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="meanDuration">--</div>
+                    <div class="stat-label">Mean Episode Duration</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="maxDuration">--</div>
+                    <div class="stat-label">Max Episode Duration</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="anomalyRate">--%</div>
+                    <div class="stat-label">Anomaly Rate</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DOMAIN ANOMALIES SECTION -->
+        <div class="section">
+            <h2 class="section-title">🔍 Domain Anomaly Scores</h2>
+            <p style="color: #666; margin-bottom: 20px;">Per-domain anomaly detection results showing which aspects of the market are most unusual</p>
+            <div class="domain-list" id="domainAnomalies">
+                <!-- Will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- REGIME TRANSITION PROBABILITIES -->
+        <div class="section">
+            <h2 class="section-title">📈 Regime Transition Probabilities</h2>
+            <p style="color: #666; margin-bottom: 20px;">Historical probability of staying in or transitioning between regimes</p>
+            <div id="regimeStats">
+                <!-- Will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- TIME SERIES CHARTS -->
+        <div class="section">
+            <h2 class="section-title">📉 Historical Time Series</h2>
+            <p style="color: #666; margin-bottom: 20px;">VIX historical data and anomaly score over time</p>
+            
+            <div class="chart-container">
+                <canvas id="vixChart"></canvas>
+            </div>
+            
+            <div class="chart-container" style="margin-top: 40px;">
+                <canvas id="anomalyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- ALERTS SECTION -->
+        <div class="section">
+            <h2 class="section-title">⚠️ Active Alerts</h2>
+            <div id="alerts">
+                <!-- Will be populated by JavaScript -->
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Simulated data - Replace with actual API calls to your JSON files
+        const mockData = {
+            current_state: {
+                timestamp: new Date().toISOString(),
+                vix: 18.45,
+                vix_regime: 1,
+                vix_regime_name: "Normal",
+                days_in_regime: 12,
+                spx_close: 5234.67,
+                anomaly_ensemble_score: 0.62,
+                anomaly_severity: "MODERATE"
+            },
+            anomaly_analysis: {
+                persistence: {
+                    current_streak: 3,
+                    mean_duration: 5.2,
+                    max_duration: 14,
+                    anomaly_rate: 0.23
+                },
+                domain_anomalies: {
+                    vix_mean_reversion: { score: 0.45, level: "NORMAL" },
+                    vix_momentum: { score: 0.68, level: "MODERATE" },
+                    vix_regime_structure: { score: 0.52, level: "NORMAL" },
+                    cboe_options_flow: { score: 0.71, level: "MODERATE" },
+                    vix_spx_relationship: { score: 0.58, level: "MODERATE" },
+                    spx_price_action: { score: 0.43, level: "NORMAL" },
+                    spx_volatility_regime: { score: 0.39, level: "NORMAL" },
+                    macro_rates: { score: 0.82, level: "HIGH" },
+                    commodities_stress: { score: 0.55, level: "MODERATE" },
+                    cross_asset_divergence: { score: 0.67, level: "MODERATE" }
+                }
+            },
+            regime_analysis: {
+                regimes: [
+                    { regime: 0, name: "Low Vol", mean_duration: 23.4, persistence_5d: 0.85 },
+                    { regime: 1, name: "Normal", mean_duration: 18.7, persistence_5d: 0.78 },
+                    { regime: 2, name: "Elevated", mean_duration: 12.3, persistence_5d: 0.65 },
+                    { regime: 3, name: "Crisis", mean_duration: 8.1, persistence_5d: 0.52 }
+                ]
+            },
+            alerts: [
+                { severity: "MODERATE", message: "Macro rates domain showing elevated anomaly (0.82)" },
+                { severity: "MODERATE", message: "CBOE options flow indicating unusual activity" }
+            ]
+        };
+
+        // Initialize dashboard
+        function initDashboard() {
+            updateCurrentState();
+            updateRegimeAnalysis();
+            updatePersistence();
+            updateDomainAnomalies();
+            updateRegimeStats();
+            updateAlerts();
+            createVixChart();
+            createAnomalyChart();
+        }
+
+        function updateCurrentState() {
+            const state = mockData.current_state;
+            document.getElementById('lastUpdate').textContent = 
+                `Last Updated: ${new Date(state.timestamp).toLocaleString()}`;
+            document.getElementById('vix').textContent = state.vix.toFixed(2);
+            document.getElementById('spx').textContent = state.spx_close.toFixed(2);
+            document.getElementById('anomalyScore').textContent = state.anomaly_ensemble_score.toFixed(3);
+            
+            const severityBadge = document.getElementById('anomalySeverity');
+            const badgeClass = `badge-${state.anomaly_severity.toLowerCase()}`;
+            severityBadge.innerHTML = `<span class="badge ${badgeClass}">${state.anomaly_severity}</span>`;
+        }
+
+        function updateRegimeAnalysis() {
+            const state = mockData.current_state;
+            document.getElementById('vixRegime').textContent = state.vix_regime;
+            document.getElementById('vixRegimeName').textContent = state.vix_regime_name;
+            document.getElementById('daysInRegime').textContent = state.days_in_regime;
+            
+            // Highlight active regime
+            for (let i = 0; i < 4; i++) {
+                const box = document.getElementById(`regime${i}`);
+                if (i === state.vix_regime) {
+                    box.classList.add('active');
+                } else {
+                    box.classList.remove('active');
+                }
+            }
+        }
+
+        function updatePersistence() {
+            const persist = mockData.anomaly_analysis.persistence;
+            document.getElementById('currentStreak').textContent = persist.current_streak;
+            document.getElementById('meanDuration').textContent = persist.mean_duration.toFixed(1);
+            document.getElementById('maxDuration').textContent = persist.max_duration;
+            document.getElementById('anomalyRate').textContent = (persist.anomaly_rate * 100).toFixed(1) + '%';
+        }
+
+        function updateDomainAnomalies() {
+            const domains = mockData.anomaly_analysis.domain_anomalies;
+            const container = document.getElementById('domainAnomalies');
+            container.innerHTML = '';
+            
+            for (const [name, data] of Object.entries(domains)) {
+                const card = document.createElement('div');
+                card.className = 'domain-card';
+                
+                const displayName = name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const levelClass = `badge-${data.level.toLowerCase()}`;
+                
+                card.innerHTML = `
+                    <div class="domain-name">${displayName}</div>
+                    <div class="domain-score">${data.score.toFixed(3)}</div>
+                    <span class="domain-level badge ${levelClass}">${data.level}</span>
+                `;
+                container.appendChild(card);
+            }
+        }
+
+        function updateRegimeStats() {
+            const regimes = mockData.regime_analysis.regimes;
+            const container = document.getElementById('regimeStats');
+            container.innerHTML = '';
+            
+            regimes.forEach(regime => {
+                const card = document.createElement('div');
+                card.className = 'metric-card';
+                card.style.marginBottom = '15px';
+                card.innerHTML = `
+                    <div class="metric-label">Regime ${regime.regime}: ${regime.name}</div>
+                    <div style="margin-top: 10px;">
+                        <strong>Mean Duration:</strong> ${regime.mean_duration.toFixed(1)} days<br>
+                        <strong>5-Day Persistence:</strong> ${(regime.persistence_5d * 100).toFixed(0)}%
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function updateAlerts() {
+            const alerts = mockData.alerts;
+            const container = document.getElementById('alerts');
+            container.innerHTML = '';
+            
+            if (alerts.length === 0) {
+                container.innerHTML = '<p style="color: #2ed573;">✓ No active alerts</p>';
+                return;
+            }
+            
+            alerts.forEach(alert => {
+                const card = document.createElement('div');
+                card.className = 'alert-card';
+                card.innerHTML = `
+                    <div class="alert-title">${alert.severity} Alert</div>
+                    <div>${alert.message}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function createVixChart() {
+            // Generate sample historical VIX data
+            const dates = [];
+            const vixData = [];
+            const today = new Date();
+            
+            for (let i = 252; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                dates.push(date.toLocaleDateString());
+                
+                // Simulate VIX movement
+                const base = 18 + Math.sin(i / 30) * 5;
+                const noise = Math.random() * 3 - 1.5;
+                vixData.push(base + noise);
+            }
+            
+            const ctx = document.getElementById('vixChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'VIX Level',
+                        data: vixData,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'VIX Historical (Past Year)'
+                        },
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            beginAtZero: false,
+                            title: {
+                                display: true,
+                                text: 'VIX Level'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createAnomalyChart() {
+            // Generate sample anomaly score data
+            const dates = [];
+            const anomalyData = [];
+            const today = new Date();
+            
+            for (let i = 252; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                dates.push(date.toLocaleDateString());
+                
+                // Simulate anomaly score
+                const base = 0.5 + Math.sin(i / 45) * 0.2;
+                const noise = Math.random() * 0.15;
+                anomalyData.push(Math.min(1, Math.max(0, base + noise)));
+            }
+            
+            const ctx = document.getElementById('anomalyChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Anomaly Score',
+                        data: anomalyData,
+                        borderColor: '#ff4757',
+                        backgroundColor: 'rgba(255, 71, 87, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Ensemble Anomaly Score (Past Year)'
+                        },
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 1,
+                            title: {
+                                display: true,
+                                text: 'Anomaly Score'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', initDashboard);
+        
+        // In production, replace mockData with actual API calls:
+        // fetch('dashboard_data.json').then(r => r.json()).then(data => { ... })
+    </script>
+</body>
+</html>
