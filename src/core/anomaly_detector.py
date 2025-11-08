@@ -1,4 +1,8 @@
-"""Consolidated Anomaly Detection System"""
+"""Consolidated Anomaly Detection System
+
+Robust anomaly scoring with feature quality validation, coverage penalties,
+and outlier-resistant percentile calculation.
+"""
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
@@ -25,19 +29,85 @@ except ImportError:
     SHAP_AVAILABLE = False
 
 
+def validate_feature_quality(features: pd.DataFrame, feature_list: list, 
+                            detector_name: str) -> Tuple[list, dict]:
+    """Filter out constant/zero features before detection."""
+    quality_report = {}
+    valid_features = []
+    
+    for feat in feature_list:
+        if feat not in features.columns:
+            quality_report[feat] = 'missing'
+            continue
+        
+        series = features[feat]
+        
+        if (series == 0).sum() / len(series) > 0.95:
+            quality_report[feat] = 'constant_zero'
+            continue
+        
+        if series.isna().sum() / len(series) > 0.80:
+            quality_report[feat] = 'too_sparse'
+            continue
+        
+        if series.std() < 1e-6:
+            quality_report[feat] = 'no_variance'
+            continue
+        
+        unique_ratio = series.nunique() / len(series.dropna())
+        if unique_ratio < 0.05 and series.nunique() < 3:
+            quality_report[feat] = 'too_few_unique'
+            continue
+        
+        valid_features.append(feat)
+        quality_report[feat] = 'valid'
+    
+    removed_count = len(feature_list) - len(valid_features)
+    if removed_count > 0:
+        print(f"  {detector_name}: Removed {removed_count}/{len(feature_list)} low-quality features")
+    
+    return valid_features, quality_report
+
+
+def calculate_robust_anomaly_score(raw_score: float, training_distribution: np.ndarray,
+                                   min_percentile: float = 0.05, 
+                                   max_percentile: float = 0.95) -> float:
+    """Robust percentile calculation that handles outliers."""
+    lower_bound = np.percentile(training_distribution, min_percentile * 100)
+    upper_bound = np.percentile(training_distribution, max_percentile * 100)
+    
+    buffer = (upper_bound - lower_bound) * 0.1
+    clipped_score = np.clip(raw_score, lower_bound - buffer, upper_bound + buffer)
+    
+    percentile = (training_distribution <= clipped_score).sum() / len(training_distribution)
+    anomaly_score = 1.0 - percentile
+    
+    return float(np.clip(anomaly_score, 0.0, 0.95))
+
+
+def calculate_coverage_penalty(coverage: float, min_coverage: float = 0.7) -> float:
+    """Apply penalty to detectors with low feature coverage."""
+    if coverage >= min_coverage:
+        return 1.0
+    else:
+        penalty = (coverage / min_coverage) ** 2
+        return max(penalty, 0.1)
+
+
 class MultiDimensionalAnomalyDetector:
-    """15 independent Isolation Forests with feature importance."""
+    """15 independent Isolation Forests with feature importance and quality validation."""
     
     def __init__(self, contamination: float = 0.01, random_state: int = RANDOM_STATE):
         self.contamination = contamination
         self.random_state = random_state
         self.detectors = {}
         self.scalers = {}
-        self.feature_groups = {}
+        self.feature_groups = ANOMALY_FEATURE_GROUPS.copy()
         self.random_subspaces = []
         self.training_distributions = {}
         self.feature_importances = {}
         self.detector_coverage = {}
+        self.feature_quality_reports = {}
         self.trained = False
         self.training_ensemble_scores = []
         self.statistical_thresholds = None
@@ -46,38 +116,44 @@ class MultiDimensionalAnomalyDetector:
             'n_samples': 500,
             'n_repeats': 1,
         }
-        
-    def _define_feature_groups(self):
-        self.feature_groups = ANOMALY_FEATURE_GROUPS.copy()
     
-    def _calculate_feature_importance(self, detector, X_scaled, baseline_scores, feature_names, verbose=False):
+    def _calculate_feature_importance(self, detector, X_scaled, baseline_scores, 
+                                     feature_names, verbose=False):
         if SHAP_AVAILABLE and self.importance_config['method'] == 'shap':
             try:
                 return self._calculate_shap_importance(detector, X_scaled, feature_names, verbose)
             except Exception as e:
                 if verbose:
                     warnings.warn(f"SHAP failed, using permutation: {str(e)[:100]}")
-        return self._calculate_permutation_importance(detector, X_scaled, baseline_scores, feature_names, verbose)
+        return self._calculate_permutation_importance(detector, X_scaled, baseline_scores, 
+                                                     feature_names, verbose)
     
     def _calculate_shap_importance(self, detector, X_scaled, feature_names, verbose=False):
         n_samples = min(self.importance_config['n_samples'], len(X_scaled))
-        sample_indices = np.random.RandomState(self.random_state).choice(len(X_scaled), n_samples, replace=False)
+        sample_indices = np.random.RandomState(self.random_state).choice(
+            len(X_scaled), n_samples, replace=False
+        )
         X_sample = X_scaled[sample_indices]
         explainer = shap.TreeExplainer(detector)
         shap_values = explainer.shap_values(X_sample)
         mean_abs_shap = np.abs(shap_values).mean(axis=0)
         total = mean_abs_shap.sum()
-        normalized_importance = mean_abs_shap / total if total > 0 else np.ones(len(feature_names)) / len(feature_names)
+        normalized_importance = (mean_abs_shap / total if total > 0 
+                                else np.ones(len(feature_names)) / len(feature_names))
         return {name: float(imp) for name, imp in zip(feature_names, normalized_importance)}
     
-    def _calculate_permutation_importance(self, detector, X_scaled, baseline_scores, feature_names, verbose=False):
+    def _calculate_permutation_importance(self, detector, X_scaled, baseline_scores,
+                                         feature_names, verbose=False):
         try:
-            if len(X_scaled) == 0 or len(feature_names) == 0 or len(X_scaled) != len(baseline_scores):
+            if (len(X_scaled) == 0 or len(feature_names) == 0 or 
+                len(X_scaled) != len(baseline_scores)):
                 return {name: 1.0/len(feature_names) for name in feature_names}
             
             n_samples = min(self.importance_config['n_samples'], len(X_scaled))
             if n_samples < len(X_scaled):
-                sample_indices = np.random.RandomState(self.random_state).choice(len(X_scaled), n_samples, replace=False)
+                sample_indices = np.random.RandomState(self.random_state).choice(
+                    len(X_scaled), n_samples, replace=False
+                )
                 X_sample = X_scaled[sample_indices].copy()
                 baseline_mean = np.mean(baseline_scores[sample_indices])
             else:
@@ -90,7 +166,9 @@ class MultiDimensionalAnomalyDetector:
                     original_col = X_sample[:, i].copy()
                     importance_values = []
                     for repeat in range(self.importance_config['n_repeats']):
-                        np.random.RandomState(self.random_state + i + repeat * 1000).shuffle(X_sample[:, i])
+                        np.random.RandomState(self.random_state + i + repeat * 1000).shuffle(
+                            X_sample[:, i]
+                        )
                         permuted_scores = detector.score_samples(X_sample)
                         importance_values.append(abs(baseline_mean - np.mean(permuted_scores)))
                         X_sample[:, i] = original_col
@@ -104,7 +182,8 @@ class MultiDimensionalAnomalyDetector:
             else:
                 importances = {name: 1.0/len(feature_names) for name in feature_names}
             
-            return {k: v if np.isfinite(v) else 1.0/len(feature_names) for k, v in importances.items()}
+            return {k: v if np.isfinite(v) else 1.0/len(feature_names) 
+                   for k, v in importances.items()}
         except:
             return {name: 1.0/len(feature_names) for name in feature_names}
     
@@ -120,106 +199,42 @@ class MultiDimensionalAnomalyDetector:
             'critical': float(np.percentile(scores, 98))
         }
         
-        print(f"\n📊 Statistical Thresholds:")
-        print(f"   Moderate (85th): {thresholds['moderate']:.4f}")
-        print(f"   High (92nd):     {thresholds['high']:.4f}")
-        print(f"   Critical (98th): {thresholds['critical']:.4f}")
-        
-        return thresholds
-    
-    def calculate_statistical_thresholds_with_ci(self, n_bootstrap: int = 1000, confidence_level: float = 0.95) -> dict:
-        """Calculate thresholds with bootstrap confidence intervals."""
-        if len(self.training_ensemble_scores) == 0:
-            return self.calculate_statistical_thresholds()
-        
-        scores = np.array(self.training_ensemble_scores)
-        n_samples = len(scores)
-        
-        bootstrap_moderate, bootstrap_high, bootstrap_critical = [], [], []
-        
-        print(f"\n📊 Computing Bootstrap CIs...")
-        print(f"   Samples: {n_samples} | Iterations: {n_bootstrap} | CI: {confidence_level*100:.0f}%")
-        
-        rng = np.random.RandomState(self.random_state)
-        for i in range(n_bootstrap):
-            bootstrap_sample = rng.choice(scores, size=n_samples, replace=True)
-            bootstrap_moderate.append(np.percentile(bootstrap_sample, 85))
-            bootstrap_high.append(np.percentile(bootstrap_sample, 92))
-            bootstrap_critical.append(np.percentile(bootstrap_sample, 98))
-            
-            if (i + 1) % 250 == 0:
-                print(f"   Progress: {i + 1}/{n_bootstrap}...")
-        
-        moderate_point = float(np.percentile(scores, 85))
-        high_point = float(np.percentile(scores, 92))
-        critical_point = float(np.percentile(scores, 98))
-        
-        alpha = 1 - confidence_level
-        lower_pct = (alpha / 2) * 100
-        upper_pct = (1 - alpha / 2) * 100
-        
-        thresholds = {
-            'moderate': moderate_point,
-            'moderate_ci': {
-                'lower': float(np.percentile(bootstrap_moderate, lower_pct)),
-                'upper': float(np.percentile(bootstrap_moderate, upper_pct)),
-                'std': float(np.std(bootstrap_moderate))
-            },
-            'high': high_point,
-            'high_ci': {
-                'lower': float(np.percentile(bootstrap_high, lower_pct)),
-                'upper': float(np.percentile(bootstrap_high, upper_pct)),
-                'std': float(np.std(bootstrap_high))
-            },
-            'critical': critical_point,
-            'critical_ci': {
-                'lower': float(np.percentile(bootstrap_critical, lower_pct)),
-                'upper': float(np.percentile(bootstrap_critical, upper_pct)),
-                'std': float(np.std(bootstrap_critical))
-            },
-            'bootstrap_config': {
-                'n_iterations': n_bootstrap,
-                'confidence_level': confidence_level,
-                'n_samples': n_samples
-            }
-        }
-        
-        print(f"\n📊 Statistical Thresholds with {confidence_level*100:.0f}% CIs:")
-        print(f"   Moderate: {moderate_point:.4f} [{thresholds['moderate_ci']['lower']:.4f}, {thresholds['moderate_ci']['upper']:.4f}]")
-        print(f"   High:     {high_point:.4f} [{thresholds['high_ci']['lower']:.4f}, {thresholds['high_ci']['upper']:.4f}]")
-        print(f"   Critical: {critical_point:.4f} [{thresholds['critical_ci']['lower']:.4f}, {thresholds['critical_ci']['upper']:.4f}]")
-        
-        moderate_cv = thresholds['moderate_ci']['std'] / moderate_point * 100
-        high_cv = thresholds['high_ci']['std'] / high_point * 100
-        critical_cv = thresholds['critical_ci']['std'] / critical_point * 100
-        
-        print(f"\n📈 Threshold Stability (CV%):")
-        print(f"   Moderate: {moderate_cv:.2f}% | High: {high_cv:.2f}% | Critical: {critical_cv:.2f}%")
-        
-        if max(moderate_cv, high_cv, critical_cv) > 5.0:
-            warnings.warn("⚠️ High threshold variability (CV > 5%). Consider increasing training data.")
+        self.logger.info(f"Statistical Thresholds: Moderate={thresholds['moderate']:.4f}, "
+                        f"High={thresholds['high']:.4f}, Critical={thresholds['critical']:.4f}")
         
         return thresholds
     
     def train(self, features: pd.DataFrame, verbose: bool = True):
-        self._define_feature_groups()
+        """Train all detectors with feature quality validation."""
         if verbose:
-            print(f"\n{'='*80}\nMULTI-DIMENSIONAL ANOMALY DETECTOR\n{'='*80}")
-            print(f"Features: {len(features.columns)} | Samples: {len(features)} | Contamination: {self.contamination:.1%}")
-            print(f"Attribution: {'SHAP' if SHAP_AVAILABLE else 'Permutation'}")
-            print(f"\n{'-'*80}\nPHASE 1: Training 10 Domain Detectors\n{'-'*80}")
+            print("\n" + "="*60)
+            print("🧠 TRAINING ANOMALY DETECTORS")
+            print("="*60)
+            print(f"Total available features: {len(features.columns)}")
+        
+        available_cols = set(features.columns)
         
         for name, feature_list in self.feature_groups.items():
-            available_features = [f for f in feature_list if f in features.columns]
-            if len(available_features) < 3:
-                if verbose:
-                    print(f"\n⚠️ {name}: Skipped ({len(available_features)} features)")
-                continue
-            
             try:
-                X = features[available_features].fillna(0)
+                if verbose:
+                    self.logger.debug(f"Training: {name}")
+                
+                available_features = [f for f in feature_list if f in features.columns]
+                valid_features, quality_report = validate_feature_quality(
+                    features, available_features, name
+                )
+                
+                self.feature_quality_reports[name] = quality_report
+                
+                if len(valid_features) < 3:
+                    if verbose:
+                        self.logger.warning(f"{name}: Only {len(valid_features)} valid features, skipping")
+                    continue
+                
+                X = features[valid_features].fillna(0)
                 scaler = RobustScaler()
                 X_scaled = scaler.fit_transform(X)
+                
                 detector = IsolationForest(
                     contamination=self.contamination,
                     random_state=self.random_state,
@@ -228,38 +243,50 @@ class MultiDimensionalAnomalyDetector:
                     n_jobs=-1
                 )
                 detector.fit(X_scaled)
-                training_scores = detector.score_samples(X_scaled)
-                self.training_distributions[name] = training_scores
                 
-                try:
-                    self.feature_importances[name] = self._calculate_feature_importance(
-                        detector, X_scaled, training_scores, available_features, verbose=False
-                    )
-                except:
-                    self.feature_importances[name] = {f: 1.0/len(available_features) for f in available_features}
+                training_scores = detector.score_samples(X_scaled)
                 
                 self.detectors[name] = detector
                 self.scalers[name] = scaler
+                self.training_distributions[name] = training_scores
+                self.detector_coverage[name] = len(valid_features) / len(feature_list)
                 
-                if verbose:
-                    print(f"\n✅ {name}: {len(available_features)} features | Range: [{training_scores.min():.3f}, {training_scores.max():.3f}]")
+                self.feature_importances[name] = self._calculate_feature_importance(
+                    detector, X_scaled, training_scores, valid_features, verbose=False
+                )
+                
             except Exception as e:
                 if verbose:
-                    print(f"\n❌ {name}: Failed - {e}")
+                    self.logger.error(f"{name}: Training failed - {str(e)[:100]}")
                 continue
         
+        # Generate random subspaces
         if verbose:
-            print(f"\n{'-'*80}\nPHASE 2: Training 5 Random Subspace Detectors\n{'-'*80}")
+            self.logger.debug("Generating 5 random subspace detectors...")
         
-        all_features = features.columns.tolist()
+        all_features = list(available_cols)
         for i in range(5):
-            detector_name = f'random_{i+1}'
             try:
-                random_features = np.random.choice(all_features, size=min(25, len(all_features)), replace=False).tolist()
-                self.random_subspaces.append(random_features)
-                X = features[random_features].fillna(0)
+                subspace_size = np.random.randint(8, 15)
+                subspace_features = np.random.RandomState(self.random_state + i).choice(
+                    all_features, size=min(subspace_size, len(all_features)), replace=False
+                ).tolist()
+                
+                name = f"random_{i+1}"
+                
+                valid_features, quality_report = validate_feature_quality(
+                    features, subspace_features, name
+                )
+                
+                self.feature_quality_reports[name] = quality_report
+                
+                if len(valid_features) < 3:
+                    continue
+                
+                X = features[valid_features].fillna(0)
                 scaler = RobustScaler()
                 X_scaled = scaler.fit_transform(X)
+                
                 detector = IsolationForest(
                     contamination=self.contamination,
                     random_state=self.random_state + i,
@@ -268,89 +295,59 @@ class MultiDimensionalAnomalyDetector:
                     n_jobs=-1
                 )
                 detector.fit(X_scaled)
+                
                 training_scores = detector.score_samples(X_scaled)
-                self.training_distributions[detector_name] = training_scores
                 
-                try:
-                    self.feature_importances[detector_name] = self._calculate_feature_importance(
-                        detector, X_scaled, training_scores, random_features, verbose=False
-                    )
-                except:
-                    self.feature_importances[detector_name] = {f: 1.0/len(random_features) for f in random_features}
+                self.detectors[name] = detector
+                self.scalers[name] = scaler
+                self.training_distributions[name] = training_scores
+                self.random_subspaces.append(valid_features)
+                self.detector_coverage[name] = 1.0
                 
-                self.detectors[detector_name] = detector
-                self.scalers[detector_name] = scaler
-                
-                if verbose:
-                    print(f"\n✅ Random #{i+1}: {len(random_features)} features | Range: [{training_scores.min():.3f}, {training_scores.max():.3f}]")
+                self.feature_importances[name] = self._calculate_feature_importance(
+                    detector, X_scaled, training_scores, valid_features, verbose=False
+                )
+                    
             except Exception as e:
                 if verbose:
-                    print(f"\n❌ Random #{i+1}: Failed - {e}")
-                continue
-        
-        self.detector_coverage = {}
-        for name, detector in self.detectors.items():
-            if name.startswith('random_'):
-                idx = int(name.split('_')[1]) - 1
-                required_features = self.random_subspaces[idx]
-            else:
-                required_features = self.feature_groups[name]
-            
-            available_features = [f for f in required_features if f in features.columns]
-            coverage = len(available_features) / len(required_features) if len(required_features) > 0 else 0.0
-            self.detector_coverage[name] = coverage
-        
-        if verbose:
-            print(f"\n{'-'*80}\nDetector Coverage\n{'-'*80}")
-            for name, coverage in sorted(self.detector_coverage.items(), key=lambda x: x[1], reverse=True):
-                status = "✅" if coverage >= 0.8 else "⚠️" if coverage >= 0.5 else "❌"
-                print(f"{status} {name:30s}: {coverage:5.1%}")
-        
-        if len(self.detectors) < 5:
-            raise RuntimeError(f"Training failed: only {len(self.detectors)} detectors trained (min 5 required)")
+                    self.logger.warning(f"Random subspace {i+1} failed: {str(e)[:50]}")
         
         self.trained = True
         
         if verbose:
-            print(f"\n{'-'*80}\nComputing statistical thresholds...\n{'-'*80}")
+            print(f"\n✅ Training complete: {len(self.detectors)} detectors active")
         
         self._compute_statistical_thresholds(features, verbose=verbose)
-        
-        if verbose:
-            print(f"\n{'-'*80}\nCalculating Bootstrap CIs\n{'-'*80}")
-        
-        self.statistical_thresholds = self.calculate_statistical_thresholds_with_ci(n_bootstrap=1000, confidence_level=0.95)
-        
-        if verbose:
-            print(f"\n{'='*80}\n✅ TRAINING COMPLETE - {len(self.detectors)} DETECTORS")
-            print(f"   Domain: {len([k for k in self.detectors.keys() if not k.startswith('random_')])}")
-            print(f"   Random: {len([k for k in self.detectors.keys() if k.startswith('random_')])}\n{'='*80}")
+        self.statistical_thresholds = self.calculate_statistical_thresholds()
     
-    def detect(self, features: pd.DataFrame, verbose: bool = False) -> dict:
+    def detect(self, features: pd.DataFrame, verbose: bool = True) -> dict:
+        """Detect anomalies with robust scoring and coverage penalties."""
         if not self.trained:
             raise ValueError("Detector not trained")
         
         results = {
-            'ensemble': {},
             'domain_anomalies': {},
             'random_anomalies': {},
+            'ensemble': {},
             'data_quality': {}
         }
         
-        scores, detector_weights, active_detectors, missing_features = [], [], 0, []
+        scores = []
+        detector_weights = []
+        active_detectors = 0
+        missing_features = []
         
         for name, detector in self.detectors.items():
-            if name.startswith('random_'):
-                idx = int(name.split('_')[1]) - 1
-                required_features = self.random_subspaces[idx]
-            else:
-                required_features = [f for f in self.feature_groups[name] if f in features.columns]
+            feature_list = (
+                self.random_subspaces[int(name.split('_')[1]) - 1] if name.startswith('random_')
+                else [f for f in self.feature_groups[name] if f in features.columns]
+            )
             
-            available = [f for f in required_features if f in features.columns]
-            coverage = len(available) / len(required_features) if len(required_features) > 0 else 0.0
+            available = [f for f in feature_list if f in features.columns]
+            coverage = len(available) / len(feature_list)
             
-            if coverage < ANOMALY_THRESHOLDS['detector_coverage_min']:
-                missing_features.append({'detector': name, 'coverage': coverage, 'reason': 'below_threshold'})
+            if coverage < 0.5:
+                missing_features.append({'detector': name, 'coverage': coverage})
                 continue
             
             try:
@@ -359,21 +356,25 @@ class MultiDimensionalAnomalyDetector:
                 raw_score = detector.score_samples(X_scaled)[0]
                 
                 training_dist = self.training_distributions[name]
-                percentile = (training_dist <= raw_score).sum() / len(training_dist)
-                anomaly_score = 1.0 - percentile
+                anomaly_score = calculate_robust_anomaly_score(raw_score, training_dist)
                 
-                scores.append(anomaly_score)
-                detector_weights.append(coverage)
+                coverage_penalty = calculate_coverage_penalty(coverage)
+                adjusted_score = anomaly_score * coverage_penalty
+                
+                scores.append(adjusted_score)
+                detector_weights.append(coverage * coverage_penalty)
                 active_detectors += 1
                 
-                level, _, _ = self.classify_anomaly(anomaly_score, method='statistical')
+                level, _, _ = self.classify_anomaly(adjusted_score, method='statistical')
                 
                 result_dict = {
-                    'score': float(anomaly_score),
-                    'percentile': float(anomaly_score * 100),
+                    'score': float(adjusted_score),
+                    'raw_anomaly_score': float(anomaly_score),
+                    'percentile': float(adjusted_score * 100),
                     'level': level,
                     'coverage': float(coverage),
-                    'weight': float(coverage)
+                    'coverage_penalty': float(coverage_penalty),
+                    'weight': float(coverage * coverage_penalty)
                 }
                 
                 if name.startswith('random_'):
@@ -386,7 +387,9 @@ class MultiDimensionalAnomalyDetector:
         if scores:
             weights = np.array(detector_weights)
             weighted_scores = np.array(scores) * weights
-            ensemble_score = float(weighted_scores.sum() / weights.sum()) if weights.sum() > 0 else float(np.mean(scores))
+            ensemble_score = (float(weighted_scores.sum() / weights.sum()) if weights.sum() > 0 
+                            else float(np.mean(scores)))
+            ensemble_score = min(ensemble_score, 0.95)
             
             results['ensemble'] = {
                 'score': ensemble_score,
@@ -406,23 +409,33 @@ class MultiDimensionalAnomalyDetector:
                 'mean': float(np.mean(weights)) if len(weights) > 0 else 0.0,
                 'min': float(np.min(weights)) if len(weights) > 0 else 0.0,
                 'max': float(np.max(weights)) if len(weights) > 0 else 0.0
-            }
+            },
+            'feature_quality_summary': self._get_quality_summary()
         }
         
         return results
     
+    def _get_quality_summary(self) -> dict:
+        """Summarize feature quality across all detectors."""
+        summary = {}
+        for detector_name, quality_report in self.feature_quality_reports.items():
+            valid_count = sum(1 for status in quality_report.values() if status == 'valid')
+            total_count = len(quality_report)
+            summary[detector_name] = {
+                'valid_ratio': valid_count / total_count if total_count > 0 else 0.0,
+                'valid_count': valid_count,
+                'total_count': total_count
+            }
+        return summary
+    
     def calculate_historical_persistence_stats(
-        self, 
-        ensemble_scores: np.ndarray, 
-        dates: Optional[pd.DatetimeIndex] = None,
+        self, ensemble_scores: np.ndarray, dates: Optional[pd.DatetimeIndex] = None,
         threshold: float = None
     ) -> Dict:
         """Calculate persistence stats from complete historical ensemble scores."""
         if threshold is None:
-            if hasattr(self, 'statistical_thresholds') and self.statistical_thresholds is not None:
-                threshold = self.statistical_thresholds.get('high', 0.78) if isinstance(self.statistical_thresholds, dict) else 0.78
-            else:
-                threshold = 0.78
+            threshold = (self.statistical_thresholds.get('high', 0.78) 
+                        if isinstance(self.statistical_thresholds, dict) else 0.78)
         
         if isinstance(ensemble_scores, list):
             ensemble_scores = np.array(ensemble_scores)
@@ -485,6 +498,7 @@ class MultiDimensionalAnomalyDetector:
         return sorted(importances.items(), key=lambda x: x[1], reverse=True)[:top_n]
     
     def _compute_statistical_thresholds(self, features: pd.DataFrame, verbose: bool = True):
+        """Compute ensemble scores for all training data to establish thresholds."""
         self.training_ensemble_scores = []
         batch_size = 100
         for i in range(0, len(features), batch_size):
@@ -497,21 +511,19 @@ class MultiDimensionalAnomalyDetector:
                     pass
         
         if verbose:
-            print(f"\n✅ Computed {len(self.training_ensemble_scores)} ensemble scores for threshold calculation")
+            print(f"\n✅ Computed {len(self.training_ensemble_scores)} ensemble scores")
     
     def classify_anomaly(self, score: float, method: str = 'statistical') -> tuple:
         """Classify anomaly severity using statistical thresholds."""
-        if self.statistical_thresholds is None:
-            thresholds = {'moderate': 0.70, 'high': 0.78, 'critical': 0.88}
-        else:
-            if 'moderate_ci' in self.statistical_thresholds:
-                thresholds = {
-                    'moderate': self.statistical_thresholds['moderate'],
-                    'high': self.statistical_thresholds['high'],
-                    'critical': self.statistical_thresholds['critical']
-                }
-            else:
-                thresholds = self.statistical_thresholds
+        thresholds = (self.statistical_thresholds if self.statistical_thresholds 
+                     else {'moderate': 0.70, 'high': 0.78, 'critical': 0.88})
+        
+        if 'moderate_ci' in thresholds:
+            thresholds = {
+                'moderate': thresholds['moderate'],
+                'high': thresholds['high'],
+                'critical': thresholds['critical']
+            }
         
         if len(self.training_ensemble_scores) > 0:
             p_value = (np.array(self.training_ensemble_scores) >= score).mean()
@@ -530,3 +542,15 @@ class MultiDimensionalAnomalyDetector:
             level = 'NORMAL'
         
         return level, p_value, confidence
+    
+    @property
+    def logger(self):
+        """Simple logger property for backwards compatibility."""
+        import logging
+        logger = logging.getLogger(self.__class__.__name__)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter('%(message)s'))
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+        return logger

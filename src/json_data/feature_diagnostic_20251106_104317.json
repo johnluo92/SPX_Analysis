@@ -1,0 +1,576 @@
+{
+  "timestamp": "2025-11-06T10:43:17.366629",
+  "years": 2,
+  "feature_count": 570,
+  "sample_count": 500,
+  "issues": {
+    "stale_data": [],
+    "feature_quality": [
+      {
+        "feature": "vix_displacement",
+        "issues": [
+          "All zeros",
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "quarter",
+        "issues": [
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "GOLDSILVER_zscore_63d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "skew_displacement",
+        "issues": [
+          "Missing: 70.2%"
+        ]
+      },
+      {
+        "feature": "pcce_extreme_high",
+        "issues": [
+          "All zeros",
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "pc_combined_extreme",
+        "issues": [
+          "All zeros",
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "cor_regime",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "cor_spike",
+        "issues": [
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "high_beta_vol_regime",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "vx_steep_contango",
+        "issues": [
+          "All zeros",
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "vx_steep_backwardation",
+        "issues": [
+          "All zeros",
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "oil_term_regime",
+        "issues": [
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "oil_steep_backwardation",
+        "issues": [
+          "All zeros",
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "oil_steep_contango",
+        "issues": [
+          "All zeros",
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "dxy_regime",
+        "issues": [
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "trend_regime",
+        "issues": [
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "vix_extreme_low_63d",
+        "issues": [
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "vix_extreme_low_252d",
+        "issues": [
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "SKEW_percentile_126d",
+        "issues": [
+          "Missing: 70.8%"
+        ]
+      },
+      {
+        "feature": "SKEW_percentile_252d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "SKEW_extreme_high_63d",
+        "issues": [
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "SKEW_extreme_low_63d",
+        "issues": [
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "SKEW_extreme_high_252d",
+        "issues": [
+          "All zeros",
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "SKEW_extreme_low_252d",
+        "issues": [
+          "All zeros",
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "spx_realized_vol_21d_extreme_high_252d",
+        "issues": [
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "rsi_14_extreme_low_252d",
+        "issues": [
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "risk_premium_extreme_low_252d",
+        "issues": [
+          "Constant (last 20d)"
+        ]
+      },
+      {
+        "feature": "Yield_Curve_10Y2Y_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Yield_Curve_10Y3M_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Breakeven_Inflation_5Y_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Breakeven_Inflation_10Y_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Forward_Inflation_5Y_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Fed_Funds_Effective_Rate_zscore_63d",
+        "issues": [
+          "Missing: 88.0%",
+          "Contains inf"
+        ]
+      },
+      {
+        "feature": "Fed_Funds_Effective_Rate_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Overnight_Bank_Funding_zscore_63d",
+        "issues": [
+          "Missing: 59.8%",
+          "Contains inf"
+        ]
+      },
+      {
+        "feature": "Overnight_Bank_Funding_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "SOFR_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "SOFR_30D_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "SOFR_90D_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "SOFR_180D_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Fed_Funds_Target_Upper_change_10d",
+        "issues": [
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Fed_Funds_Target_Upper_zscore_63d",
+        "issues": [
+          "Missing: 67.8%",
+          "Contains inf"
+        ]
+      },
+      {
+        "feature": "Fed_Funds_Target_Upper_zscore_252d",
+        "issues": [
+          "Contains inf"
+        ]
+      },
+      {
+        "feature": "Fed_Funds_Target_Lower_change_10d",
+        "issues": [
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Fed_Funds_Target_Lower_zscore_63d",
+        "issues": [
+          "Missing: 67.8%",
+          "Contains inf"
+        ]
+      },
+      {
+        "feature": "Fed_Funds_Target_Lower_zscore_252d",
+        "issues": [
+          "Contains inf"
+        ]
+      },
+      {
+        "feature": "Interest_Reserve_Balances_change_10d",
+        "issues": [
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Interest_Reserve_Balances_zscore_63d",
+        "issues": [
+          "Missing: 67.8%",
+          "Contains inf"
+        ]
+      },
+      {
+        "feature": "Interest_Reserve_Balances_zscore_252d",
+        "issues": [
+          "Contains inf"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Broad_zscore_252d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Major_level",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Major_change_10d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Major_change_21d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Major_change_63d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Major_zscore_63d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Major_zscore_252d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Other_level",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Other_change_10d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Other_change_21d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Other_change_63d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Other_zscore_63d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Other_zscore_252d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Dollar_Index_Emerging_zscore_252d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Fed_Balance_Sheet_level",
+        "issues": [
+          "Missing: 79.8%"
+        ]
+      },
+      {
+        "feature": "Fed_Balance_Sheet_change_10d",
+        "issues": [
+          "Missing: 87.2%"
+        ]
+      },
+      {
+        "feature": "Fed_Balance_Sheet_change_21d",
+        "issues": [
+          "Missing: 99.8%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Fed_Balance_Sheet_change_63d",
+        "issues": [
+          "Missing: 94.8%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Fed_Balance_Sheet_zscore_63d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Fed_Balance_Sheet_zscore_252d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Treasury_General_Account_level",
+        "issues": [
+          "Missing: 79.8%"
+        ]
+      },
+      {
+        "feature": "Treasury_General_Account_change_10d",
+        "issues": [
+          "Missing: 87.2%"
+        ]
+      },
+      {
+        "feature": "Treasury_General_Account_change_21d",
+        "issues": [
+          "Missing: 99.8%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Treasury_General_Account_change_63d",
+        "issues": [
+          "Missing: 94.8%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Treasury_General_Account_zscore_63d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Treasury_General_Account_zscore_252d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Reverse_Repo_Operations_zscore_252d",
+        "issues": [
+          "Missing: 99.6%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Crude_Oil_WTI_zscore_252d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Brent_Crude_zscore_63d",
+        "issues": [
+          "Missing: 84.0%"
+        ]
+      },
+      {
+        "feature": "Brent_Crude_zscore_252d",
+        "issues": [
+          "Missing: 100.0%",
+          "All zeros"
+        ]
+      },
+      {
+        "feature": "Natural_Gas_zscore_252d",
+        "issues": [
+          "Missing: 97.2%",
+          "All zeros"
+        ]
+      }
+    ],
+    "detector_impact": [
+      {
+        "detector": "spx_ohlc_microstructure",
+        "coverage": 0.0,
+        "quality_coverage": 0.0,
+        "missing": [
+          "spx_intraday_mom_ma5",
+          "spx_gap_magnitude",
+          "spx_range_expansion_z",
+          "spx_gap",
+          "spx_body_to_range"
+        ]
+      }
+    ],
+    "cboe_specific": [
+      {
+        "feature": "SKEW_extreme_high_252d",
+        "issue": "Always 0 (should vary)"
+      },
+      {
+        "feature": "SKEW_extreme_low_252d",
+        "issue": "Always 0 (should vary)"
+      }
+    ],
+    "cross_source": []
+  },
+  "recommendations": [
+    "Remove or fix features with quality issues",
+    "Review CBOE feature engineering logic",
+    "Rebalance detector feature groups"
+  ]
+}

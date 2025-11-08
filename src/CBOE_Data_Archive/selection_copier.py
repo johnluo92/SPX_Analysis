@@ -16,7 +16,7 @@ print("\nStarting in 3 seconds...\n")
 
 time.sleep(3)
 
-output_file = "PCCI_INDX_CBOE.csv"
+output_file = "BFLY.csv"
 seen_lines = set()
 all_data = []
 running = True

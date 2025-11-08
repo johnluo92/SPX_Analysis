@@ -74,10 +74,129 @@ Actual unique dates in CSV: 2766
 ✅ No missing trading days.
 --------------------------------------
 Checking file: CNDR_SPX_IRON_CONDOR_CBOE.csv
-Data range: 2014-09-17 → 2025-10-23
-Expected NYSE trading days in range: 2793
-Actual unique dates in CSV: 2791
+Data range: 1986-06-20 → 2025-11-04
+Expected NYSE trading days in range: 9921
+Actual unique dates in CSV: 9916
+⚠️ Missing 5 trading day(s):
+1991-03-01
+1997-01-31
+2016-08-19
+2018-02-16
+2021-11-12
+--------------------------------------
+Checking file: VIXoverVIX3M.csv
+Data range: 2007-12-05 → 2025-11-04
+Expected NYSE trading days in range: 4508
+Actual unique dates in CSV: 4529
+✅ No missing trading days.
+--------------------------------------
+Checking file: VX1-VX2.csv
+Data range: 2004-03-26 → 2025-11-05
+Expected NYSE trading days in range: 5439
+Actual unique dates in CSV: 5442
+✅ No missing trading days.
+--------------------------------------
+Checking file: BVOL.csv
+Data range: 2016-05-02 → 2025-11-05
+Expected NYSE trading days in range: 2394
+Actual unique dates in CSV: 3444
+⚠️ Missing 22 trading day(s):
+2023-09-19
+2024-11-08
+2025-07-28
+2025-07-29
+2025-07-30
+2025-07-31
+2025-08-01
+2025-08-04
+2025-08-05
+2025-08-06
+2025-08-07
+2025-08-08
+2025-08-11
+2025-08-12
+2025-08-13
+2025-08-14
+2025-08-15
+2025-08-18
+2025-08-19
+2025-08-20
+2025-08-21
+2025-08-22
+--------------------------------------
+Checking file: CL1-CL2.csv
+Data range: 1986-02-03 → 2025-11-04
+Expected NYSE trading days in range: 10017
+Actual unique dates in CSV: 9999
+⚠️ Missing 30 trading day(s):
+1986-12-26
+1987-11-27
+1988-11-25
+1992-11-27
+1993-11-26
+1993-12-31
+1994-11-25
+1995-07-03
+1995-11-24
+1996-07-05
+1996-11-29
+1997-11-28
+1998-11-27
+1999-11-26
+1999-12-31
+2000-01-03
+2000-07-03
+2000-11-24
+2001-11-23
+2001-12-24
+2002-07-05
+2002-11-29
+2003-11-28
+2003-12-26
+2004-01-02
+2004-11-26
+2004-12-31
+2005-11-25
+2006-07-03
+2006-11-24
+--------------------------------------
+C:\Users\jl078\workspace\CBOE_AND_OTHER_DATA>py check_missing_trading_days.py
+Checking file: GAMMA.csv
+Data range: 2022-12-12 → 2025-11-04
+Expected NYSE trading days in range: 727
+Actual unique dates in CSV: 727
+✅ No missing trading days.
+--------------------------------------
+Checking file: DX1-DX2.csv
+Data range: 1986-05-09 → 2025-11-05
+Expected NYSE trading days in range: 9951
+Actual unique dates in CSV: 10000
+⚠️ Missing 2 trading day(s):
+1986-12-26
+2008-07-15
+--------------------------------------
+Checking file: (VX2-VX1)OVER(VX1).csv
+Data range: 2004-03-26 → 2025-11-05
+Expected NYSE trading days in range: 5439
+Actual unique dates in CSV: 5442
+✅ No missing trading days.
+--------------------------------------
+Checking file: DSPX.csv
+Data range: 2014-07-31 → 2025-11-04
+Expected NYSE trading days in range: 2834
+Actual unique dates in CSV: 2834
+✅ No missing trading days.
+--------------------------------------
+Checking file: VPN.csv
+Data range: 2004-06-15 → 2025-11-04
+Expected NYSE trading days in range: 5384
+Actual unique dates in CSV: 4455
+⚠️ Missing 929 trading day(s):
+--------------------------------------
+Checking file: BFLY.csv
+Data range: 2015-08-17 → 2025-11-04
+Expected NYSE trading days in range: 2571
+Actual unique dates in CSV: 2569
 ⚠️ Missing 2 trading day(s):
 2016-08-19
 2018-02-16
---------------------------------------

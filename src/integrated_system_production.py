@@ -1,4 +1,6 @@
-"""Integrated Market Prediction System V4 - Production + Memory Profiling"""
+"""Integrated Market Analysis System V4 - Refactored
+Simplified architecture with anomaly detection at the core.
+"""
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -6,12 +8,19 @@ import warnings
 import json
 import os
 import gc
+import pickle
+from pathlib import Path
 
 warnings.filterwarnings('ignore')
 
 from core.feature_engine import UnifiedFeatureEngine
-from core.predictor import VIXPredictorV4, REGIME_BOUNDARIES, REGIME_NAMES
-from config import TRAINING_YEARS, ENABLE_TRAINING
+from core.anomaly_detector import MultiDimensionalAnomalyDetector
+from core.data_fetcher import UnifiedDataFetcher
+from core.xgboost_trainer import XGBoostTrainer
+from config import (
+    TRAINING_YEARS, ENABLE_TRAINING, RANDOM_STATE, 
+    REGIME_BOUNDARIES, REGIME_NAMES, CBOE_DATA_DIR
+)
 from export.unified_exporter import UnifiedExporter
 
 try:
@@ -21,141 +30,260 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 
-class IntegratedMarketSystemV4:
-    def __init__(self, cboe_data_dir: str = "./CBOE_Data_Archive"):
-        self.feature_engine = UnifiedFeatureEngine(cboe_data_dir)
-        self.vix_predictor = VIXPredictorV4(cboe_data_dir)
+class AnomalyOrchestrator:
+    """
+    Orchestrates anomaly detection workflow:
+    1. Manages VIX/SPX history
+    2. Maintains regime statistics
+    3. Coordinates anomaly detector
+    4. Handles state persistence
+    """
+    
+    def __init__(self):
+        self.fetcher = UnifiedDataFetcher()
+        self.anomaly_detector = None
+        self.vix_history_all = None
+        self.vix_ml = None
+        self.spx_ml = None
+        self.features = None
+        self.regime_stats = None
+        self.historical_ensemble_scores = None
         self.trained = False
-        self.cv_results = {}
+    
+    def train(self, features: pd.DataFrame, vix: pd.Series, spx: pd.Series, 
+              vix_history_all: pd.Series = None, verbose: bool = True):
+        """Train anomaly detection system on historical features."""
+        
+        if verbose:
+            print("\n[Anomaly Orchestrator] Training...")
+        
+        # Store data
+        self.features = features
+        self.vix_ml = vix
+        self.spx_ml = spx
+        self.vix_history_all = vix_history_all if vix_history_all is not None else vix
+        
+        # Compute regime statistics
+        self.regime_stats = self._compute_regime_statistics(self.vix_history_all)
+        
+        # Train anomaly detector
+        self.anomaly_detector = MultiDimensionalAnomalyDetector(
+            contamination=0.05, random_state=RANDOM_STATE
+        )
+        self.anomaly_detector.train(features.fillna(0), verbose=verbose)
+        
+        # Generate historical ensemble scores
+        self._generate_historical_scores(verbose)
+        
+        self.trained = True
+        if verbose:
+            print("✅ Anomaly orchestrator trained")
+    
+    def _generate_historical_scores(self, verbose: bool = True):
+        """Generate complete historical anomaly scores."""
+        if not self.anomaly_detector or not self.anomaly_detector.trained:
+            warnings.warn("Anomaly detector not trained")
+            return
+        
+        scores = []
+        for i in range(len(self.features)):
+            result = self.anomaly_detector.detect(
+                self.features.iloc[[i]], verbose=False
+            )
+            scores.append(result['ensemble']['score'])
+        
+        self.historical_ensemble_scores = np.array(scores)
+        if verbose:
+            print(f"Generated {len(scores)} historical anomaly scores")
+    
+    def detect_current(self, verbose: bool = False) -> dict:
+        """Run anomaly detection on most recent feature row."""
+        if not self.trained:
+            raise ValueError("Must train before detecting")
+        
+        return self.anomaly_detector.detect(
+            self.features.iloc[[-1]], verbose=verbose
+        )
+    
+    def get_persistence_stats(self) -> dict:
+        """Calculate anomaly persistence statistics."""
+        if not self.trained or self.historical_ensemble_scores is None:
+            return {
+                'current_streak': 0, 'mean_duration': 0.0, 'max_duration': 0,
+                'total_anomaly_days': 0, 'anomaly_rate': 0.0, 'num_episodes': 0
+            }
+        
+        return self.anomaly_detector.calculate_historical_persistence_stats(
+            self.historical_ensemble_scores,
+            dates=self.features.index
+        )
+    
+    def _compute_regime_statistics(self, vix_series: pd.Series) -> dict:
+        """Compute comprehensive regime statistics from VIX history."""
+        stats = {
+            'observation_period': {
+                'start_date': str(vix_series.index[0]),
+                'end_date': str(vix_series.index[-1]),
+                'total_days': len(vix_series)
+            },
+            'regimes': []
+        }
+        
+        for regime_id in range(len(REGIME_NAMES)):
+            regime_name = REGIME_NAMES[regime_id]
+            lower_bound = REGIME_BOUNDARIES[regime_id]
+            upper_bound = REGIME_BOUNDARIES[regime_id + 1] if regime_id < len(REGIME_BOUNDARIES) - 1 else np.inf
+            
+            regime_mask = (vix_series >= lower_bound) & (vix_series < upper_bound)
+            regime_days = vix_series[regime_mask]
+            
+            # Compute regime assignments
+            vix_regimes = pd.Series(index=vix_series.index, dtype=int)
+            for rid in range(len(REGIME_NAMES)):
+                lb = REGIME_BOUNDARIES[rid]
+                ub = REGIME_BOUNDARIES[rid + 1] if rid < len(REGIME_BOUNDARIES) - 1 else np.inf
+                mask = (vix_series >= lb) & (vix_series < ub)
+                vix_regimes[mask] = rid
+            
+            # Calculate transitions
+            regime_transitions = vix_regimes[vix_regimes == regime_id]
+            future_regimes_5d = vix_regimes.shift(-5)
+            valid_mask = future_regimes_5d.notna()
+            
+            valid_indices = regime_transitions.index.intersection(valid_mask[valid_mask].index)
+            transitions_5d = future_regimes_5d[valid_indices].value_counts()
+            total_opp = len(valid_indices)
+            
+            regime_info = {
+                'regime_id': int(regime_id),
+                'regime_name': regime_name,
+                'boundaries': [float(lower_bound), float(upper_bound) if upper_bound != np.inf else 100.0],
+                'observations': {
+                    'count': int(len(regime_days)),
+                    'percentage': float(len(regime_days) / len(vix_series) * 100) if len(vix_series) > 0 else 0.0,
+                    'mean_vix': float(regime_days.mean()) if len(regime_days) > 0 else 0.0,
+                    'std_vix': float(regime_days.std()) if len(regime_days) > 0 else 0.0
+                },
+                'transitions_5d': {
+                    'persistence': {
+                        'probability': float(transitions_5d.get(regime_id, 0) / total_opp) if total_opp > 0 else 0.0,
+                        'observations': int(transitions_5d.get(regime_id, 0)),
+                        'total_opportunities': int(total_opp)
+                    },
+                    'to_other_regimes': {
+                        int(other): {
+                            'probability': float(transitions_5d.get(other, 0) / total_opp) if total_opp > 0 else 0.0,
+                            'observations': int(transitions_5d.get(other, 0)),
+                            'total_opportunities': int(total_opp)
+                        } for other in range(len(REGIME_NAMES)) if other != regime_id
+                    }
+                }
+            }
+            stats['regimes'].append(regime_info)
+        
+        return stats
+    
+    def save_state(self, filepath: str = './json_data/model_cache.pkl'):
+        """Save model state for quick refresh without retraining."""
+        if not self.trained:
+            raise ValueError("Must train before saving state")
+        
+        state = {
+            'detectors': self.anomaly_detector.detectors,
+            'scalers': self.anomaly_detector.scalers,
+            'training_distributions': self.anomaly_detector.training_distributions,
+            'feature_groups': self.anomaly_detector.feature_groups,
+            'random_subspaces': self.anomaly_detector.random_subspaces,
+            'statistical_thresholds': self.anomaly_detector.statistical_thresholds,
+            'vix_history': self.vix_ml.tail(252).to_dict(),
+            'spx_history': self.spx_ml.tail(252).to_dict(),
+            'last_features': self.features.tail(1).to_dict(),
+            'feature_columns': self.features.columns.tolist(),
+            'export_timestamp': pd.Timestamp.now().isoformat(),
+        }
+        
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, 'wb') as f:
+            pickle.dump(state, f)
+        
+        print(f"✅ Saved state: {filepath} ({Path(filepath).stat().st_size / (1024*1024):.2f} MB)")
+    
+    def load_state(self, filepath: str = './json_data/model_cache.pkl'):
+        """Load cached state for fast refresh."""
+        filepath = Path(filepath)
+        if not filepath.exists():
+            raise FileNotFoundError(f"State file not found: {filepath}")
+        
+        with open(filepath, 'rb') as f:
+            state = pickle.load(f)
+        
+        # Restore anomaly detector
+        self.anomaly_detector = MultiDimensionalAnomalyDetector(
+            contamination=0.05, random_state=RANDOM_STATE
+        )
+        self.anomaly_detector.detectors = state['detectors']
+        self.anomaly_detector.scalers = state['scalers']
+        self.anomaly_detector.training_distributions = state['training_distributions']
+        self.anomaly_detector.feature_groups = state['feature_groups']
+        self.anomaly_detector.random_subspaces = state['random_subspaces']
+        self.anomaly_detector.statistical_thresholds = state['statistical_thresholds']
+        self.anomaly_detector.trained = True
+        
+        # Restore historical data
+        self.vix_ml = self._dict_to_series(state['vix_history'])
+        self.spx_ml = self._dict_to_series(state['spx_history'])
+        self.features = self._dict_to_dataframe(
+            state['last_features'], state['feature_columns']
+        )
+        
+        self.trained = True
+        print(f"✅ Loaded state from {filepath}")
+    
+    def _dict_to_series(self, d: dict) -> pd.Series:
+        """Convert dict to pandas Series with DatetimeIndex."""
+        dates = pd.to_datetime(list(d.keys()))
+        return pd.Series(list(d.values()), index=dates)
+    
+    def _dict_to_dataframe(self, d: dict, columns: list) -> pd.DataFrame:
+        """Convert dict to pandas DataFrame with DatetimeIndex."""
+        dates = pd.to_datetime(list(next(iter(d.values())).keys()))
+        data = {col: list(d[col].values()) for col in columns}
+        return pd.DataFrame(data, index=dates)
+
+
+class IntegratedMarketSystemV4:
+    """
+    Main system integrating:
+    - Feature engineering (UnifiedFeatureEngine)
+    - Anomaly detection (AnomalyOrchestrator)
+    - Market state reporting
+    - Memory monitoring
+    """
+    
+    def __init__(self, cboe_data_dir: str = CBOE_DATA_DIR):
+        # Create data fetcher first
+        self.data_fetcher = UnifiedDataFetcher()
+        
+        # Pass the fetcher object to feature engine
+        self.feature_engine = UnifiedFeatureEngine(data_fetcher=self.data_fetcher)
+        
+        self.orchestrator = AnomalyOrchestrator()
+        self.trained = False
         self._cached_anomaly_result = None
         self._cache_timestamp = None
         
-        # Memory profiling setup
+        # Memory profiling (rest of __init__ stays the same)
         if PSUTIL_AVAILABLE:
             self.process = psutil.Process(os.getpid())
             self.baseline_memory_mb = None
             self.memory_history = []
-            self.memory_warning_threshold_mb = 50
-            self.memory_critical_threshold_mb = 200
             self.memory_monitoring_enabled = True
         else:
             self.memory_monitoring_enabled = False
     
-    def _initialize_memory_baseline(self):
-        """Establish memory baseline after initialization."""
-        if not self.memory_monitoring_enabled:
-            return
-        
-        try:
-            gc.collect()
-            mem_info = self.process.memory_info()
-            self.baseline_memory_mb = mem_info.rss / (1024 * 1024)
-            self.memory_history.append({
-                'timestamp': datetime.now().isoformat(),
-                'memory_mb': self.baseline_memory_mb,
-                'type': 'baseline'
-            })
-        except Exception as e:
-            warnings.warn(f"Memory baseline initialization failed: {e}")
-            self.memory_monitoring_enabled = False
-    
-    def _log_memory_stats(self, context: str = "refresh") -> dict:
-        """Log memory usage and detect growth."""
-        if not self.memory_monitoring_enabled:
-            return {}
-        
-        try:
-            mem_info = self.process.memory_info()
-            current_mb = mem_info.rss / (1024 * 1024)
-            
-            if self.baseline_memory_mb is None:
-                self._initialize_memory_baseline()
-                return {}
-            
-            growth = current_mb - self.baseline_memory_mb
-            
-            stats = {
-                'timestamp': datetime.now().isoformat(),
-                'current_mb': float(current_mb),
-                'baseline_mb': float(self.baseline_memory_mb),
-                'growth_mb': float(growth),
-                'context': context
-            }
-            
-            self.memory_history.append({
-                'timestamp': stats['timestamp'],
-                'memory_mb': current_mb,
-                'type': context
-            })
-            
-            if len(self.memory_history) > 1000:
-                self.memory_history = self.memory_history[-1000:]
-            
-            if growth > self.memory_critical_threshold_mb:
-                print(f"🚨 CRITICAL: Memory +{growth:.1f}MB | Consider restart")
-            elif growth > self.memory_warning_threshold_mb:
-                print(f"⚠️ Memory +{growth:.1f}MB")
-            
-            return stats
-        except Exception as e:
-            warnings.warn(f"Memory logging failed: {e}")
-            return {}
-    
-    def get_memory_report(self) -> dict:
-        """Generate memory diagnostics report."""
-        if not self.memory_monitoring_enabled:
-            return {'error': 'psutil not installed'}
-        
-        try:
-            mem_info = self.process.memory_info()
-            current_mb = mem_info.rss / (1024 * 1024)
-            growth_mb = current_mb - self.baseline_memory_mb if self.baseline_memory_mb else 0.0
-            
-            gc.collect()
-            objects = gc.get_objects()
-            type_counts = {}
-            for obj in objects:
-                obj_type = type(obj).__name__
-                type_counts[obj_type] = type_counts.get(obj_type, 0) + 1
-            
-            top_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-            
-            if len(self.memory_history) > 1:
-                total_growth = self.memory_history[-1]['memory_mb'] - self.memory_history[0]['memory_mb']
-                avg_growth = total_growth / len(self.memory_history)
-            else:
-                total_growth = avg_growth = 0.0
-            
-            return {
-                'current_mb': float(current_mb),
-                'baseline_mb': float(self.baseline_memory_mb) if self.baseline_memory_mb else None,
-                'growth_mb': float(growth_mb),
-                'status': self._get_memory_status(growth_mb),
-                'history': {
-                    'measurements': len(self.memory_history),
-                    'total_growth_mb': float(total_growth),
-                    'avg_growth_per_cycle': float(avg_growth),
-                    'recent_samples': self.memory_history[-10:]
-                },
-                'gc_stats': {
-                    'collections': gc.get_count(),
-                    'tracked_objects': len(objects),
-                    'top_types': [{'type': t, 'count': c} for t, c in top_types]
-                }
-            }
-        except Exception as e:
-            return {'error': f'Report generation failed: {e}'}
-    
-    def _get_memory_status(self, growth_mb: float) -> str:
-        if growth_mb > self.memory_critical_threshold_mb:
-            return 'CRITICAL'
-        elif growth_mb > self.memory_warning_threshold_mb:
-            return 'WARNING'
-        return 'NORMAL'
-    
     def train(self, years: int = TRAINING_YEARS, real_time_vix: bool = True, verbose: bool = False):
-        """Train feature engine and VIX predictor."""
-        print(f"\n{'='*80}\nINTEGRATED MARKET SYSTEM V4\n{'='*80}")
+        """Train the complete system."""
+        print(f"\n{'='*80}\nINTEGRATED MARKET SYSTEM V4 - REFACTORED\n{'='*80}")
         print(f"Config: {years}y training | Real-time VIX: {real_time_vix}")
         
         if self.memory_monitoring_enabled:
@@ -164,25 +292,27 @@ class IntegratedMarketSystemV4:
         # Build features
         print("\n[1/2] Building features...")
         feature_data = self.feature_engine.build_complete_features(years=years)
-        features, vix, dates = feature_data['features'], feature_data['vix'], feature_data['dates']
-        self.vix_predictor.spx_ml = feature_data['spx']
+        features = feature_data['features']
+        vix = feature_data['vix']
+        spx = feature_data['spx']
         
         if self.memory_monitoring_enabled:
             self._log_memory_stats(context="post-features")
         
-        # Train predictor
-        print("[2/2] Training VIX predictor...")
-        vix_history_all = self.vix_predictor.fetcher.fetch_vix(
-            '1990-01-02', 
-            datetime.now().strftime('%Y-%m-%d'), 
-            lookback_buffer_days=0
-        )
+        # Fetch complete VIX history for regime stats
+        print("[2/2] Training anomaly system...")
+        vix_history_all = self.orchestrator.fetcher.fetch_yahoo(
+            '^VIX',
+            '1990-01-02',
+            datetime.now().strftime('%Y-%m-%d'),
+        )['Close'].squeeze()
         
-        self.vix_predictor._update_regime_history_after_training(
-            features=features, 
-            vix=vix, 
-            spx=self.vix_predictor.spx_ml, 
-            vix_history_all=vix_history_all, 
+        # Train orchestrator
+        self.orchestrator.train(
+            features=features,
+            vix=vix,
+            spx=spx,
+            vix_history_all=vix_history_all,
             verbose=verbose
         )
         
@@ -192,265 +322,99 @@ class IntegratedMarketSystemV4:
         # Update live VIX
         if real_time_vix:
             try:
-                live_vix = self.vix_predictor.fetcher.fetch_price('^VIX')
+                live_vix = self.orchestrator.fetcher.fetch_price('^VIX')
                 if live_vix:
-                    self.vix_predictor.vix.iloc[-1] = live_vix
-                    print(f"✅ Live VIX: {live_vix:.2f}")
-            except:
-                pass
+                    self.orchestrator.vix_ml.iloc[-1] = live_vix
+                    self.orchestrator.features.iloc[-1, self.orchestrator.features.columns.get_loc('vix')] = live_vix
+                    if verbose:
+                        print(f"✅ Updated live VIX: {live_vix:.2f}")
+            except Exception as e:
+                warnings.warn(f"Live VIX fetch failed: {e}")
         
-        self._verify_feature_coverage(features, verbose)
         self.trained = True
-        
-        if self.memory_monitoring_enabled and self.baseline_memory_mb is None:
-            self._initialize_memory_baseline()
-        
         print(f"\n{'='*80}\n✅ TRAINING COMPLETE\n{'='*80}")
-        return self.cv_results
     
-    def _verify_feature_coverage(self, features: pd.DataFrame, verbose: bool = False):
-        """Verify anomaly detector feature coverage."""
-        from config import ANOMALY_FEATURE_GROUPS
-        
-        print("\n📋 FEATURE COVERAGE:")
-        all_ok = True
-        for domain, expected in ANOMALY_FEATURE_GROUPS.items():
-            available = [f for f in expected if f in features.columns]
-            coverage = len(available) / len(expected) * 100
-            status = "✅" if coverage > 80 else ("⚠️" if coverage > 50 else "❌")
-            all_ok = all_ok and (coverage > 80)
-            
-            print(f"   {status} {domain:30s} {len(available):3d}/{len(expected):3d} ({coverage:5.1f}%)")
-            
-            if verbose and coverage < 100:
-                missing = [f for f in expected if f not in features.columns][:5]
-                print(f"      Missing: {', '.join(missing)}")
-        
-        print(f"\n{'✅ All detectors operational' if all_ok else '⚠️ Some detectors limited'}")
-    
-    def _get_cached_anomaly_result(self, force_refresh: bool = False):
-        """Get cached anomaly detection result."""
-        if not self.vix_predictor.anomaly_detector:
-            return None
-        
-        if force_refresh or self._cached_anomaly_result is None:
-            if self.memory_monitoring_enabled and force_refresh:
-                self._log_memory_stats(context="pre-anomaly")
-            
-            self._cached_anomaly_result = self.vix_predictor.anomaly_detector.detect(
-                self.vix_predictor.features.iloc[[-1]], 
-                verbose=False
-            )
-            self._cache_timestamp = datetime.now()
-            
-            if self.memory_monitoring_enabled and force_refresh:
-                self._log_memory_stats(context="post-anomaly")
-        
-        return self._cached_anomaly_result
-    
-    def _recalculate_live_features(self, live_vix: float, live_spx: float):
-        """Recalculate derived features after live price updates."""
-        self.vix_predictor.vix_ml.iloc[-1] = live_vix
-        self.vix_predictor.vix.iloc[-1] = live_vix
-        self.vix_predictor.spx_ml.iloc[-1] = live_spx
-        
-        idx = self.vix_predictor.features.index[-1]
-        
-        # VIX mean reversion
-        for w in [10, 21, 63, 126, 252]:
-            ma = self.vix_predictor.vix_ml.iloc[:-1].tail(w).mean()
-            self.vix_predictor.features.loc[idx, f'vix_vs_ma{w}'] = live_vix - ma
-            self.vix_predictor.features.loc[idx, f'vix_vs_ma{w}_pct'] = ((live_vix - ma) / ma * 100)
-        
-        # VIX z-scores & percentiles
-        for w in [63, 126, 252]:
-            window_data = self.vix_predictor.vix_ml.iloc[:-1].tail(w)
-            ma, std = window_data.mean(), window_data.std()
-            self.vix_predictor.features.loc[idx, f'vix_zscore_{w}d'] = (live_vix - ma) / std
-            
-            if w in [126, 252]:
-                percentile = (window_data < live_vix).sum() / len(window_data) * 100
-                self.vix_predictor.features.loc[idx, f'vix_percentile_{w}d'] = percentile
-        
-        # VIX velocity
-        for w in [1, 5, 10, 21]:
-            if len(self.vix_predictor.vix_ml) > w:
-                self.vix_predictor.features.loc[idx, f'vix_velocity_{w}d'] = (
-                    live_vix - self.vix_predictor.vix_ml.iloc[-(w+1)]
-                )
-        
-        # SPX features
-        for w in [20, 50, 200]:
-            ma = self.vix_predictor.spx_ml.iloc[:-1].tail(w).mean()
-            self.vix_predictor.features.loc[idx, f'spx_vs_ma{w}'] = ((live_spx - ma) / ma) * 100
-        
-        # SPX momentum z-scores
-        for w in [10, 21]:
-            if len(self.vix_predictor.spx_ml) > w:
-                ret = (live_spx - self.vix_predictor.spx_ml.iloc[-(w+1)]) / self.vix_predictor.spx_ml.iloc[-(w+1)]
-                window_rets = self.vix_predictor.spx_ml.pct_change(w).iloc[:-1].tail(63)
-                ret_ma, ret_std = window_rets.mean(), window_rets.std()
-                self.vix_predictor.features.loc[idx, f'spx_momentum_z_{w}d'] = (ret - ret_ma) / ret_std
-        
-        # VIX/RV ratio
-        spx_returns = self.vix_predictor.spx_ml.pct_change()
-        for w in [10, 21, 30, 63]:
-            rv = spx_returns.iloc[:-1].tail(w).std() * np.sqrt(252) * 100
-            self.vix_predictor.features.loc[idx, f'vix_rv_ratio_{w}d'] = live_vix / rv if rv > 0 else 1.0
-        
-        # Update base features
-        self.vix_predictor.features.loc[idx, 'vix'] = live_vix
-        self.vix_predictor.features.loc[idx, 'spx_lag1'] = live_spx
-        
-        # Invalidate cache
-        self._cached_anomaly_result = None
-        self._cache_timestamp = None
-        
-        return {'vix_updated': live_vix, 'spx_updated': live_spx, 'features_recalculated': True}
-    
-    def get_market_state(self):
-        """Get comprehensive market state analysis."""
+    def get_market_state(self) -> dict:
+        """Generate comprehensive market state snapshot."""
         if not self.trained:
-            raise ValueError("Run train() first")
+            raise ValueError("Must train system first")
         
-        if self.vix_predictor.vix_ml is None:
-            raise ValueError("VIX predictor not initialized. Set ENABLE_TRAINING=True")
+        # Get current anomaly detection
+        anomaly_result = self._get_cached_anomaly_result()
         
-        # Fetch live prices
-        try:
-            live_vix = self.vix_predictor.fetcher.fetch_price('^VIX')
-            if live_vix:
-                self.vix_predictor.vix.iloc[-1] = live_vix
-        except:
-            live_vix = None
+        # Get persistence stats
+        persistence_stats = self.orchestrator.get_persistence_stats()
         
-        try:
-            live_spx = self.vix_predictor.fetcher.fetch_price('^GSPC')
-        except:
-            live_spx = None
+        # Current VIX and regime
+        current_vix = float(self.orchestrator.vix_ml.iloc[-1])
+        current_regime = self._classify_vix_regime(current_vix)
         
-        current_vix = float(self.vix_predictor.vix_ml.iloc[-1])
-        model_spx = float(self.vix_predictor.spx_ml.iloc[-1]) if self.vix_predictor.spx_ml is not None else 0.0
-        current_spx = float(live_spx if live_spx else model_spx)
+        # Format anomaly analysis
+        ensemble = anomaly_result['ensemble']
+        ensemble_score = ensemble['score']
         
-        # Get features
-        vix_features = self._get_vix_feature_state(current_vix)
-        try:
-            spx_features = self._get_spx_feature_state()
-        except:
-            spx_features = {'price_action': {}, 'vix_relationship': {}}
+        level, p_value, confidence = self.orchestrator.anomaly_detector.classify_anomaly(
+            ensemble_score, method='statistical'
+        )
         
-        # Anomaly detection
-        anomaly_results = self._get_cached_anomaly_result()
-        ensemble_score = anomaly_results['ensemble']['score'] if anomaly_results else 0.0
-        severity = self._classify_severity(ensemble_score)
-        domain_anomalies = anomaly_results.get('domain_anomalies', {}) if anomaly_results else {}
+        severity_messages = {
+            'CRITICAL': f'Extreme anomaly ({ensemble_score:.1%}) - Markets in unprecedented configuration',
+            'HIGH': f'Significant anomaly ({ensemble_score:.1%}) - Notable market stress detected',
+            'MODERATE': f'Moderate anomaly ({ensemble_score:.1%}) - Elevated market uncertainty',
+            'NORMAL': f'Normal conditions ({ensemble_score:.1%}) - Market within typical ranges'
+        }
         
-        # Data quality assessment
-        has_cboe = 'cboe_options_flow' in domain_anomalies
-        has_cross = 'cross_asset_divergence' in domain_anomalies
-        overall_confidence = "HIGH" if (has_cboe and has_cross) else ("MODERATE" if (has_cboe or has_cross) else "LOW")
+        ensemble['severity'] = level
+        ensemble['severity_message'] = severity_messages[level]
+        if p_value is not None:
+            ensemble['p_value'] = float(p_value)
+            ensemble['confidence'] = float(confidence)
         
-        # Regime analysis
-        regime_stats = self._calculate_regime_stats(current_vix)
+        # Get top anomalies
+        top_anomalies = self._get_top_anomalies_list(anomaly_result)
+        
+        # Regime stats
+        regime_stats = self.orchestrator.regime_stats['regimes'][current_regime['id']]
+        persistence_prob = regime_stats['transitions_5d']['persistence']['probability']
+        persistence_prob_clamped = max(0.01, min(0.99, persistence_prob))
+        expected_duration = 1.0 / (1.0 - persistence_prob_clamped)
         
         return {
             'timestamp': datetime.now().isoformat(),
-            'market_data': {
-                'spx': current_spx,
-                'spx_model': model_spx,
-                'spx_change_today': ((current_spx - model_spx) / model_spx) * 100 if live_spx and model_spx > 0 else 0,
-                'vix': current_vix,
-                'vix_regime': self._classify_vix_regime(current_vix)
+            'vix': {
+                'current': current_vix,
+                'regime': current_regime,
+                'regime_stats': regime_stats
             },
-            'vix_structure': vix_features,
-            'spx_structure': spx_features,
-            'vix_predictions': self._format_vix_predictions(current_vix, regime_stats, ensemble_score),
             'anomaly_analysis': {
-                'ensemble': {
-                    'score': float(ensemble_score),
-                    'std': float(anomaly_results['ensemble']['std']) if anomaly_results else 0.0,
-                    'severity': severity,
-                    'severity_message': self._get_severity_message(severity),
-                    'interpretation': self._get_interpretation(ensemble_score)
-                },
-                'domain_anomalies': domain_anomalies,
-                'top_anomalies': self._get_top_anomalies_list(anomaly_results) if anomaly_results else [],
-                'data_availability': {
-                    'cboe_indicators': has_cboe,
-                    'cross_asset_data': has_cross,
-                    'overall_confidence': overall_confidence
-                }
+                'ensemble': ensemble,
+                'top_anomalies': top_anomalies,
+                'persistence': persistence_stats,
+                'domain_anomalies': anomaly_result.get('domain_anomalies', {}),
+                'random_anomalies': anomaly_result.get('random_anomalies', {})
             },
-            'model_diagnostics': {
-                'vix_accuracy': 0.65,
-                'anomaly_detectors_active': anomaly_results.get('data_quality', {}).get('active_detectors', 0) if anomaly_results else 0,
-                'anomaly_detectors_total': 15,
-                'memory_status': self.get_memory_report() if self.memory_monitoring_enabled else None
+            'regime_forecast': {
+                'persistence_probability': float(persistence_prob),
+                'expected_duration_days': float(expected_duration),
+                'transition_risk': 'elevated' if ensemble_score > 0.7 else 'normal'
+            },
+            'spx_state': self._get_spx_feature_state(),
+            'system_health': {
+                'trained': self.trained,
+                'feature_count': len(self.orchestrator.features.columns),
+                'detectors_active': anomaly_result.get('data_quality', {}).get('active_detectors', 0),
+                'last_update': self.orchestrator.features.index[-1].isoformat()
             }
         }
     
-    def _classify_severity(self, score: float) -> str:
-        """Classify anomaly severity."""
-        if self.trained and self.vix_predictor.anomaly_detector:
-            level, _, _ = self.vix_predictor.anomaly_detector.classify_anomaly(score, method='statistical')
-            return level
-        
-        from config import ANOMALY_THRESHOLDS
-        if score >= ANOMALY_THRESHOLDS['severity_extreme']:
-            return "CRITICAL"
-        elif score >= ANOMALY_THRESHOLDS['severity_high']:
-            return "HIGH"
-        elif score >= ANOMALY_THRESHOLDS['severity_moderate']:
-            return "MODERATE"
-        return "NORMAL"
-    
-    def _get_severity_message(self, severity: str) -> str:
-        return {
-            "CRITICAL": "Extreme market stress",
-            "HIGH": "Elevated stress",
-            "MODERATE": "Moderate stress",
-            "NORMAL": "Normal bounds"
-        }.get(severity, "Unknown")
-    
-    def _get_interpretation(self, score: float) -> str:
-        if score >= 0.85:
-            return "Multiple detectors signaling systemic stress"
-        elif score >= 0.70:
-            return "Several domains showing elevated anomalies"
-        elif score >= 0.50:
-            return "Some anomalous behavior detected"
-        return "Behavior consistent with historical patterns"
-    
-    def _get_vix_feature_state(self, current_vix: float) -> dict:
-        """Extract VIX feature state."""
-        f = self.vix_predictor.features.iloc[-1]
-        return {
-            'current_level': float(current_vix),
-            'vs_ma21': float(f.get('vix_vs_ma21', 0)),
-            'vs_ma63': float(f.get('vix_vs_ma63', 0)),
-            'zscore_63d': float(f.get('vix_zscore_63d', 0)),
-            'percentile_252d': float(f.get('vix_percentile_252d', 50)),
-            'regime': int(f.get('vix_regime', 1)),
-            'days_in_regime': int(f.get('days_in_regime', 0)),
-            'velocity_5d': float(f.get('vix_velocity_5d', 0))
-        }
-    
-    def _get_spx_feature_state(self) -> dict:
-        """Extract SPX feature state."""
-        f = self.vix_predictor.features.iloc[-1]
-        return {
-            'price_action': {
-                'vs_ma50': float(f.get('spx_vs_ma50', 0)),
-                'vs_ma200': float(f.get('spx_vs_ma200', 0)),
-                'momentum_10d': float(f.get('spx_momentum_z_10d', 0)),
-                'realized_vol_21d': float(f.get('spx_realized_vol_21d', 15))
-            },
-            'vix_relationship': {
-                'corr_21d': float(f.get('spx_vix_corr_21d', -0.7)),
-                'vix_rv_ratio_21d': float(f.get('vix_rv_ratio_21d', 1.0))
-            }
-        }
+    def _get_cached_anomaly_result(self) -> dict:
+        """Get anomaly result with caching."""
+        now = datetime.now()
+        if self._cached_anomaly_result is None or \
+           (self._cache_timestamp and (now - self._cache_timestamp).seconds > 60):
+            self._cached_anomaly_result = self.orchestrator.detect_current(verbose=False)
+            self._cache_timestamp = now
+        return self._cached_anomaly_result
     
     def _classify_vix_regime(self, vix: float) -> dict:
         """Classify current VIX regime."""
@@ -467,30 +431,19 @@ class IntegratedMarketSystemV4:
             'range': [float(REGIME_BOUNDARIES[3]), 100.0]
         }
     
-    def _calculate_regime_stats(self, current_vix: float) -> dict:
-        """Calculate regime statistics."""
-        regime_id = self._classify_vix_regime(current_vix)['id']
-        regime_data = self.vix_predictor.regime_stats_historical['regimes'][regime_id]
+    def _get_spx_feature_state(self) -> dict:
+        """Extract SPX feature state."""
+        f = self.orchestrator.features.iloc[-1]
         return {
-            'current_regime': regime_data,
-            'transition_probabilities': regime_data['transitions_5d']
-        }
-    
-    def _format_vix_predictions(self, current_vix: float, regime_stats: dict, anomaly_score: float) -> dict:
-        current_regime = regime_stats['current_regime']
-        persistence_prob = regime_stats['transition_probabilities']['persistence']['probability']
-        persistence_prob_clamped = max(0.01, min(0.99, persistence_prob))
-        expected_duration = 1.0 / (1.0 - persistence_prob_clamped)
-        
-        return {
-            'regime_persistence': {
-                'probability': persistence_prob,
-                'expected_duration': float(expected_duration)
+            'price_action': {
+                'vs_ma50': float(f.get('spx_vs_ma50', 0)),
+                'vs_ma200': float(f.get('spx_vs_ma200', 0)),
+                'momentum_10d': float(f.get('spx_momentum_z_10d', 0)),
+                'realized_vol_21d': float(f.get('spx_realized_vol_21d', 15))
             },
-            'transition_risk': {
-                'elevated': anomaly_score > 0.7,
-                'direction': 'higher' if current_vix < 20 else 'lower',
-                'confidence': 'high' if anomaly_score > 0.8 else ('moderate' if anomaly_score > 0.6 else 'low')
+            'vix_relationship': {
+                'corr_21d': float(f.get('spx_vix_corr_21d', -0.7)),
+                'vix_rv_ratio_21d': float(f.get('vix_rv_ratio_21d', 1.0))
             }
         }
     
@@ -502,61 +455,26 @@ class IntegratedMarketSystemV4:
         ]
         return sorted(domain_scores, key=lambda x: x['score'], reverse=True)[:5]
     
-    def export_json(self, filepath: str = "./json_data/market_state.json"):
-        """Export market state to JSON."""
-        state = self.get_market_state()
-        
-        def clean_nans(obj):
-            if isinstance(obj, dict):
-                return {k: clean_nans(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [clean_nans(item) for item in obj]
-            elif isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
-                return None
-            return obj
-        
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, 'w') as f:
-            json.dump(clean_nans(state), f, indent=2)
-        
-        if self.memory_monitoring_enabled:
-            self._log_memory_stats(context="post-export")
-        
-        return state
-    
     def print_anomaly_summary(self):
-        """Print comprehensive anomaly analysis."""
+        """Print comprehensive anomaly analysis summary."""
         if not self.trained:
             raise ValueError("Run train() first")
-        
-        # Get persistence stats
-        persistence_stats = {'current_streak': 0, 'mean_duration': 0.0, 'max_duration': 0,
-                           'total_anomaly_days': 0, 'anomaly_rate': 0.0, 'num_episodes': 0}
-        
-        if hasattr(self.vix_predictor, 'historical_ensemble_scores') and \
-           self.vix_predictor.historical_ensemble_scores is not None and \
-           self.vix_predictor.anomaly_detector:
-            persistence_stats = self.vix_predictor.anomaly_detector.calculate_historical_persistence_stats(
-                self.vix_predictor.historical_ensemble_scores,
-                dates=self.vix_predictor.features.index
-            )
         
         state = self.get_market_state()
         anomaly = state['anomaly_analysis']
         ensemble = anomaly['ensemble']
+        persistence = anomaly['persistence']
         
-        # Anomaly summary
         print(f"\n{'='*80}\n15-DIMENSIONAL ANOMALY SUMMARY\n{'='*80}")
         print(f"\n🎯 {ensemble['severity']}: {ensemble['score']:.1%}")
         print(f"   {ensemble['severity_message']}")
-        print(f"\n⏱️ PERSISTENCE: {persistence_stats['current_streak']}d streak | "
-              f"Mean: {persistence_stats['mean_duration']:.1f}d | Rate: {persistence_stats['anomaly_rate']:.1%}")
+        print(f"\n⏱️ PERSISTENCE: {persistence['current_streak']}d streak | "
+              f"Mean: {persistence['mean_duration']:.1f}d | Rate: {persistence['anomaly_rate']:.1%}")
         print(f"\n🔍 TOP 3:")
         for i, anom in enumerate(anomaly['top_anomalies'][:3], 1):
             level = "EXTREME" if anom['score'] > 0.9 else ("HIGH" if anom['score'] > 0.75 else "MODERATE")
             print(f"   {i}. {anom['name'].replace('_', ' ').title()}: {anom['score']:.0%} ({level})")
         
-        # Memory status
         if self.memory_monitoring_enabled:
             mem_report = self.get_memory_report()
             if 'error' not in mem_report:
@@ -565,6 +483,61 @@ class IntegratedMarketSystemV4:
                       f"{mem_report['current_mb']:.1f}MB (+{mem_report['growth_mb']:.1f}MB)")
         
         print(f"\n{'='*80}")
+    
+    # Memory monitoring methods
+    def _initialize_memory_baseline(self):
+        if not self.memory_monitoring_enabled:
+            return
+        try:
+            gc.collect()
+            mem_info = self.process.memory_info()
+            self.baseline_memory_mb = mem_info.rss / (1024 * 1024)
+            self.memory_history.append({
+                'timestamp': datetime.now().isoformat(),
+                'memory_mb': self.baseline_memory_mb,
+                'type': 'baseline'
+            })
+        except Exception as e:
+            warnings.warn(f"Memory baseline failed: {e}")
+            self.memory_monitoring_enabled = False
+    
+    def _log_memory_stats(self, context: str = "refresh") -> dict:
+        if not self.memory_monitoring_enabled:
+            return {}
+        try:
+            mem_info = self.process.memory_info()
+            current_mb = mem_info.rss / (1024 * 1024)
+            if self.baseline_memory_mb is None:
+                self._initialize_memory_baseline()
+                return {}
+            growth = current_mb - self.baseline_memory_mb
+            self.memory_history.append({
+                'timestamp': datetime.now().isoformat(),
+                'memory_mb': current_mb,
+                'type': context
+            })
+            if len(self.memory_history) > 1000:
+                self.memory_history = self.memory_history[-1000:]
+            return {'current_mb': current_mb, 'growth_mb': growth}
+        except Exception as e:
+            return {}
+    
+    def get_memory_report(self) -> dict:
+        if not self.memory_monitoring_enabled:
+            return {'error': 'psutil not installed'}
+        try:
+            mem_info = self.process.memory_info()
+            current_mb = mem_info.rss / (1024 * 1024)
+            growth_mb = current_mb - self.baseline_memory_mb if self.baseline_memory_mb else 0.0
+            status = 'CRITICAL' if growth_mb > 200 else ('WARNING' if growth_mb > 50 else 'NORMAL')
+            return {
+                'current_mb': float(current_mb),
+                'baseline_mb': float(self.baseline_memory_mb) if self.baseline_memory_mb else None,
+                'growth_mb': float(growth_mb),
+                'status': status
+            }
+        except Exception as e:
+            return {'error': str(e)}
 
 
 def main():
@@ -581,35 +554,38 @@ def main():
     # Train system
     system.train(years=TRAINING_YEARS, real_time_vix=True, verbose=False)
     system.print_anomaly_summary()
+    from feature_diagnostics import run_diagnostics
+    report = run_diagnostics(system)
+    # Review ./diagnostics/feature_report.json
+    from anomaly_validator import validate_anomaly_system
+    val_report = validate_anomaly_system(system)
+    # Check if crisis detection is working
     
     # Export unified dashboard files
     anomaly_result = system._get_cached_anomaly_result()
     
-    if anomaly_result and system.vix_predictor.anomaly_detector:
-        persistence_stats = system.vix_predictor.anomaly_detector.calculate_historical_persistence_stats(
-            system.vix_predictor.historical_ensemble_scores,
-            dates=system.vix_predictor.features.index
-        )
+    if anomaly_result and system.orchestrator.anomaly_detector:
+        persistence_stats = system.orchestrator.get_persistence_stats()
         
         exporter = UnifiedExporter(output_dir='./json_data')
         
         # Live state (updates every refresh)
         exporter.export_live_state(
-            vix_predictor=system.vix_predictor,
+            orchestrator=system.orchestrator,  # Pass orchestrator as predictor
             anomaly_result=anomaly_result,
-            spx=system.vix_predictor.spx_ml,
+            spx=system.orchestrator.spx_ml,
             persistence_stats=persistence_stats
         )
         
         # Historical context (training only)
         exporter.export_historical_context(
-            vix_predictor=system.vix_predictor,
-            spx=system.vix_predictor.spx_ml,
-            historical_scores=system.vix_predictor.historical_ensemble_scores
+            orchestrator=system.orchestrator,
+            spx=system.orchestrator.spx_ml,
+            historical_scores=system.orchestrator.historical_ensemble_scores
         )
         
         # Model cache (training only)
-        exporter.export_model_cache(vix_predictor=system.vix_predictor)
+        system.orchestrator.save_state('./json_data/model_cache.pkl')
         
         print("\n✅ Exported unified dashboard files:")
         print("   • live_state.json    (15 KB, updates every refresh)")
@@ -623,8 +599,6 @@ def main():
             print(f"\n{'='*80}\nMEMORY REPORT\n{'='*80}")
             print(f"Status: {mem_report['status']}")
             print(f"Current: {mem_report['current_mb']:.1f}MB | Growth: {mem_report['growth_mb']:+.1f}MB")
-            print(f"Cycles: {mem_report['history']['measurements']} | "
-                  f"Avg/cycle: {mem_report['history']['avg_growth_per_cycle']:.3f}MB")
     
     print(f"\n{'='*80}\nANALYSIS COMPLETE\n{'='*80}")
 

@@ -2,7 +2,7 @@
 import pandas as pd
 import pandas_market_calendars as mcal
 
-FILE_PATH = "GOLDSILVER_RATIO.csv"  # adjust as needed
+FILE_PATH = "BFLY.csv"  # adjust as needed
 
 def load_dates_from_csv(path, date_col="Date"):
     df = pd.read_csv(path)

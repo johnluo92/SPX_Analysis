@@ -1,0 +1,321 @@
+[22:44:51] [~/Desktop/GitHub/SPX_Analysis/src] git(main) 🔥 ❱❱❱ py integrated_system_production.py
+
+================================================================================
+INTEGRATED MARKET SYSTEM V4 - REFACTORED
+================================================================================
+Config: 15y training | Real-time VIX: True
+
+[1/2] Building features...
+
+================================================================================
+ENHANCED FEATURE ENGINE V4 - FULLY FIXED
+================================================================================
+Window: 15y
+
+[1/8] Core market data (SPX, VIX)...
+22:44:54 [INFO] Yahoo:^GSPC: Using recent cache (last: 2025-11-04, age: 1d)
+22:44:54 [INFO] Yahoo:^VIX: Using recent cache (last: 2025-11-04, age: 1d)
+22:44:54 [INFO] Yahoo:^GSPC: Using recent cache (last: 2025-11-04, age: 1d)
+   ✅ SPX: 4081 | VIX: 4081 | OHLC features: 0
+
+[2/8] Base features (mean reversion, dynamics, technical)...
+   ✅ 74 base features
+
+[3/8] CBOE alternative data...
+22:44:54 [INFO] CBOE:SKEW: ✅ 2743 rows
+22:44:54 [INFO] CBOE:PCCI: ✅ 2776 rows
+22:44:54 [INFO] CBOE:PCCE: ✅ 2769 rows
+22:44:54 [INFO] CBOE:PCC: ✅ 2771 rows
+22:44:54 [INFO] CBOE:COR1M: ✅ 2747 rows
+22:44:54 [INFO] CBOE:COR3M: ✅ 2731 rows
+22:44:54 [INFO] CBOE:VXTH: ✅ 2766 rows
+22:44:54 [INFO] CBOE:CNDR: ✅ 9916 rows
+22:44:54 [INFO] CBOE:VX1-VX2: ✅ 5434 rows
+22:44:54 [INFO] CBOE:VX2-VX1_RATIO: ✅ 5442 rows
+22:44:54 [INFO] CBOE:CL1-CL2: ✅ 9999 rows
+22:44:54 [INFO] CBOE:DX1-DX2: ✅ 10000 rows
+22:44:54 [INFO] CBOE:BVOL: ✅ 3444 rows
+22:44:54 [INFO] CBOE:BFLY: ✅ 2569 rows
+22:44:54 [INFO] CBOE:DSPX: ✅ 2834 rows
+22:44:54 [INFO] CBOE:VPN: ✅ 4455 rows
+22:44:54 [INFO] CBOE:GAMMA: ✅ 727 rows
+22:44:54 [INFO] CBOE:VIX_VIX3M: ✅ 4529 rows
+22:44:54 [INFO] CBOE:GOLDSILVER: ✅ 2863 rows
+22:44:54 [INFO] CBOE: ✅ 19 series loaded
+   ✅ 80 CBOE features
+
+[4/8] Futures data (VX, CL, DX)...
+22:44:55 [INFO] CBOE:SKEW: ✅ 2743 rows
+22:44:55 [INFO] CBOE:PCCI: ✅ 2776 rows
+22:44:55 [INFO] CBOE:PCCE: ✅ 2769 rows
+22:44:55 [INFO] CBOE:PCC: ✅ 2771 rows
+22:44:55 [INFO] CBOE:COR1M: ✅ 2747 rows
+22:44:55 [INFO] CBOE:COR3M: ✅ 2731 rows
+22:44:55 [INFO] CBOE:VXTH: ✅ 2766 rows
+22:44:55 [INFO] CBOE:CNDR: ✅ 9916 rows
+22:44:55 [INFO] CBOE:VX1-VX2: ✅ 5434 rows
+22:44:55 [INFO] CBOE:VX2-VX1_RATIO: ✅ 5442 rows
+22:44:55 [INFO] CBOE:CL1-CL2: ✅ 9999 rows
+22:44:55 [INFO] CBOE:DX1-DX2: ✅ 10000 rows
+22:44:55 [INFO] CBOE:BVOL: ✅ 3444 rows
+22:44:55 [INFO] CBOE:BFLY: ✅ 2569 rows
+22:44:55 [INFO] CBOE:DSPX: ✅ 2834 rows
+22:44:55 [INFO] CBOE:VPN: ✅ 4455 rows
+22:44:55 [INFO] CBOE:GAMMA: ✅ 727 rows
+22:44:55 [INFO] CBOE:VIX_VIX3M: ✅ 4529 rows
+22:44:55 [INFO] CBOE:GOLDSILVER: ✅ 2863 rows
+22:44:55 [INFO] CBOE: ✅ 19 series loaded
+22:44:55 [INFO] Yahoo:CL=F: Using recent cache (last: 2025-11-04, age: 1d)
+22:44:55 [INFO] Yahoo:DX=F: Using recent cache (last: 2025-11-04, age: 1d)
+   ✅ 42 futures features
+
+[5/8] Macro/multi-asset data...
+22:44:55 [INFO] Yahoo:GLD: Using recent cache (last: 2025-11-04, age: 1d)
+22:44:55 [INFO] Yahoo:SLV: Using recent cache (last: 2025-11-04, age: 1d)
+22:44:55 [INFO] Yahoo:DX=F: Using recent cache (last: 2025-11-04, age: 1d)
+22:44:55 [INFO] Yahoo:CL=F: Using recent cache (last: 2025-11-04, age: 1d)
+22:44:55 [INFO] Yahoo:^MOVE: Using recent cache (last: 2025-11-04, age: 1d)
+   ✅ 25 macro features
+
+[6/8] Meta features (regimes, cross-asset, ROC, percentiles)...
+   ✅ 128 meta features
+
+[7/8] FRED macro/rates data...
+22:44:57 [INFO] FRED:DGS1MO: Incremental from 2025-11-05
+22:44:57 [WARNING] FRED:DGS1MO: Insufficient data (1 rows)
+22:44:57 [INFO] FRED:DGS3MO: Incremental from 2025-11-05
+22:44:57 [WARNING] FRED:DGS3MO: Insufficient data (1 rows)
+22:44:57 [INFO] FRED:DGS6MO: Incremental from 2025-11-05
+22:44:57 [WARNING] FRED:DGS6MO: Insufficient data (1 rows)
+22:44:57 [INFO] FRED:DGS1: Incremental from 2025-11-05
+22:44:58 [WARNING] FRED:DGS1: Insufficient data (1 rows)
+22:44:58 [INFO] FRED:DGS2: Incremental from 2025-11-05
+22:44:58 [WARNING] FRED:DGS2: Insufficient data (1 rows)
+22:44:58 [INFO] FRED:DGS5: Incremental from 2025-11-05
+22:44:58 [WARNING] FRED:DGS5: Insufficient data (1 rows)
+22:44:58 [INFO] FRED:DGS10: Incremental from 2025-11-05
+22:44:58 [WARNING] FRED:DGS10: Insufficient data (1 rows)
+22:44:58 [INFO] FRED:DGS30: Incremental from 2025-11-05
+22:44:58 [WARNING] FRED:DGS30: Insufficient data (1 rows)
+22:44:58 [INFO] FRED:DFF: Incremental from 2025-11-05
+22:44:58 [WARNING] FRED:DFF: Insufficient data (1 rows)
+22:44:58 [INFO] FRED:UNRATE: Incremental from 2025-08-02
+22:44:59 [WARNING] FRED:UNRATE: Insufficient data (1 rows)
+22:44:59 [INFO] FRED:CPIAUCSL: Incremental from 2025-09-02
+22:44:59 [WARNING] FRED:CPIAUCSL: Insufficient data (1 rows)
+22:44:59 [INFO] FRED:CPILFESL: Incremental from 2025-09-02
+22:44:59 [WARNING] FRED:CPILFESL: Insufficient data (1 rows)
+22:44:59 [INFO] FRED:PCEPI: Incremental from 2025-08-02
+22:44:59 [WARNING] FRED:PCEPI: Insufficient data (1 rows)
+22:44:59 [INFO] FRED:PCEPILFE: Incremental from 2025-08-02
+22:44:59 [WARNING] FRED:PCEPILFE: Insufficient data (1 rows)
+22:44:59 [INFO] FRED:GDP: Incremental from 2025-04-02
+22:44:59 [WARNING] FRED:GDP: Insufficient data (1 rows)
+22:44:59 [INFO] FRED:GDPC1: Incremental from 2025-04-02
+22:44:59 [WARNING] FRED:GDPC1: Insufficient data (1 rows)
+22:44:59 [INFO] FRED:UMCSENT: Incremental from 2025-09-02
+22:45:00 [WARNING] FRED:UMCSENT: Insufficient data (1 rows)
+22:45:00 [INFO] FRED: ✅ 8 series loaded
+   ✅ 32 FRED features
+
+[8/8] Consolidating all features...
+
+================================================================================
+✅ BUILD COMPLETE
+   Total Features: 374
+   Samples: 3769
+   Range: 2010-11-10 to 2025-11-04
+   Missing: 146584 (10.40%)
+
+   Feature Breakdown:
+   - Base: 74
+   - CBOE: 80
+   - Futures: 42
+   - Macro: 25
+   - Meta: 128
+   - FRED: 32
+================================================================================
+[2/2] Training anomaly system...
+22:45:00 [INFO] Yahoo:^VIX: Using recent cache (last: 2025-11-04, age: 2d)
+  vix_regime_structure: Removed 1/17 low-quality features
+  cboe_options_flow: Removed 1/27 low-quality features
+  spx_volatility_regime: Removed 1/21 low-quality features
+  cross_asset_divergence: Removed 1/22 low-quality features
+  tail_risk_complex: Removed 1/13 low-quality features
+  percentile_extremes: Removed 3/10 low-quality features
+  random_4: Removed 1/12 low-quality features
+Statistical Thresholds: Moderate=0.7291, High=0.8080, Critical=0.9132
+
+================================================================================
+✅ TRAINING COMPLETE
+================================================================================
+
+================================================================================
+15-DIMENSIONAL ANOMALY SUMMARY
+================================================================================
+
+🎯 NORMAL: 25.2%
+   Normal conditions (25.2%) - Market within typical ranges
+
+⏱️ PERSISTENCE: 0d streak | Mean: 4.3d | Rate: 8.0%
+
+🔍 TOP 3:
+   1. Vix Momentum: 43% (MODERATE)
+   2. Spx Price Action: 42% (MODERATE)
+   3. Vix Mean Reversion: 37% (MODERATE)
+
+📊 MEMORY: ✅ NORMAL | 172.6MB (+-111.7MB)
+
+================================================================================
+
+================================================================================
+FEATURE DIAGNOSTIC ANALYSIS
+================================================================================
+
+[1/5] Analyzing feature quality...
+[2/5] Analyzing detector usage...
+[3/5] Analyzing feature correlations...
+[4/5] Generating removal recommendations...
+[5/5] Analyzing by category...
+
+================================================================================
+FEATURE DIAGNOSTIC SUMMARY
+================================================================================
+
+🎯 REMOVAL RECOMMENDATIONS:
+   High Priority (clear garbage):  24 features
+   Medium Priority (redundant):    82 features
+   Manual Review Needed:           1 features
+   Keep (good quality):            349 features
+
+📊 DETECTOR USAGE:
+   ❌ vix_mean_reversion               6/ 15 valid (40.0%)
+   ⚠️ vix_momentum                    13/ 19 valid (68.4%)
+   ⚠️ vix_regime_structure            16/ 27 valid (59.3%)
+   ✅ cboe_options_flow               26/ 28 valid (92.9%)
+   ✅ cboe_cross_dynamics             16/ 16 valid (100.0%)
+   ✅ vix_spx_relationship            11/ 12 valid (91.7%)
+   ❌ spx_price_action                12/ 24 valid (50.0%)
+   ❌ spx_ohlc_microstructure          0/ 20 valid (0.0%)
+   ✅ spx_volatility_regime           20/ 25 valid (80.0%)
+   ✅ cross_asset_divergence          21/ 26 valid (80.8%)
+   ✅ tail_risk_complex               12/ 16 valid (75.0%)
+   ✅ futures_term_structure          25/ 25 valid (100.0%)
+   ✅ macro_regime_shifts             19/ 19 valid (100.0%)
+   ✅ momentum_acceleration           20/ 20 valid (100.0%)
+   ❌ percentile_extremes              7/ 18 valid (38.9%)
+   ✅ random_1                         9/  9 valid (100.0%)
+   ✅ random_2                        12/ 12 valid (100.0%)
+   ✅ random_3                        14/ 14 valid (100.0%)
+   ✅ random_4                        11/ 11 valid (100.0%)
+   ✅ random_5                        11/ 11 valid (100.0%)
+
+🔗 CORRELATION ANALYSIS:
+   Found 82 highly correlated pairs (>0.95)
+
+   Top 5 redundant pairs:
+      vix <-> VIXCLS_level (1.000)
+      vix_vs_ma63 <-> vix_vs_ma63_pct (0.961)
+      vix_vs_ma126 <-> vix_vs_ma126_pct (0.973)
+      vix_vs_ma252 <-> vix_vs_ma252_pct (0.982)
+      vix_zscore_63d <-> VIXCLS_zscore_63d (1.000)
+
+📁 CATEGORY BREAKDOWN:
+   BASE      : 163 features (avg 3.8% missing)
+   CBOE      : 116 features (avg 24.6% missing)
+   FUTURES   :  25 features (avg 0.0% missing)
+   MACRO     :  10 features (avg 9.8% missing)
+   META      :  14 features (avg 4.0% missing)
+   UNKNOWN   :  46 features (avg 5.6% missing)
+
+================================================================================
+
+🗑️  TOP 10 REMOVAL CANDIDATES:
+    1. elevated_flag                            → too few unique values
+    2. is_opex_week                             → too few unique values
+    3. GAMMA                                    → missing 80.7%
+    4. GAMMA_change_21d                         → missing 81.3%
+    5. GAMMA_zscore_63d                         → missing 82.4%
+    6. GOLDSILVER_zscore_63d                    → missing 100.0%, no variance, too few unique values
+    7. tail_risk_elevated                       → too few unique values
+    8. dxy_regime                               → too few unique values
+    9. spx_realized_vol_21d_momentum_regime     → too few unique values
+   10. rsi_14_momentum_regime                   → too few unique values
+
+================================================================================
+
+✅ Report saved: ./diagnostics/feature_report.json
+
+================================================================================
+ANOMALY SYSTEM VALIDATION
+================================================================================
+
+[1/5] Checking crisis period alignment...
+[2/5] Validating score distribution...
+[3/5] Testing predictive power...
+[4/5] Checking detector consistency...
+[5/5] Validating threshold calibration...
+
+================================================================================
+ANOMALY SYSTEM VALIDATION SUMMARY
+================================================================================
+
+📊 CRISIS ALIGNMENT:
+   ⚠️ Crisis/Normal Ratio: 1.47x
+      Crisis mean: 0.700
+      Normal mean: 0.477
+
+   Individual Crises:
+   ✅ 2011_debt_crisis          0.713 (1.45x)
+   ✅ 2015_china_devaluation    0.682 (1.38x)
+   ⚠️ 2018_q4_selloff           0.576 (1.17x)
+   ✅ 2020_covid                0.824 (1.68x)
+   ✅ 2022_ukraine              0.754 (1.53x)
+
+📈 SCORE DISTRIBUTION:
+   Mean: 0.496 | Std: 0.199
+   P95: 0.859 | P99: 0.944
+   Above Moderate (70%): 18.1%
+   Above High (78%):     10.5%
+   Above Critical (88%): 3.8%
+
+🎯 PREDICTIVE POWER:
+   5d_forward: High anomaly → VIX change -5.17% vs +2.24%
+   10d_forward: High anomaly → VIX change -8.75% vs +3.72%
+   21d_forward: High anomaly → VIX change -12.27% vs +5.94%
+
+   VIX Spike Prediction (+20% in 5d):
+      Precision: 8.4%
+      Recall:    10.7%
+      TP: 40 | FP: 439 | FN: 333
+
+🔍 DETECTOR CONSISTENCY:
+   Mean deviation from ensemble: 0.138
+   Max deviation: 0.240
+
+================================================================================
+
+🎯 OVERALL VERDICT:
+   ⚠️  Issues detected:
+      ❌ Weak predictive power
+
+================================================================================
+
+✅ Validation report saved: ./diagnostics/anomaly_validation.json
+✅ Saved state: ./json_data/model_cache.pkl (18.92 MB)
+
+✅ Exported unified dashboard files:
+   • live_state.json    (15 KB, updates every refresh)
+   • historical.json    (300 KB, static)
+   • model_cache.pkl    (15 MB, static)
+
+================================================================================
+MEMORY REPORT
+================================================================================
+Status: NORMAL
+Current: 240.7MB | Growth: -43.7MB
+
+================================================================================
+ANALYSIS COMPLETE
+================================================================================
+[22:47:21] [cost 149.996s] py integrated_system_production.py              

@@ -89,36 +89,40 @@ class UnifiedExporter:
     
     def export_live_state(
         self,
-        vix_predictor,
+        orchestrator,  # This is AnomalyOrchestrator
         anomaly_result: Dict[str, Any],
-        spx: pd.Series = None,
+        spx: pd.Series,
         persistence_stats: Dict[str, Any] = None
     ) -> Path:
         """
         Export real-time state (market + anomaly).
-        
-        Consolidates:
-        - anomaly_report.json
-        - market_state.json  
-        - dashboard_data.json (live sections)
-        
+    
+        Args:
+            orchestrator: AnomalyOrchestrator object
+            anomaly_result: Detection results
+            spx: SPX Series
+            persistence_stats: Historical persistence statistics
+    
         Returns: Path to exported file
         """
-        
+    
+        # FIX: Get VIX from orchestrator's vix_ml attribute (not vix)
+        vix = orchestrator.vix_ml
+    
         # Market snapshot
         market = MarketSnapshot(
             timestamp=datetime.now().isoformat(),
-            vix=float(vix_predictor.vix.iloc[-1]),
-            vix_change=float(vix_predictor.vix.iloc[-1] - vix_predictor.vix.iloc[-2]),
+            vix=float(vix.iloc[-1]),
+            vix_change=float(vix.iloc[-1] - vix.iloc[-2]) if len(vix) > 1 else 0.0,
             spx=float(spx.iloc[-1]),
-            spx_change=float(spx.iloc[-1] - spx.iloc[-2]),
-            regime=self._get_regime_name(vix_predictor.features['vix_regime'].iloc[-1]),
-            regime_days=int(vix_predictor.features['days_in_regime'].iloc[-1])
+            spx_change=float(spx.iloc[-1] - spx.iloc[-2]) if len(spx) > 1 else 0.0,
+            regime=self._get_regime_name(orchestrator.features['vix_regime'].iloc[-1]),
+            regime_days=int(orchestrator.features['days_in_regime'].iloc[-1])
         )
-        
+    
         # Get statistical thresholds
-        thresholds = self._get_thresholds(vix_predictor)
-        
+        thresholds = self._get_thresholds(orchestrator)
+    
         # Anomaly state
         anomaly = AnomalyState(
             ensemble_score=float(anomaly_result['ensemble']['score']),
@@ -127,32 +131,32 @@ class UnifiedExporter:
                 name for name, data in anomaly_result['domain_anomalies'].items()
                 if data['score'] > thresholds['high']
             ],
-            persistence_streak=persistence_stats.get('current_streak', 0),
+            persistence_streak=persistence_stats.get('current_streak', 0) if persistence_stats else 0,
             detector_scores={
                 name: float(data['score'])
                 for name, data in anomaly_result['domain_anomalies'].items()
             }
         )
-        
+    
         # Unified live contract
         live_state = {
             "schema_version": self.schema_version,
             "generated_at": datetime.now().isoformat(),
             "update_frequency": "refresh_cycle",
-            
+        
             "market": asdict(market),
             "anomaly": asdict(anomaly),
-            
-            # Persistence stats (FIX: Use passed stats from full historical)
+        
+            # Persistence stats
             "persistence": {
-                "current_streak": persistence_stats.get('current_streak', 0),
-                "mean_duration": persistence_stats.get('mean_duration', 0.0),
-                "max_duration": persistence_stats.get('max_duration', 0),
-                "total_anomaly_days": persistence_stats.get('total_anomaly_days', 0),
-                "anomaly_rate": persistence_stats.get('anomaly_rate', 0.0),
-                "num_episodes": persistence_stats.get('num_episodes', 0)
+                "current_streak": persistence_stats.get('current_streak', 0) if persistence_stats else 0,
+                "mean_duration": persistence_stats.get('mean_duration', 0.0) if persistence_stats else 0.0,
+                "max_duration": persistence_stats.get('max_duration', 0) if persistence_stats else 0,
+                "total_anomaly_days": persistence_stats.get('total_anomaly_days', 0) if persistence_stats else 0,
+                "anomaly_rate": persistence_stats.get('anomaly_rate', 0.0) if persistence_stats else 0.0,
+                "num_episodes": persistence_stats.get('num_episodes', 0) if persistence_stats else 0
             },
-            
+        
             # Metadata
             "diagnostics": {
                 "active_detectors": anomaly_result['data_quality']['active_detectors'],
@@ -160,28 +164,26 @@ class UnifiedExporter:
                 "mean_coverage": float(anomaly_result['data_quality']['weight_stats']['mean'])
             }
         }
-        
+    
         return self._atomic_write_json(self.files["live"], live_state)
-    
-    
+        
     # --------------------------------------------------------------------------
     # HISTORICAL DATA (Training-Time Only)
     # --------------------------------------------------------------------------
     
     def export_historical_context(
         self,
-        vix_predictor,
+        orchestrator,  # This is AnomalyOrchestrator
         spx: pd.Series,
         historical_scores: np.ndarray
     ) -> Path:
         """
         Export static historical data (computed once during training).
         
-        Consolidates:
-        - historical_anomaly_scores.json
-        - regime_statistics.json
-        - vix_history.json
-        - anomaly_metadata.json (static sections)
+        Args:
+            orchestrator: AnomalyOrchestrator object
+            spx: SPX Series
+            historical_scores: Historical ensemble scores
         
         Returns: Path to exported file
         """
@@ -190,15 +192,15 @@ class UnifiedExporter:
         spx_forward_10d = spx.pct_change(10).shift(-10) * 100
         
         # Get thresholds (extract point estimates)
-        thresholds = self._get_thresholds(vix_predictor)
+        thresholds = self._get_thresholds(orchestrator)
         
         # Historical context
         historical = HistoricalContext(
-            dates=[d.strftime('%Y-%m-%d') for d in vix_predictor.features.index],
+            dates=[d.strftime('%Y-%m-%d') for d in orchestrator.features.index],
             ensemble_scores=historical_scores.tolist(),
             spx_close=spx.values.tolist(),
             spx_forward_10d=spx_forward_10d.fillna(0).values.tolist(),
-            regime_stats=vix_predictor.regime_stats_historical,
+            regime_stats=orchestrator.regime_stats,
             thresholds=thresholds  # Point estimates only
         )
         
@@ -212,18 +214,18 @@ class UnifiedExporter:
             "historical": asdict(historical),
             
             # Feature attribution (top 5 per detector)
-            "attribution": self._build_attribution_map(vix_predictor),
+            "attribution": self._build_attribution_map(orchestrator),
             
             # Bootstrap CIs (if available)
-            "thresholds_with_ci": vix_predictor.anomaly_detector.statistical_thresholds if hasattr(vix_predictor.anomaly_detector, 'statistical_thresholds') else thresholds,
+            "thresholds_with_ci": orchestrator.anomaly_detector.statistical_thresholds if hasattr(orchestrator.anomaly_detector, 'statistical_thresholds') else thresholds,
             
             # Metadata
             "detector_metadata": {
                 name: {
-                    "feature_count": len(vix_predictor.anomaly_detector.feature_groups.get(name, [])),
-                    "coverage": float(vix_predictor.anomaly_detector.detector_coverage.get(name, 0.0))
+                    "feature_count": len(orchestrator.anomaly_detector.feature_groups.get(name, [])),
+                    "coverage": float(orchestrator.anomaly_detector.detector_coverage.get(name, 0.0))
                 }
-                for name in vix_predictor.anomaly_detector.detectors.keys()
+                for name in orchestrator.anomaly_detector.detectors.keys()
             }
         }
         
@@ -234,12 +236,12 @@ class UnifiedExporter:
     # MODEL ARTIFACTS (Training Cache)
     # --------------------------------------------------------------------------
     
-    def export_model_cache(self, vix_predictor) -> Path:
+    def export_model_cache(self, orchestrator) -> Path:
         """
         Export trained model artifacts for cached refresh mode.
         
-        Consolidates:
-        - refresh_state.pkl
+        Args:
+            orchestrator: AnomalyOrchestrator object
         
         Returns: Path to exported file
         """
@@ -249,23 +251,23 @@ class UnifiedExporter:
             "export_timestamp": pd.Timestamp.now().isoformat(),
             
             # Anomaly detector components (critical for cached mode)
-            "detectors": vix_predictor.anomaly_detector.detectors,
-            "scalers": vix_predictor.anomaly_detector.scalers,
-            "training_distributions": vix_predictor.anomaly_detector.training_distributions,
-            "statistical_thresholds": vix_predictor.anomaly_detector.statistical_thresholds,
-            "feature_groups": vix_predictor.anomaly_detector.feature_groups,
-            "random_subspaces": vix_predictor.anomaly_detector.random_subspaces,
+            "detectors": orchestrator.anomaly_detector.detectors,
+            "scalers": orchestrator.anomaly_detector.scalers,
+            "training_distributions": orchestrator.anomaly_detector.training_distributions,
+            "statistical_thresholds": orchestrator.anomaly_detector.statistical_thresholds,
+            "feature_groups": orchestrator.anomaly_detector.feature_groups,
+            "random_subspaces": orchestrator.anomaly_detector.random_subspaces,
             
             # Historical data (last 252 days for rolling calcs)
-            "vix_history": vix_predictor.vix_ml.tail(252).to_dict(),
-            "spx_history": vix_predictor.spx_ml.tail(252).to_dict(),
+            "vix_history": orchestrator.vix_ml.tail(252).to_dict(),
+            "spx_history": orchestrator.spx_ml.tail(252).to_dict(),
             
             # Feature metadata
-            "feature_columns": vix_predictor.features.columns.tolist(),
-            "last_features": vix_predictor.features.tail(1).to_dict(),
+            "feature_columns": orchestrator.features.columns.tolist(),
+            "last_features": orchestrator.features.tail(1).to_dict(),
             
             # Regime statistics
-            "regime_stats": vix_predictor.regime_stats_historical
+            "regime_stats": orchestrator.regime_stats
         }
         
         return self._atomic_write_pickle(self.files["model"], cache_state)
@@ -310,10 +312,10 @@ class UnifiedExporter:
         return str(obj)
     
     
-    def _get_thresholds(self, vix_predictor) -> Dict[str, float]:
+    def _get_thresholds(self, orchestrator) -> Dict[str, float]:
         """Extract point thresholds from detector (handles CI format)"""
-        if hasattr(vix_predictor.anomaly_detector, 'statistical_thresholds') and vix_predictor.anomaly_detector.statistical_thresholds:
-            thresholds = vix_predictor.anomaly_detector.statistical_thresholds
+        if hasattr(orchestrator.anomaly_detector, 'statistical_thresholds') and orchestrator.anomaly_detector.statistical_thresholds:
+            thresholds = orchestrator.anomaly_detector.statistical_thresholds
             # If CI format, extract point estimates
             if 'moderate_ci' in thresholds:
                 return {
@@ -343,12 +345,12 @@ class UnifiedExporter:
         return regime_names.get(regime_id, "Unknown")
     
     
-    def _build_attribution_map(self, vix_predictor) -> Dict[str, List[Dict]]:
+    def _build_attribution_map(self, orchestrator) -> Dict[str, List[Dict]]:
         """Build feature attribution for all detectors"""
         attribution = {}
         
-        for detector_name in vix_predictor.anomaly_detector.detectors.keys():
-            importances = vix_predictor.anomaly_detector.feature_importances.get(detector_name, {})
+        for detector_name in orchestrator.anomaly_detector.detectors.keys():
+            importances = orchestrator.anomaly_detector.feature_importances.get(detector_name, {})
             
             # Top 5 features
             top_features = sorted(importances.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -376,24 +378,21 @@ def example_training_mode():
     
     # Export historical context (once)
     exporter.export_historical_context(
-        vix_predictor=system.vix_predictor,
-        spx=system.spx,
-        historical_scores=system.vix_predictor.historical_ensemble_scores
+        orchestrator=system.orchestrator,
+        spx=system.orchestrator.spx_ml,
+        historical_scores=system.orchestrator.historical_ensemble_scores
     )
     
     # Export model cache (once)
-    exporter.export_model_cache(system.vix_predictor)
+    exporter.export_model_cache(system.orchestrator)
     
     # Export live state (first time)
     anomaly_result = system._get_cached_anomaly_result()
-    persistence_stats = system.vix_predictor.anomaly_detector.calculate_historical_persistence_stats(
-        system.vix_predictor.historical_ensemble_scores,
-        dates=system.vix_predictor.features.index
-    )
+    persistence_stats = system.orchestrator.get_persistence_stats()
     
     exporter.export_live_state(
-        vix_predictor=system.vix_predictor,
-        spx=system.spx,
+        orchestrator=system.orchestrator,
+        spx=system.orchestrator.spx_ml,
         anomaly_result=anomaly_result,
         persistence_stats=persistence_stats
     )
