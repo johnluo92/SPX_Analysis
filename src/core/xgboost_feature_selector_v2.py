@@ -1,686 +1,565 @@
-"""
-XGBoost Feature Selector V2 - Intelligent Selection with Stability Testing
-===========================================================================
+"""XGBoost Feature Selector V2 - VIX Expansion Forecasting"""
 
-Academic enhancements:
-1. Stability-based selection (features must be important across multiple folds)
-2. Recursive feature addition (start small, add features incrementally)
-3. Multicollinearity handling (remove redundant features post-selection)
-4. Domain expertise integration (preserve forward indicators even if low importance)
-5. Performance cliff detection (optimal feature count before diminishing returns)
-
-References:
-- Feature stability: Nogueira et al., 2018 (JMLR)
-- Recursive addition: Guyon et al., 2002 (Machine Learning)
-- Financial feature selection: Research Square, 2025
-"""
-
-import pandas as pd
-import numpy as np
-from pathlib import Path
-import json
-from datetime import datetime
-from typing import Dict, List, Tuple
 import warnings
-warnings.filterwarnings('ignore')
+from pathlib import Path
+from typing import Dict, List, Tuple
 
-from xgboost_trainer_v2 import EnhancedXGBoostTrainer
+import numpy as np
+import pandas as pd
+import xgboost as xgb
+from sklearn.model_selection import TimeSeriesSplit
 
-# Forward indicators that should be preserved regardless of importance
+warnings.filterwarnings("ignore")
+
+try:
+    from core.xgboost_trainer_v2 import VIXExpansionTrainer
+except ImportError:
+    from xgboost_trainer_v2 import VIXExpansionTrainer
+
 CRITICAL_FORWARD_INDICATORS = [
-    'VX1-VX2', 'VX2-VX1_RATIO',  # VIX futures term structure
-    'yield_10y2y', 'yield_10y3m',  # Yield curve inversion
-    'VXTLT', 'vxtlt_vix_ratio',  # Bond volatility
-    'SKEW', 'skew_vs_vix',  # Tail risk
+    "VX1-VX2",
+    "VX2-VX1_RATIO",
+    "yield_10y2y",
+    "yield_10y3m",
+    "VXTLT",
+    "vxtlt_vix_ratio",
+    "SKEW",
+    "skew_vs_vix",
 ]
+
+DEFAULT_CANDIDATE_SIZES = [30, 40, 50, 60, 75, 100]
+DEFAULT_MIN_STABILITY = 0.3
+DEFAULT_MAX_CORRELATION = 0.95
+DEFAULT_N_SPLITS = 5
+DEFAULT_TEST_SIZE = 252
 
 
 class IntelligentFeatureSelector:
-    """
-    Stability-based feature selection with domain expertise integration.
-    
-    Selection Process:
-    1. Train XGBoost with ALL features across multiple folds
-    2. Measure feature stability (importance variance across folds)
-    3. Recursive addition: Start with top 20, add in batches of 10-15
-    4. Stop when performance plateaus or drops (diminishing returns)
-    5. Remove multicollinear features (correlation > 0.95)
-    6. Force-include critical forward indicators
-    """
-    
-    def __init__(self, output_dir: str = './models'):
+    """Stability-based feature selection for VIX expansion forecasting."""
+
+    def __init__(self, output_dir: str = "./models", expansion_threshold: float = 0.15):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True, parents=True)
-        
+        self.expansion_threshold = expansion_threshold
         self.baseline_trainer = None
         self.feature_importance_df = None
         self.stability_scores = None
         self.validation_results = []
         self.selected_features = None
         self.optimal_size = None
-    
+
     def run_full_pipeline(
         self,
         features: pd.DataFrame,
         vix: pd.Series,
         spx: pd.Series,
-        candidate_sizes: List[int] = None,  # Auto-detect if None
-        min_stability: float = 0.3,  # Features must be stable across folds
-        max_correlation: float = 0.95,  # Remove highly correlated pairs
+        horizons: List[int] = [5],
+        candidate_sizes: List[int] = None,
+        min_stability: float = DEFAULT_MIN_STABILITY,
+        max_correlation: float = DEFAULT_MAX_CORRELATION,
         preserve_forward_indicators: bool = True,
-        verbose: bool = True
+        verbose: bool = True,
     ) -> Dict:
-        """
-        Run intelligent feature selection pipeline.
-        
-        Args:
-            features: Full feature matrix
-            vix: VIX series
-            spx: SPX series
-            candidate_sizes: Feature counts to test (auto if None)
-            min_stability: Minimum stability score (0-1) to keep feature
-            max_correlation: Max correlation before removing redundant feature
-            preserve_forward_indicators: Force-keep critical forward indicators
-            verbose: Print progress
-            
-        Returns:
-            {
-                'baseline_results': {...},
-                'feature_importance': DataFrame,
-                'stability_scores': Series,
-                'validation_results': [...],
-                'selected_features': List[str],
-                'optimal_size': int,
-                'performance_summary': {...}
-            }
-        """
         if verbose:
-            print(f"\n{'='*80}")
-            print("🎯 INTELLIGENT FEATURE SELECTION PIPELINE V2")
-            print(f"{'='*80}")
+            print(f"\n{'=' * 80}")
+            print("INTELLIGENT FEATURE SELECTION - VIX EXPANSION FORECASTING")
+            print(f"{'=' * 80}")
             print(f"Starting features: {len(features.columns)}")
+            print(f"Horizons: {horizons}")
             print(f"Min stability: {min_stability}")
             print(f"Max correlation: {max_correlation}")
-        
-        # Step 1: Train baseline with ALL features + measure stability
+            print(
+                f"Target: Forward VIX Expansion (threshold={self.expansion_threshold:.0%})"
+            )
+
         if verbose:
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print("[STEP 1/5] Training baseline + measuring feature stability...")
-            print(f"{'='*80}")
-        
-        self.baseline_trainer, baseline_metrics, stability_scores = self._train_baseline_with_stability(
-            features, vix, spx, verbose
+            print(f"{'=' * 80}")
+
+        self.baseline_trainer, baseline_metrics, stability_scores = (
+            self._train_baseline_with_stability(features, vix, spx, horizons, verbose)
         )
-        
         self.stability_scores = stability_scores
-        
-        # Step 2: Extract and rank features by stability-weighted importance
+
         if verbose:
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print("[STEP 2/5] Ranking features by stability-weighted importance...")
-            print(f"{'='*80}")
-        
+            print(f"{'=' * 80}")
+
         self.feature_importance_df = self._rank_features_with_stability(
             stability_scores, min_stability, verbose
         )
-        
-        # Step 3: Remove multicollinear features
+
         if verbose:
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print("[STEP 3/5] Removing multicollinear features...")
-            print(f"{'='*80}")
-        
-        filtered_importance_df = self._remove_multicollinearity(
+            print(f"{'=' * 80}")
+
+        filtered_features = self._remove_multicollinearity(
             self.feature_importance_df, features, max_correlation, verbose
         )
-        
-        # Step 4: Recursive feature addition to find optimal set
+
         if verbose:
-            print(f"\n{'='*80}")
-            print("[STEP 4/5] Recursive feature addition (finding performance cliff)...")
-            print(f"{'='*80}")
-        
+            print(f"\n{'=' * 80}")
+            print(
+                "[STEP 4/5] Recursive feature addition (finding performance cliff)..."
+            )
+            print(f"{'=' * 80}")
+
         if candidate_sizes is None:
-            # Auto-detect: test 20, 40, 60, 80, 100, 120
-            max_features = min(120, len(filtered_importance_df))
-            candidate_sizes = list(range(20, max_features + 1, 20))
-        
-        optimal_features = self._recursive_feature_addition(
-            filtered_importance_df, features, vix, spx, 
-            candidate_sizes, baseline_metrics, verbose
+            candidate_sizes = DEFAULT_CANDIDATE_SIZES
+
+        optimal_features, optimal_size = self._recursive_feature_addition(
+            filtered_features, features, vix, spx, horizons, candidate_sizes, verbose
         )
-        
-        # Step 5: Force-include critical forward indicators
+
+        self.optimal_size = optimal_size
+        self.selected_features = optimal_features
+
         if preserve_forward_indicators:
             if verbose:
-                print(f"\n{'='*80}")
-                print("[STEP 5/5] Ensuring critical forward indicators included...")
-                print(f"{'='*80}")
-            
-            optimal_features = self._ensure_forward_indicators(
-                optimal_features, features.columns, verbose
+                print(f"\n{'=' * 80}")
+                print("[STEP 5/5] Preserving critical forward indicators...")
+                print(f"{'=' * 80}")
+
+            self.selected_features = self._preserve_forward_indicators(
+                self.selected_features, features.columns.tolist(), verbose
             )
-        
-        self.selected_features = optimal_features
-        self.optimal_size = len(optimal_features)
-        
-        # Generate summary
-        summary = self._generate_summary_report(baseline_metrics, verbose)
-        
-        # Save results
-        self._save_selection_results(summary)
-        
+
+        self._save_results(filtered_features, verbose)
+
         return {
-            'baseline_results': baseline_metrics,
-            'feature_importance': self.feature_importance_df,
-            'stability_scores': self.stability_scores,
-            'validation_results': self.validation_results,
-            'selected_features': self.selected_features,
-            'optimal_size': self.optimal_size,
-            'performance_summary': summary
+            "selected_features": self.selected_features,
+            "optimal_size": self.optimal_size,
+            "feature_importance": self.feature_importance_df,
+            "stability_scores": self.stability_scores,
+            "validation_results": self.validation_results,
         }
-    
+
     def _train_baseline_with_stability(
         self,
         features: pd.DataFrame,
         vix: pd.Series,
         spx: pd.Series,
-        verbose: bool
-    ) -> Tuple[EnhancedXGBoostTrainer, Dict, pd.Series]:
-        """
-        Train baseline and measure feature importance stability across folds.
-        
-        Stability = 1 - (std_importance / mean_importance)
-        High stability = feature consistently important across time periods
-        """
-        from sklearn.model_selection import TimeSeriesSplit
-        
-        trainer = EnhancedXGBoostTrainer(output_dir=str(self.output_dir / 'baseline'))
-        
-        # Train with SHAP to get accurate importance
-        results = trainer.train(
-            features=features,
-            vix=vix,
-            spx=spx,
-            n_splits=5,
-            optimize_hyperparams=False,  # Skip for baseline (faster)
-            crisis_balanced=True,
-            compute_shap=True,
-            verbose=False  # Suppress detailed output
+        horizons: List[int],
+        verbose: bool,
+    ) -> Tuple:
+        features_clean = features.copy()
+        if "vix_regime" in features_clean.columns:
+            features_clean = features_clean.drop(columns=["vix_regime"])
+            if verbose:
+                print("   WARNING: Removed vix_regime from features (data leakage)")
+
+        default_horizon = horizons[0]
+        vix_future = vix.shift(-default_horizon)
+        vix_pct_change = (vix_future - vix) / vix
+        y_expansion = (vix_pct_change > self.expansion_threshold).astype(int)
+
+        common_idx = features_clean.index.intersection(vix.index).intersection(
+            y_expansion.dropna().index
         )
-        
-        # Now compute per-fold importance to measure stability
+        X = features_clean.loc[common_idx]
+        y_expansion_aligned = y_expansion.loc[common_idx]
+
+        if verbose:
+            print(f"   Raw data: {len(features)} rows")
+            print(f"   After alignment: {len(X)} samples")
+            print(f"   Date range: {X.index.min().date()} → {X.index.max().date()}")
+            print(
+                f"   Target: Forward VIX Expansion ({default_horizon}-day, threshold={self.expansion_threshold:.1%})"
+            )
+            n_no_expansion = (y_expansion_aligned == 0).sum()
+            n_expansion = (y_expansion_aligned == 1).sum()
+            print(
+                f"      Class 0 (No Expansion): {n_no_expansion} ({n_no_expansion / len(y_expansion_aligned) * 100:5.1f}%)"
+            )
+            print(
+                f"      Class 1 (Expansion): {n_expansion:4} ({n_expansion / len(y_expansion_aligned) * 100:5.1f}%)"
+            )
+
+        if len(X) < 1000:
+            raise ValueError(f"Only {len(X)} samples after cleaning - check your data!")
+
+        trainer = VIXExpansionTrainer(
+            output_dir=str(self.output_dir / "baseline"),
+            expansion_threshold=self.expansion_threshold,
+        )
+
+        results = trainer.train(
+            features=X,
+            vix=vix.loc[X.index],
+            spx=spx.loc[X.index],
+            horizons=horizons,
+            n_splits=5,
+            optimize_hyperparams=0,
+            crisis_balanced=True,
+            compute_shap=False,
+            verbose=False,
+        )
+
+        if verbose:
+            print("   Processing trainer results...")
+            print(f"   Results keys: {list(results.keys())}")
+
+        baseline_metrics = {}
+        if "all_results" in results:
+            first_horizon = list(results["all_results"].keys())[0]
+            baseline_metrics = results["all_results"][first_horizon]
+        else:
+            baseline_metrics = {"metrics": {"mean_accuracy": 0.5}}
+
         if verbose:
             print("   Computing per-fold feature importance for stability...")
-        
-        from sklearn.model_selection import TimeSeriesSplit
-        import xgboost as xgb
-        
-        tscv = TimeSeriesSplit(n_splits=5, test_size=252)
-        
-        # Prepare data
-        X = features.fillna(method='ffill').fillna(method='bfill').dropna()
-        y_regime = pd.cut(vix, bins=[0, 16.77, 24.40, 39.67, 100], labels=[0,1,2,3]).astype(int)
-        
-        valid_idx = X.dropna().index.intersection(y_regime.dropna().index)
-        X = X.loc[valid_idx]
-        y_regime = y_regime.loc[valid_idx]
-        
-        fold_importances = []
-        
+
+        tscv = TimeSeriesSplit(n_splits=DEFAULT_N_SPLITS, test_size=DEFAULT_TEST_SIZE)
+
+        all_features = X.columns.tolist()
+        importance_matrix = pd.DataFrame(
+            0.0, index=all_features, columns=[f"fold_{i}" for i in range(1, 6)]
+        )
+
         for fold_idx, (train_idx, val_idx) in enumerate(tscv.split(X), 1):
             X_train = X.iloc[train_idx]
-            y_train = y_regime.iloc[train_idx]
-            
-            # Train simple model (no optimization)
+            y_train = y_expansion_aligned.iloc[train_idx]
+
             model = xgb.XGBClassifier(
-                objective='multi:softprob',
-                num_class=4,
+                objective="binary:logistic",
                 max_depth=6,
                 learning_rate=0.03,
                 n_estimators=300,
+                scale_pos_weight=2,
                 random_state=42,
                 n_jobs=-1,
-                verbosity=0
+                verbosity=0,
+                enable_categorical=False,
             )
             model.fit(X_train, y_train, verbose=False)
-            
-            # Get gain-based importance
-            importance_dict = model.get_booster().get_score(importance_type='gain')
-            importance_series = pd.Series(importance_dict, name=f'fold_{fold_idx}')
-            
-            # Normalize
-            importance_series = importance_series / importance_series.sum()
-            
-            fold_importances.append(importance_series)
-        
-        # Combine fold importances
-        importance_matrix = pd.DataFrame(fold_importances).T.fillna(0)
-        
-        # Calculate stability: high mean, low variance = stable
+
+            importance_dict = model.get_booster().get_score(importance_type="gain")
+
+            importance_dict_mapped = {}
+            for key, value in importance_dict.items():
+                if key.startswith("f") and key[1:].isdigit():
+                    idx = int(key[1:])
+                    if idx < len(all_features):
+                        importance_dict_mapped[all_features[idx]] = value
+                else:
+                    importance_dict_mapped[key] = value
+
+            if importance_dict_mapped:
+                total_importance = sum(importance_dict_mapped.values())
+                importance_dict_mapped = {
+                    k: v / total_importance for k, v in importance_dict_mapped.items()
+                }
+
+            for feature, importance in importance_dict_mapped.items():
+                if feature in importance_matrix.index:
+                    importance_matrix.loc[feature, f"fold_{fold_idx}"] = importance
+
         mean_importance = importance_matrix.mean(axis=1)
         std_importance = importance_matrix.std(axis=1)
-        
-        # Stability score: 1 - coefficient of variation (clamped to [0, 1])
-        stability = 1 - (std_importance / mean_importance.replace(0, np.nan))
-        stability = stability.clip(0, 1).fillna(0)
-        
-        stability_series = pd.Series(stability, name='stability')
-        
+
+        stability = pd.Series(0.0, index=all_features, name="stability")
+        non_zero_mask = mean_importance > 1e-8
+
+        if non_zero_mask.any():
+            cv = std_importance[non_zero_mask] / mean_importance[non_zero_mask]
+            stability[non_zero_mask] = (1 - cv).clip(0, 1)
+
         if verbose:
-            print(f"   ✅ Stability computed for {len(stability_series)} features")
-            print(f"      Mean stability: {stability_series.mean():.3f}")
-            print(f"      Highly stable features (>0.7): {(stability_series > 0.7).sum()}")
-        
-        baseline_metrics = {
-            'regime_metrics': results['regime_metrics'],
-            'range_metrics': results['range_metrics'],
-        }
-        
-        return trainer, baseline_metrics, stability_series
-    
+            print(f"   OK: Stability computed for {len(stability)} features")
+            print(
+                f"      Features with non-zero importance: {(mean_importance > 0).sum()}"
+            )
+            print(
+                f"      Mean stability (non-zero features): {stability[stability > 0].mean():.3f}"
+            )
+            print(f"      High stability features (>0.7): {(stability > 0.7).sum()}")
+            print(
+                f"      Medium stability features (0.3-0.7): {((stability >= 0.3) & (stability <= 0.7)).sum()}"
+            )
+            print(f"      Low stability features (<0.3): {(stability < 0.3).sum()}")
+
+            used_features = mean_importance[mean_importance > 0].sort_values(
+                ascending=False
+            )
+            print(f"\n   Features used by XGBoost (with mean importance):")
+            for i, (feat, imp) in enumerate(used_features.head(15).items(), 1):
+                stab = stability[feat]
+                print(f"      {i:2d}. {feat:40s} | Imp: {imp:.4f} | Stab: {stab:.3f}")
+
+        return trainer, baseline_metrics, stability
+
     def _rank_features_with_stability(
-        self,
-        stability_scores: pd.Series,
-        min_stability: float,
-        verbose: bool
+        self, stability_scores: pd.Series, min_stability: float, verbose: bool
     ) -> pd.DataFrame:
-        """
-        Rank features by stability-weighted importance.
-        
-        Formula: final_score = importance * (stability ^ 0.5)
-        This gives preference to stable features while not completely ignoring unstable ones.
-        """
-        # Load importance from baseline trainer
-        importance_path = self.output_dir / 'baseline' / 'feature_importance_v2_overall.csv'
-        
-        if importance_path.exists():
-            importance_df = pd.read_csv(importance_path)
-        else:
-            raise FileNotFoundError(f"Baseline importance not found: {importance_path}")
-        
-        # Merge with stability
-        importance_df = importance_df.set_index('feature')
-        stability_df = stability_scores.to_frame('stability')
-        
-        combined = importance_df.join(stability_df, how='left').fillna(0)
-        combined = combined.reset_index().rename(columns={'index': 'feature'})
-        
-        # Stability-weighted score
-        combined['stability_weighted_score'] = (
-            combined['overall_shap'] * (combined['stability'] ** 0.5)
+        if (
+            not hasattr(self.baseline_trainer, "feature_importance")
+            or not self.baseline_trainer.feature_importance
+        ):
+            raise ValueError(
+                "Baseline trainer does not have feature_importance computed"
+            )
+
+        first_horizon = list(self.baseline_trainer.feature_importance.keys())[0]
+        importance_df = self.baseline_trainer.feature_importance[first_horizon].copy()
+
+        all_features = stability_scores.index.tolist()
+        feature_mapping = {}
+        for feat_name in importance_df["feature"]:
+            if feat_name.startswith("f") and feat_name[1:].isdigit():
+                idx = int(feat_name[1:])
+                if idx < len(all_features):
+                    feature_mapping[feat_name] = all_features[idx]
+            else:
+                feature_mapping[feat_name] = feat_name
+
+        importance_df["feature"] = importance_df["feature"].map(feature_mapping)
+
+        combined = importance_df.copy()
+        combined = combined.merge(
+            stability_scores.to_frame(), left_on="feature", right_index=True, how="left"
         )
-        
-        # Filter by minimum stability
-        combined['passes_stability'] = combined['stability'] >= min_stability
-        
-        # Sort by stability-weighted score
-        combined = combined.sort_values('stability_weighted_score', ascending=False)
-        
+        combined["stability"] = combined["stability"].fillna(0)
+        combined["weighted_importance"] = combined["importance"] * combined["stability"]
+        combined = combined.sort_values("weighted_importance", ascending=False)
+
+        high_stability = combined[combined["stability"] >= min_stability]
+        top_by_importance = combined.nlargest(100, "weighted_importance")
+
+        combined_filtered = pd.concat(
+            [high_stability, top_by_importance]
+        ).drop_duplicates()
+        combined_filtered = combined_filtered.sort_values(
+            "weighted_importance", ascending=False
+        )
+
         if verbose:
-            print(f"\n   Feature Stability Statistics:")
-            print(f"      Total features: {len(combined)}")
-            print(f"      Pass stability threshold: {combined['passes_stability'].sum()}")
-            print(f"      Fail stability threshold: {(~combined['passes_stability']).sum()}")
-            
-            print(f"\n   Top 10 Features (Stability-Weighted):")
-            for i, row in combined.head(10).iterrows():
-                stable = "✅" if row['passes_stability'] else "⚠️"
-                fwd = "🔮" if row.get('is_forward_indicator', False) else "  "
-                print(f"      {stable} {fwd} {row['feature']:<45} "
-                      f"Score={row['stability_weighted_score']:.4f} "
-                      f"(Stability={row['stability']:.2f})")
-        
-        return combined
-    
+            print(f"   Total features with importance: {len(combined)}")
+            print(
+                f"   High stability (>= {min_stability}): {len(high_stability)} features"
+            )
+            print(f"   Top by weighted importance: {len(top_by_importance)} features")
+            print(f"   Combined (deduplicated): {len(combined_filtered)} features")
+
+            print(f"\n   Top 20 features by stability-weighted importance:")
+            for i, row in enumerate(combined_filtered.head(20).itertuples(), 1):
+                print(
+                    f"      {i:2d}. {row.feature:30s} | Imp: {row.importance:.4f} | Stab: {row.stability:.3f} | Weight: {row.weighted_importance:.4f}"
+                )
+
+        return combined_filtered
+
     def _remove_multicollinearity(
         self,
-        importance_df: pd.DataFrame,
+        feature_importance_df: pd.DataFrame,
         features: pd.DataFrame,
         max_correlation: float,
-        verbose: bool
+        verbose: bool,
     ) -> pd.DataFrame:
-        """
-        Remove redundant features with correlation > max_correlation.
-        
-        Strategy: For each correlated pair, keep the one with higher stability-weighted score.
-        """
+        ranked_features = feature_importance_df["feature"].tolist()
+        features_subset = features[ranked_features]
+        corr_matrix = features_subset.corr().abs()
+
+        to_remove = set()
+        removed_pairs = []
+
+        for i, feat1 in enumerate(ranked_features):
+            if feat1 in to_remove:
+                continue
+            for feat2 in ranked_features[i + 1 :]:
+                if feat2 in to_remove:
+                    continue
+                if corr_matrix.loc[feat1, feat2] > max_correlation:
+                    to_remove.add(feat2)
+                    removed_pairs.append((feat1, feat2, corr_matrix.loc[feat1, feat2]))
+
+        filtered_df = feature_importance_df[
+            ~feature_importance_df["feature"].isin(to_remove)
+        ]
+
         if verbose:
-            print(f"\n   Checking for multicollinearity (threshold: {max_correlation})...")
-        
-        # Compute correlation matrix for features in importance_df
-        feature_names = importance_df['feature'].tolist()
-        available_features = [f for f in feature_names if f in features.columns]
-        
-        corr_matrix = features[available_features].corr().abs()
-        
-        # Find highly correlated pairs
-        upper_triangle = np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
-        high_corr_pairs = []
-        
-        for i in range(len(corr_matrix)):
-            for j in range(i + 1, len(corr_matrix)):
-                if corr_matrix.iloc[i, j] > max_correlation:
-                    high_corr_pairs.append({
-                        'feature1': corr_matrix.index[i],
-                        'feature2': corr_matrix.columns[j],
-                        'correlation': corr_matrix.iloc[i, j]
-                    })
-        
-        if verbose:
-            print(f"      Found {len(high_corr_pairs)} highly correlated pairs")
-        
-        # Remove lower-scoring feature from each pair
-        features_to_remove = set()
-        
-        for pair in high_corr_pairs:
-            f1 = pair['feature1']
-            f2 = pair['feature2']
-            
-            score1 = importance_df[importance_df['feature'] == f1]['stability_weighted_score'].values[0]
-            score2 = importance_df[importance_df['feature'] == f2]['stability_weighted_score'].values[0]
-            
-            if score1 < score2:
-                features_to_remove.add(f1)
-                if verbose:
-                    print(f"      Removing {f1} (corr={pair['correlation']:.3f} with {f2})")
+            if removed_pairs:
+                print(f"   Removing {len(to_remove)} multicollinear features:")
+                for feat1, feat2, corr in removed_pairs[:10]:
+                    print(
+                        f"      {feat1:30s} ↔ {feat2:30s} (r={corr:.3f}) → Remove {feat2}"
+                    )
+                if len(removed_pairs) > 10:
+                    print(f"      ... and {len(removed_pairs) - 10} more pairs")
             else:
-                features_to_remove.add(f2)
-                if verbose:
-                    print(f"      Removing {f2} (corr={pair['correlation']:.3f} with {f1})")
-        
-        # Filter out removed features
-        filtered_df = importance_df[~importance_df['feature'].isin(features_to_remove)].copy()
-        
-        if verbose:
-            print(f"\n   ✅ Removed {len(features_to_remove)} redundant features")
-            print(f"      Remaining: {len(filtered_df)} features")
-        
+                print(
+                    f"   No multicollinear features found (threshold={max_correlation})"
+                )
+
+            print(f"   After multicollinearity removal: {len(filtered_df)} features")
+
         return filtered_df
-    
+
     def _recursive_feature_addition(
         self,
-        importance_df: pd.DataFrame,
+        feature_importance_df: pd.DataFrame,
         features: pd.DataFrame,
         vix: pd.Series,
         spx: pd.Series,
+        horizons: List[int],
         candidate_sizes: List[int],
-        baseline_metrics: Dict,
-        verbose: bool
-    ) -> List[str]:
-        """
-        Recursively add features and find performance cliff.
-        
-        Start with top 20, add in batches, stop when:
-        1. Performance stops improving (< 0.5% gain)
-        2. Performance degrades
-        3. Reach maximum tested size
-        """
-        baseline_regime_acc = baseline_metrics['regime_metrics']['cv_balanced_accuracy_mean']
-        baseline_range_rmse = baseline_metrics['range_metrics']['cv_rmse_mean']
-        
-        best_regime_acc = 0
-        best_range_rmse = float('inf')
-        best_size = 20
-        best_features = None
-        
-        for size in sorted(candidate_sizes):
-            if size > len(importance_df):
-                continue
-            
-            if verbose:
-                print(f"\n   {'─'*60}")
-                print(f"   Testing: Top {size} features")
-                print(f"   {'─'*60}")
-            
-            # Get top N features
-            top_features = importance_df.head(size)['feature'].tolist()
-            features_filtered = features[top_features]
-            
-            # Train XGBoost
-            trainer = EnhancedXGBoostTrainer(output_dir=str(self.output_dir / f'filtered_{size}'))
-            
-            results = trainer.train(
-                features=features_filtered,
-                vix=vix,
-                spx=spx,
-                n_splits=5,
-                optimize_hyperparams=False,
-                crisis_balanced=True,
-                compute_shap=False,  # Skip SHAP for speed
-                verbose=False
-            )
-            
-            regime_acc = results['regime_metrics']['cv_balanced_accuracy_mean']
-            range_rmse = results['range_metrics']['cv_rmse_mean']
-            
-            # Calculate retention
-            regime_retention = (regime_acc / baseline_regime_acc) if baseline_regime_acc > 0 else 0
-            range_retention = (baseline_range_rmse / range_rmse) if range_rmse > 0 else 0
-            
-            # Store results
-            result = {
-                'n_features': size,
-                'regime_accuracy': regime_acc,
-                'range_rmse': range_rmse,
-                'regime_retention': regime_retention,
-                'range_retention': range_retention,
-                'regime_improvement': regime_acc - best_regime_acc,
-                'passes_threshold': (regime_retention >= 0.95 and range_retention >= 0.95)
-            }
-            
-            self.validation_results.append(result)
-            
-            if verbose:
-                print(f"      Regime Acc: {regime_acc:.3f} ({regime_retention:.1%} retention, "
-                      f"{result['regime_improvement']:+.3f} improvement)")
-                print(f"      Range RMSE: {range_rmse:.2f}% ({range_retention:.1%} retention)")
-                print(f"      Status: {'✅ PASS' if result['passes_threshold'] else '⚠️ BELOW THRESHOLD'}")
-            
-            # Check for performance cliff
-            if regime_acc > best_regime_acc:
-                best_regime_acc = regime_acc
-                best_range_rmse = range_rmse
-                best_size = size
-                best_features = top_features
-                
+        verbose: bool,
+    ) -> Tuple[List[str], int]:
+        ranked_features = feature_importance_df["feature"].tolist()
+        default_horizon = horizons[0]
+        results = []
+
+        for size in candidate_sizes:
+            if size > len(ranked_features):
                 if verbose:
-                    print(f"      🎯 New best: {size} features")
-            else:
-                # Performance not improving
-                improvement = regime_acc - best_regime_acc
-                if improvement < 0.005:  # Less than 0.5% improvement
-                    if verbose:
-                        print(f"\n   ⚠️ Performance plateau detected (<0.5% improvement)")
-                        print(f"      Stopping at {best_size} features")
-                    break
-        
+                    print(
+                        f"   Skipping size={size} (exceeds {len(ranked_features)} available features)"
+                    )
+                continue
+
+            subset_features = ranked_features[:size]
+            X_subset = features[subset_features]
+
+            if "vix_regime" in X_subset.columns:
+                X_subset = X_subset.drop(columns=["vix_regime"])
+                if verbose and size == candidate_sizes[0]:
+                    print("   WARNING: Removed vix_regime from features (data leakage)")
+
+            vix_future = vix.shift(-default_horizon)
+            vix_pct_change = (vix_future - vix) / vix
+            y = (vix_pct_change > self.expansion_threshold).astype(int)
+
+            common_idx = X_subset.index.intersection(vix.index).intersection(
+                y.dropna().index
+            )
+            X_aligned = X_subset.loc[common_idx]
+            y_aligned = y.loc[common_idx]
+
+            tscv = TimeSeriesSplit(
+                n_splits=DEFAULT_N_SPLITS, test_size=DEFAULT_TEST_SIZE
+            )
+            cv_scores = []
+
+            for train_idx, test_idx in tscv.split(X_aligned):
+                X_train, X_test = X_aligned.iloc[train_idx], X_aligned.iloc[test_idx]
+                y_train, y_test = y_aligned.iloc[train_idx], y_aligned.iloc[test_idx]
+
+                model = xgb.XGBClassifier(
+                    objective="binary:logistic",
+                    max_depth=6,
+                    learning_rate=0.05,
+                    n_estimators=300,
+                    scale_pos_weight=3,
+                    random_state=42,
+                    n_jobs=-1,
+                    verbosity=0,
+                )
+                model.fit(X_train, y_train, verbose=False)
+
+                y_pred = model.predict(X_test)
+                from sklearn.metrics import balanced_accuracy_score
+
+                acc = balanced_accuracy_score(y_test, y_pred)
+                cv_scores.append(acc)
+
+            mean_acc = np.mean(cv_scores)
+            std_acc = np.std(cv_scores)
+
+            results.append({"size": size, "accuracy": mean_acc, "std": std_acc})
+
+            if verbose:
+                print(f"   Size {size:3d}: Accuracy = {mean_acc:.4f} ± {std_acc:.4f}")
+
+        best_result = max(results, key=lambda x: x["accuracy"])
+        optimal_size = best_result["size"]
+        optimal_features = ranked_features[:optimal_size]
+
+        self.validation_results = results
+
         if verbose:
-            print(f"\n   ✅ Optimal feature set: {best_size} features")
-            print(f"      Best regime accuracy: {best_regime_acc:.3f}")
-            print(f"      Best range RMSE: {best_range_rmse:.2f}%")
-        
-        return best_features
-    
-    def _ensure_forward_indicators(
-        self,
-        selected_features: List[str],
-        all_features: pd.Index,
-        verbose: bool
+            print(f"\n   OK: Optimal size: {optimal_size} features")
+            print(
+                f"      Accuracy: {best_result['accuracy']:.4f} ± {best_result['std']:.4f}"
+            )
+
+        return optimal_features, optimal_size
+
+    def _preserve_forward_indicators(
+        self, selected_features: List[str], all_features: List[str], verbose: bool
     ) -> List[str]:
-        """
-        Force-include critical forward indicators even if not in top N.
-        
-        These features have theoretical forward-looking power and should be preserved.
-        """
-        missing_indicators = []
-        
-        for indicator in CRITICAL_FORWARD_INDICATORS:
-            if indicator in all_features and indicator not in selected_features:
-                missing_indicators.append(indicator)
-        
+        missing_indicators = [
+            f
+            for f in CRITICAL_FORWARD_INDICATORS
+            if f in all_features and f not in selected_features
+        ]
+
         if missing_indicators:
-            if verbose:
-                print(f"\n   Adding {len(missing_indicators)} critical forward indicators:")
-                for ind in missing_indicators:
-                    print(f"      + {ind}")
-            
             selected_features = selected_features + missing_indicators
-        else:
             if verbose:
-                print(f"\n   ✅ All critical forward indicators already included")
-        
+                print(
+                    f"   Adding {len(missing_indicators)} critical forward indicators:"
+                )
+                for indicator in missing_indicators:
+                    print(f"      • {indicator}")
+
         return selected_features
-    
-    def _generate_summary_report(
-        self,
-        baseline_metrics: Dict,
-        verbose: bool
-    ) -> Dict:
-        """Generate comprehensive summary report."""
-        
-        # Find best validation result
-        best_result = max(self.validation_results, key=lambda x: x['regime_accuracy'])
-        
-        baseline_regime_acc = baseline_metrics['regime_metrics']['cv_balanced_accuracy_mean']
-        baseline_range_rmse = baseline_metrics['range_metrics']['cv_rmse_mean']
-        
-        summary = {
-            'timestamp': datetime.now().isoformat(),
-            'baseline': {
-                'n_features': len(self.feature_importance_df),
-                'regime_accuracy': baseline_regime_acc,
-                'range_rmse': baseline_range_rmse,
-            },
-            'selected': {
-                'n_features': self.optimal_size,
-                'regime_accuracy': best_result['regime_accuracy'],
-                'range_rmse': best_result['range_rmse'],
-                'regime_retention': best_result['regime_retention'],
-                'range_retention': best_result['range_retention'],
-                'features': self.selected_features,
-            },
-            'reduction': {
-                'features_removed': len(self.feature_importance_df) - self.optimal_size,
-                'reduction_pct': (1 - self.optimal_size / len(self.feature_importance_df)) * 100,
-            },
-            'stability_stats': {
-                'mean_stability': float(self.stability_scores.mean()),
-                'median_stability': float(self.stability_scores.median()),
-                'high_stability_count': int((self.stability_scores > 0.7).sum()),
-            },
-            'validation_results': self.validation_results,
-        }
-        
+
+    def _save_results(self, filtered_features: pd.DataFrame, verbose: bool):
+        with open(self.output_dir / "selected_features_v2.txt", "w") as f:
+            for feat in self.selected_features:
+                f.write(f"{feat}\n")
+
+        self.feature_importance_df.to_csv(
+            self.output_dir / "feature_importance_with_stability.csv", index=False
+        )
+        self.stability_scores.to_csv(self.output_dir / "feature_stability_scores.csv")
+
         if verbose:
-            print(f"\n{'='*80}")
-            print("📊 FEATURE SELECTION SUMMARY")
-            print(f"{'='*80}")
-            print(f"Original features: {summary['baseline']['n_features']}")
-            print(f"Selected features: {summary['selected']['n_features']}")
-            print(f"Reduction: {summary['reduction']['features_removed']} features ({summary['reduction']['reduction_pct']:.1f}%)")
-            print(f"\nPerformance Retention:")
-            print(f"  Regime: {summary['selected']['regime_retention']:.1%}")
-            print(f"  Range:  {summary['selected']['range_retention']:.1%}")
-            print(f"\nStability:")
-            print(f"  Mean: {summary['stability_stats']['mean_stability']:.3f}")
-            print(f"  High stability features: {summary['stability_stats']['high_stability_count']}")
-        
-        return summary
-    
-    def _save_selection_results(self, summary: Dict):
-        """Save feature selection results."""
-        
-        # Save summary JSON
-        summary_path = self.output_dir / 'feature_selection_summary_v2.json'
-        with open(summary_path, 'w') as f:
-            json.dump(summary, f, indent=2)
-        
-        print(f"\n✅ Saved: {summary_path}")
-        
-        # Save selected features list
-        features_path = self.output_dir / 'selected_features_v2.txt'
-        with open(features_path, 'w') as f:
-            f.write('\n'.join(self.selected_features))
-        
-        print(f"✅ Saved: {features_path}")
-        
-        # Save full importance rankings with stability
-        importance_path = self.output_dir / 'feature_importance_ranked_v2.csv'
-        self.feature_importance_df.to_csv(importance_path, index=False)
-        
-        print(f"✅ Saved: {importance_path}")
-        
-        # Save stability scores
-        stability_path = self.output_dir / 'feature_stability_scores.csv'
-        self.stability_scores.to_frame('stability').to_csv(stability_path)
-        
-        print(f"✅ Saved: {stability_path}")
+            print(f"\n   OK: Saved: {self.output_dir / 'selected_features_v2.txt'}")
+            print(
+                f"   OK: Saved: {self.output_dir / 'feature_importance_with_stability.csv'}"
+            )
+            print(f"   OK: Saved: {self.output_dir / 'feature_stability_scores.csv'}")
 
+        print(f"\n{'=' * 80}")
+        print("FEATURE SELECTION COMPLETE")
+        print(f"{'=' * 80}")
+        print(f"Final feature count: {len(self.selected_features)}")
+        initial_count = len(filtered_features) + len(
+            [
+                f
+                for f in CRITICAL_FORWARD_INDICATORS
+                if f not in filtered_features["feature"].tolist()
+            ]
+        )
+        reduction_pct = (1 - len(self.selected_features) / initial_count) * 100
+        print(
+            f"Reduction: {initial_count} → {len(self.selected_features)} ({reduction_pct:.1f}% reduction)"
+        )
 
-# ===== Integration Function =====
 
 def run_intelligent_feature_selection(
     integrated_system,
-    min_stability: float = 0.3,
-    max_correlation: float = 0.95,
+    horizons: List[int] = [5],
+    min_stability: float = DEFAULT_MIN_STABILITY,
+    max_correlation: float = DEFAULT_MAX_CORRELATION,
     preserve_forward_indicators: bool = True,
-    verbose: bool = True
+    verbose: bool = True,
 ) -> Dict:
-    """
-    Run intelligent feature selection on trained IntegratedMarketSystemV4.
-    
-    Usage:
-        from integrated_system_production import IntegratedMarketSystemV4
-        from xgboost_feature_selector_v2 import run_intelligent_feature_selection
-        
-        system = IntegratedMarketSystemV4()
-        system.train(years=15)
-        
-        selection_results = run_intelligent_feature_selection(
-            system,
-            min_stability=0.3,
-            max_correlation=0.95,
-            preserve_forward_indicators=True
-        )
-        
-        selected_features = selection_results['selected_features']
-    
-    Args:
-        integrated_system: Trained IntegratedMarketSystemV4 instance
-        min_stability: Minimum stability threshold (0-1)
-        max_correlation: Maximum correlation before removing redundancy
-        preserve_forward_indicators: Force-keep critical forward indicators
-        verbose: Print detailed progress
-        
-    Returns:
-        Feature selection results dict
-    """
     if not integrated_system.trained:
-        raise ValueError("Train integrated system first: system.train(years=15)")
-    
+        raise ValueError("Train integrated system first")
+
     selector = IntelligentFeatureSelector()
-    
-    results = selector.run_full_pipeline(
+
+    return selector.run_full_pipeline(
         features=integrated_system.orchestrator.features,
         vix=integrated_system.orchestrator.vix_ml,
         spx=integrated_system.orchestrator.spx_ml,
-        candidate_sizes=None,  # Auto-detect
+        horizons=horizons,
         min_stability=min_stability,
         max_correlation=max_correlation,
         preserve_forward_indicators=preserve_forward_indicators,
-        verbose=verbose
+        verbose=verbose,
     )
-    
-    return results
-
-
-if __name__ == "__main__":
-    print("Intelligent Feature Selector V2")
-    print("\nEnhancements:")
-    print("  • Stability-based selection (importance variance across folds)")
-    print("  • Recursive feature addition (find performance cliff)")
-    print("  • Multicollinearity removal (eliminate redundancy)")
-    print("  • Forward indicator preservation (domain expertise)")
-    print("\nRun from integrated_system_production.py using:")
-    print("  results = run_intelligent_feature_selection(system)")

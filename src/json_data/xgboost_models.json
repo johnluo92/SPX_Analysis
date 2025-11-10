@@ -1,0 +1,11 @@
+{
+  "timestamp": "2025-11-09T17:03:20.462903",
+  "selected_features_count": 48,
+  "trained_horizons": [
+    5
+  ],
+  "expansion_threshold": 0.05,
+  "model_files": {
+    "5d": "./models/vix_expansion_5d.json"
+  }
+}

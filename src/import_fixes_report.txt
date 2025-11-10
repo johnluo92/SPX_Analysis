@@ -1,0 +1,23 @@
+================================================================================
+IMPORT FIXES REPORT
+Generated: 2025-11-08 12:10:35
+================================================================================
+
+Total files fixed: 1
+
+FIXED FILES:
+--------------------------------------------------------------------------------
+
+core/xgboost_feature_selector_v2.py
+  Changes: 1 lines
+
+================================================================================
+IMPORT RULES APPLIED:
+--------------------------------------------------------------------------------
+1. Core module imports: Always use 'from core.X import'
+2. Export module imports: Always use 'from export.X import'
+3. Config imports: Always use 'from config import' (absolute)
+4. XGBoost cross-references: Use full module paths
+5. No relative imports (.) in cross-module references
+
+================================================================================

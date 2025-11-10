@@ -1,9 +1,7 @@
 """Integrated Market Analysis System V4 - Refactored
 Simplified architecture with anomaly detection at the core.
-Includes XGBoost feature selection and VIX expansion forecasting.
 """
 
-import argparse
 import gc
 import json
 import os
@@ -28,8 +26,9 @@ from config import (
 from core.anomaly_detector import MultiDimensionalAnomalyDetector
 from core.data_fetcher import UnifiedDataFetcher
 from core.feature_engine import UnifiedFeatureEngine
-from core.xgboost_feature_selector_v2 import run_intelligent_feature_selection
-from core.xgboost_trainer_v2 import train_vix_expansion_model
+from core.xgboost_trainer_v2 import VIXExpansionTrainer
+
+# from export.unified_exporter import UnifiedExporter  # Not needed for feature selection
 
 try:
     import psutil
@@ -72,18 +71,22 @@ class AnomalyOrchestrator:
         if verbose:
             print("\n[Anomaly Orchestrator] Training...")
 
+        # Store data
         self.features = features
         self.vix_ml = vix
         self.spx_ml = spx
         self.vix_history_all = vix_history_all if vix_history_all is not None else vix
 
+        # Compute regime statistics
         self.regime_stats = self._compute_regime_statistics(self.vix_history_all)
 
+        # Train anomaly detector
         self.anomaly_detector = MultiDimensionalAnomalyDetector(
             contamination=0.05, random_state=RANDOM_STATE
         )
         self.anomaly_detector.train(features.fillna(0), verbose=verbose)
 
+        # Generate historical ensemble scores
         self._generate_historical_scores(verbose)
 
         self.trained = True
@@ -153,6 +156,7 @@ class AnomalyOrchestrator:
             regime_mask = (vix_series >= lower_bound) & (vix_series < upper_bound)
             regime_days = vix_series[regime_mask]
 
+            # Compute regime assignments
             vix_regimes = pd.Series(index=vix_series.index, dtype=int)
             for rid in range(len(REGIME_NAMES)):
                 lb = REGIME_BOUNDARIES[rid]
@@ -164,6 +168,7 @@ class AnomalyOrchestrator:
                 mask = (vix_series >= lb) & (vix_series < ub)
                 vix_regimes[mask] = rid
 
+            # Calculate transitions
             regime_transitions = vix_regimes[vix_regimes == regime_id]
             future_regimes_5d = vix_regimes.shift(-5)
             valid_mask = future_regimes_5d.notna()
@@ -258,6 +263,7 @@ class AnomalyOrchestrator:
         with open(filepath, "rb") as f:
             state = pickle.load(f)
 
+        # Restore anomaly detector
         self.anomaly_detector = MultiDimensionalAnomalyDetector(
             contamination=0.05, random_state=RANDOM_STATE
         )
@@ -269,6 +275,7 @@ class AnomalyOrchestrator:
         self.anomaly_detector.statistical_thresholds = state["statistical_thresholds"]
         self.anomaly_detector.trained = True
 
+        # Restore historical data
         self.vix_ml = self._dict_to_series(state["vix_history"])
         self.spx_ml = self._dict_to_series(state["spx_history"])
         self.features = self._dict_to_dataframe(
@@ -295,19 +302,23 @@ class IntegratedMarketSystemV4:
     Main system integrating:
     - Feature engineering (UnifiedFeatureEngine)
     - Anomaly detection (AnomalyOrchestrator)
-    - XGBoost feature selection and VIX expansion forecasting
     - Market state reporting
     - Memory monitoring
     """
 
     def __init__(self, cboe_data_dir: str = CBOE_DATA_DIR):
+        # Create data fetcher first
         self.data_fetcher = UnifiedDataFetcher()
+
+        # Pass the fetcher object to feature engine
         self.feature_engine = UnifiedFeatureEngine(data_fetcher=self.data_fetcher)
+
         self.orchestrator = AnomalyOrchestrator()
         self.trained = False
         self._cached_anomaly_result = None
         self._cache_timestamp = None
 
+        # Memory profiling (rest of __init__ stays the same)
         if PSUTIL_AVAILABLE:
             self.process = psutil.Process(os.getpid())
             self.baseline_memory_mb = None
@@ -321,17 +332,15 @@ class IntegratedMarketSystemV4:
         years: int = TRAINING_YEARS,
         real_time_vix: bool = True,
         verbose: bool = False,
-        enable_anomaly: bool = True,
     ):
         """Train the complete system."""
         print(f"\n{'=' * 80}\nINTEGRATED MARKET SYSTEM V4 - REFACTORED\n{'=' * 80}")
-        print(
-            f"Config: {years}y training | Real-time VIX: {real_time_vix} | Anomaly: {enable_anomaly}"
-        )
+        print(f"Config: {years}y training | Real-time VIX: {real_time_vix}")
 
         if self.memory_monitoring_enabled:
             self._log_memory_stats(context="pre-training")
 
+        # Build features
         print("\n[1/2] Building features...")
         feature_data = self.feature_engine.build_complete_features(years=years)
         features = feature_data["features"]
@@ -341,142 +350,61 @@ class IntegratedMarketSystemV4:
         if self.memory_monitoring_enabled:
             self._log_memory_stats(context="post-features")
 
-        self.orchestrator.features = features
-        self.orchestrator.vix_ml = vix
-        self.orchestrator.spx_ml = spx
+        # # === === === === === === Anomaly Training System === === === === ===
+        # # Fetch complete VIX history for regime stats
+        # print("[2/2] Training anomaly system...")
+        # vix_history_all = self.orchestrator.fetcher.fetch_yahoo(
+        #     "^VIX",
+        #     "1990-01-02",
+        #     datetime.now().strftime("%Y-%m-%d"),
+        # )["Close"].squeeze()
 
-        if enable_anomaly:
-            print("[2/2] Training anomaly system...")
-            vix_history_all = self.orchestrator.fetcher.fetch_yahoo(
-                "^VIX",
-                "1990-01-02",
-                datetime.now().strftime("%Y-%m-%d"),
-            )["Close"].squeeze()
+        # # Train orchestrator
+        # self.orchestrator.train(
+        #     features=features,
+        #     vix=vix,
+        #     spx=spx,
+        #     vix_history_all=vix_history_all,
+        #     verbose=verbose,
+        # )
 
-            self.orchestrator.train(
-                features=features,
-                vix=vix,
-                spx=spx,
-                vix_history_all=vix_history_all,
-                verbose=verbose,
-            )
+        # if self.memory_monitoring_enabled:
+        #     self._log_memory_stats(context="post-training")
 
-            if self.memory_monitoring_enabled:
-                self._log_memory_stats(context="post-training")
-
-            if real_time_vix:
-                try:
-                    live_vix = self.orchestrator.fetcher.fetch_price("^VIX")
-                    if live_vix:
-                        self.orchestrator.vix_ml.iloc[-1] = live_vix
-                        self.orchestrator.features.iloc[
-                            -1, self.orchestrator.features.columns.get_loc("vix")
-                        ] = live_vix
-                        if verbose:
-                            print(f"✅ Updated live VIX: {live_vix:.2f}")
-                except Exception as e:
-                    warnings.warn(f"Live VIX fetch failed: {e}")
-        else:
-            print("[2/2] Anomaly training skipped (enable_anomaly=False)")
+        # # Update live VIX
+        # if real_time_vix:
+        #     try:
+        #         live_vix = self.orchestrator.fetcher.fetch_price("^VIX")
+        #         if live_vix:
+        #             self.orchestrator.vix_ml.iloc[-1] = live_vix
+        #             self.orchestrator.features.iloc[
+        #                 -1, self.orchestrator.features.columns.get_loc("vix")
+        #             ] = live_vix
+        #             if verbose:
+        #                 print(f"✅ Updated live VIX: {live_vix:.2f}")
+        #     except Exception as e:
+        #         warnings.warn(f"Live VIX fetch failed: {e}")
+        # # === === === === === === Anomaly Training System === === === === ===
 
         self.trained = True
         print(f"\n{'=' * 80}\n✅ TRAINING COMPLETE\n{'=' * 80}")
-
-    def run_feature_selection(
-        self,
-        horizons: list = [5],
-        min_stability: float = 0.3,
-        max_correlation: float = 0.95,
-        preserve_forward_indicators: bool = True,
-        verbose: bool = True,
-    ) -> dict:
-        """Run XGBoost feature selection."""
-        if not self.trained:
-            raise ValueError("Must train system first")
-
-        print(f"\n{'=' * 80}\nFEATURE SELECTION\n{'=' * 80}")
-
-        selection_results = run_intelligent_feature_selection(
-            self,
-            horizons=horizons,
-            min_stability=min_stability,
-            max_correlation=max_correlation,
-            preserve_forward_indicators=preserve_forward_indicators,
-            verbose=verbose,
-        )
-
-        selected_features = selection_results["selected_features"]
-        print(f"\n✅ Selected {len(selected_features)} features")
-        print(f"   Saved to: ./models/selected_features_v2.txt")
-
-        return selection_results
-
-    def train_xgboost_models(
-        self,
-        selected_features: list,
-        horizons: list = [5],
-        optimize_hyperparams: int = 0,
-        expansion_threshold: float = 0.15,
-        crisis_balanced: bool = True,
-        compute_shap: bool = True,
-        verbose: bool = True,
-    ):
-        """Train XGBoost VIX expansion models."""
-        if not self.trained:
-            raise ValueError("Must train system first")
-
-        print(f"\n{'=' * 80}\nTRAINING VIX EXPANSION MODEL\n{'=' * 80}")
-
-        filtered_features = self.orchestrator.features[selected_features]
-        self.orchestrator.features = filtered_features
-
-        trainer = train_vix_expansion_model(
-            self,
-            horizons=horizons,
-            optimize_hyperparams=optimize_hyperparams,
-            expansion_threshold=expansion_threshold,
-            crisis_balanced=crisis_balanced,
-            compute_shap=compute_shap,
-            verbose=verbose,
-        )
-
-        print(f"\n✅ VIX expansion model training complete")
-        print(f"   Horizons trained: {trainer.trained_horizons}")
-        print(f"   Expansion threshold: {expansion_threshold:.1%}")
-        print(f"   Models saved to: ./models/")
-
-        output_dir = Path("./json_data")
-        output_dir.mkdir(exist_ok=True, parents=True)
-
-        model_metadata = {
-            "timestamp": datetime.now().isoformat(),
-            "selected_features_count": len(selected_features),
-            "trained_horizons": trainer.trained_horizons,
-            "expansion_threshold": expansion_threshold,
-            "model_files": {
-                f"{horizon}d": f"./models/vix_expansion_{horizon}d.json"
-                for horizon in trainer.trained_horizons
-            },
-        }
-
-        with open(output_dir / "xgboost_models.json", "w") as f:
-            json.dump(model_metadata, f, indent=2)
-
-        print(f"✅ Exported metadata to ./json_data/xgboost_models.json")
-
-        return trainer
 
     def get_market_state(self) -> dict:
         """Generate comprehensive market state snapshot."""
         if not self.trained:
             raise ValueError("Must train system first")
 
+        # Get current anomaly detection
         anomaly_result = self._get_cached_anomaly_result()
+
+        # Get persistence stats
         persistence_stats = self.orchestrator.get_persistence_stats()
 
+        # Current VIX and regime
         current_vix = float(self.orchestrator.vix_ml.iloc[-1])
         current_regime = self._classify_vix_regime(current_vix)
 
+        # Format anomaly analysis
         ensemble = anomaly_result["ensemble"]
         ensemble_score = ensemble["score"]
 
@@ -499,8 +427,10 @@ class IntegratedMarketSystemV4:
             ensemble["p_value"] = float(p_value)
             ensemble["confidence"] = float(confidence)
 
+        # Get top anomalies
         top_anomalies = self._get_top_anomalies_list(anomaly_result)
 
+        # Regime stats
         regime_stats = self.orchestrator.regime_stats["regimes"][current_regime["id"]]
         persistence_prob = regime_stats["transitions_5d"]["persistence"]["probability"]
         persistence_prob_clamped = max(0.01, min(0.99, persistence_prob))
@@ -631,6 +561,7 @@ class IntegratedMarketSystemV4:
 
         print(f"\n{'=' * 80}")
 
+    # Memory monitoring methods
     def _initialize_memory_baseline(self):
         if not self.memory_monitoring_enabled:
             return
@@ -699,40 +630,8 @@ class IntegratedMarketSystemV4:
 
 
 def main():
-    """Main execution function with CLI argument support."""
-    parser = argparse.ArgumentParser(description="Integrated Market Analysis System V4")
-
-    parser.add_argument(
-        "--mode",
-        choices=["anomaly", "xgboost_select", "xgboost_full"],
-        default="anomaly",
-        help="Execution mode: anomaly detection, XGBoost feature selection, or full XGBoost training",
-    )
-
-    parser.add_argument(
-        "--optimize",
-        type=int,
-        default=0,
-        metavar="N",
-        help="Number of Optuna trials for hyperparameter optimization (0=use defaults)",
-    )
-
-    parser.add_argument(
-        "--horizons",
-        type=int,
-        nargs="+",
-        default=[5],
-        help="Horizons to train (e.g., --horizons 1 3 5 10)",
-    )
-
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.15,
-        help="VIX expansion threshold (default 15%%)",
-    )
-
-    args = parser.parse_args()
+    """Main execution function."""
+    system = IntegratedMarketSystemV4()
 
     if not ENABLE_TRAINING:
         print(f"\n{'=' * 80}")
@@ -741,89 +640,44 @@ def main():
         print(f"{'=' * 80}\n")
         return
 
-    system = IntegratedMarketSystemV4()
+    # Train system
+    system.train(years=TRAINING_YEARS, real_time_vix=True, verbose=False)
+    system.print_anomaly_summary()
 
-    if args.mode == "anomaly":
-        system.train(
-            years=TRAINING_YEARS, real_time_vix=True, verbose=False, enable_anomaly=True
-        )
-        system.print_anomaly_summary()
+    # Check if crisis detection is working
 
-        anomaly_result = system._get_cached_anomaly_result()
-        if anomaly_result and system.orchestrator.anomaly_detector:
-            from export.unified_exporter import UnifiedExporter
+    # Export unified dashboard files
+    anomaly_result = system._get_cached_anomaly_result()
 
-            persistence_stats = system.orchestrator.get_persistence_stats()
-            exporter = UnifiedExporter(output_dir="./json_data")
+    if anomaly_result and system.orchestrator.anomaly_detector:
+        persistence_stats = system.orchestrator.get_persistence_stats()
 
-            exporter.export_live_state(
-                orchestrator=system.orchestrator,
-                anomaly_result=anomaly_result,
-                spx=system.orchestrator.spx_ml,
-                persistence_stats=persistence_stats,
-            )
+        exporter = UnifiedExporter(output_dir="./json_data")
 
-            exporter.export_historical_context(
-                orchestrator=system.orchestrator,
-                spx=system.orchestrator.spx_ml,
-                historical_scores=system.orchestrator.historical_ensemble_scores,
-            )
-
-            system.orchestrator.save_state("./json_data/model_cache.pkl")
-
-            print("\n✅ Exported unified dashboard files:")
-            print("   • live_state.json    (15 KB, updates every refresh)")
-            print("   • historical.json    (300 KB, static)")
-            print("   • model_cache.pkl    (15 MB, static)")
-
-    elif args.mode == "xgboost_select":
-        system.train(
-            years=TRAINING_YEARS,
-            real_time_vix=False,
-            verbose=False,
-            enable_anomaly=False,
+        # Live state (updates every refresh)
+        exporter.export_live_state(
+            orchestrator=system.orchestrator,  # Pass orchestrator as predictor
+            anomaly_result=anomaly_result,
+            spx=system.orchestrator.spx_ml,
+            persistence_stats=persistence_stats,
         )
 
-        selection_results = system.run_feature_selection(
-            horizons=args.horizons,
-            min_stability=0.3,
-            max_correlation=0.95,
-            preserve_forward_indicators=True,
-            verbose=True,
+        # Historical context (training only)
+        exporter.export_historical_context(
+            orchestrator=system.orchestrator,
+            spx=system.orchestrator.spx_ml,
+            historical_scores=system.orchestrator.historical_ensemble_scores,
         )
 
-        print(f"\n{'=' * 80}\nFEATURE SELECTION COMPLETE\n{'=' * 80}")
+        # Model cache (training only)
+        system.orchestrator.save_state("./json_data/model_cache.pkl")
 
-    elif args.mode == "xgboost_full":
-        system.train(
-            years=TRAINING_YEARS,
-            real_time_vix=False,
-            verbose=False,
-            enable_anomaly=False,
-        )
+        print("\n✅ Exported unified dashboard files:")
+        print("   • live_state.json    (15 KB, updates every refresh)")
+        print("   • historical.json    (300 KB, static)")
+        print("   • model_cache.pkl    (15 MB, static)")
 
-        selection_results = system.run_feature_selection(
-            horizons=args.horizons,
-            min_stability=0.3,
-            max_correlation=0.95,
-            preserve_forward_indicators=True,
-            verbose=True,
-        )
-
-        selected_features = selection_results["selected_features"]
-
-        system.train_xgboost_models(
-            selected_features=selected_features,
-            horizons=args.horizons,
-            optimize_hyperparams=args.optimize,
-            expansion_threshold=args.threshold,
-            crisis_balanced=True,
-            compute_shap=True,
-            verbose=True,
-        )
-
-        print(f"\n{'=' * 80}\nXGBOOST TRAINING COMPLETE\n{'=' * 80}")
-
+    # Final memory report
     if system.memory_monitoring_enabled:
         mem_report = system.get_memory_report()
         if "error" not in mem_report:

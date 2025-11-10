@@ -1,0 +1,43 @@
+{
+  "timestamp": "2025-11-09T02:50:35.368533",
+  "validation_tiers": {
+    "tier1_code_audit": {
+      "timestamp": "2025-11-09T02:50:35.368510",
+      "file": "core/feature_engine.py",
+      "total_issues": 0,
+      "issues": []
+    },
+    "tier2_cv_validation": "Run during training",
+    "tier3_publication_lags": "28 sources configured"
+  },
+  "publication_lags": {
+    "^GSPC": 0,
+    "^VIX": 0,
+    "CL=F": 0,
+    "GC=F": 0,
+    "DX-Y.NYB": 0,
+    "SKEW": 0,
+    "VIX3M": 0,
+    "VX1-VX2": 0,
+    "VX2-VX1_RATIO": 0,
+    "CL1-CL2": 0,
+    "DX1-DX2": 0,
+    "COR1M": 0,
+    "COR3M": 0,
+    "VXTH": 0,
+    "VXTLT": 0,
+    "PCCE": 0,
+    "PCCI": 0,
+    "PCC": 0,
+    "DGS1MO": 1,
+    "DGS3MO": 1,
+    "DGS6MO": 1,
+    "DGS1": 1,
+    "DGS2": 1,
+    "DGS5": 1,
+    "DGS10": 1,
+    "DGS30": 1,
+    "DTWEXBGS": 1,
+    "CPIAUCSL": 14
+  }
+}
