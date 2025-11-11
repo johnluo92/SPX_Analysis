@@ -1,4 +1,4 @@
-"""XGBoost Feature Selector V2 - VIX Expansion Forecasting"""
+"""XGBoost Feature Selector V2 - VIX % Change Forecasting (Regression)"""
 
 import warnings
 from pathlib import Path
@@ -7,14 +7,10 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import xgboost as xgb
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
 
 warnings.filterwarnings("ignore")
-
-try:
-    from core.xgboost_trainer_v2 import VIXExpansionTrainer
-except ImportError:
-    from xgboost_trainer_v2 import VIXExpansionTrainer
 
 CRITICAL_FORWARD_INDICATORS = [
     "VX1-VX2",
@@ -35,12 +31,11 @@ DEFAULT_TEST_SIZE = 252
 
 
 class IntelligentFeatureSelector:
-    """Stability-based feature selection for VIX expansion forecasting."""
+    """Stability-based feature selection for VIX % change forecasting."""
 
-    def __init__(self, output_dir: str = "./models", expansion_threshold: float = 0.15):
+    def __init__(self, output_dir: str = "./models"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True, parents=True)
-        self.expansion_threshold = expansion_threshold
         self.baseline_trainer = None
         self.feature_importance_df = None
         self.stability_scores = None
@@ -62,15 +57,13 @@ class IntelligentFeatureSelector:
     ) -> Dict:
         if verbose:
             print(f"\n{'=' * 80}")
-            print("INTELLIGENT FEATURE SELECTION - VIX EXPANSION FORECASTING")
+            print("INTELLIGENT FEATURE SELECTION - VIX % CHANGE FORECASTING")
             print(f"{'=' * 80}")
             print(f"Starting features: {len(features.columns)}")
             print(f"Horizons: {horizons}")
             print(f"Min stability: {min_stability}")
             print(f"Max correlation: {max_correlation}")
-            print(
-                f"Target: Forward VIX Expansion (threshold={self.expansion_threshold:.0%})"
-            )
+            print(f"Target: Forward VIX % Change (continuous regression)")
 
         if verbose:
             print(f"\n{'=' * 80}")
@@ -153,61 +146,30 @@ class IntelligentFeatureSelector:
 
         default_horizon = horizons[0]
         vix_future = vix.shift(-default_horizon)
-        vix_pct_change = (vix_future - vix) / vix
-        y_expansion = (vix_pct_change > self.expansion_threshold).astype(int)
+        y_pct_change = ((vix_future / vix) - 1) * 100
+        y_pct_change = y_pct_change.clip(-50, 200)
 
         common_idx = features_clean.index.intersection(vix.index).intersection(
-            y_expansion.dropna().index
+            y_pct_change.dropna().index
         )
         X = features_clean.loc[common_idx]
-        y_expansion_aligned = y_expansion.loc[common_idx]
+        y_aligned = y_pct_change.loc[common_idx]
 
         if verbose:
             print(f"   Raw data: {len(features)} rows")
             print(f"   After alignment: {len(X)} samples")
             print(f"   Date range: {X.index.min().date()} → {X.index.max().date()}")
             print(
-                f"   Target: Forward VIX Expansion ({default_horizon}-day, threshold={self.expansion_threshold:.1%})"
+                f"   Target: Forward VIX % Change ({default_horizon}-day, continuous)"
             )
-            n_no_expansion = (y_expansion_aligned == 0).sum()
-            n_expansion = (y_expansion_aligned == 1).sum()
-            print(
-                f"      Class 0 (No Expansion): {n_no_expansion} ({n_no_expansion / len(y_expansion_aligned) * 100:5.1f}%)"
-            )
-            print(
-                f"      Class 1 (Expansion): {n_expansion:4} ({n_expansion / len(y_expansion_aligned) * 100:5.1f}%)"
-            )
+            print(f"      Mean: {y_aligned.mean():.2f}%")
+            print(f"      Std: {y_aligned.std():.2f}%")
+            print(f"      Min: {y_aligned.min():.2f}%")
+            print(f"      Max: {y_aligned.max():.2f}%")
+            print(f"      Median: {y_aligned.median():.2f}%")
 
         if len(X) < 1000:
             raise ValueError(f"Only {len(X)} samples after cleaning - check your data!")
-
-        trainer = VIXExpansionTrainer(
-            output_dir=str(self.output_dir / "baseline"),
-            expansion_threshold=self.expansion_threshold,
-        )
-
-        results = trainer.train(
-            features=X,
-            vix=vix.loc[X.index],
-            spx=spx.loc[X.index],
-            horizons=horizons,
-            n_splits=5,
-            optimize_hyperparams=0,
-            crisis_balanced=True,
-            compute_shap=False,
-            verbose=False,
-        )
-
-        if verbose:
-            print("   Processing trainer results...")
-            print(f"   Results keys: {list(results.keys())}")
-
-        baseline_metrics = {}
-        if "all_results" in results:
-            first_horizon = list(results["all_results"].keys())[0]
-            baseline_metrics = results["all_results"][first_horizon]
-        else:
-            baseline_metrics = {"metrics": {"mean_accuracy": 0.5}}
 
         if verbose:
             print("   Computing per-fold feature importance for stability...")
@@ -221,14 +183,13 @@ class IntelligentFeatureSelector:
 
         for fold_idx, (train_idx, val_idx) in enumerate(tscv.split(X), 1):
             X_train = X.iloc[train_idx]
-            y_train = y_expansion_aligned.iloc[train_idx]
+            y_train = y_aligned.iloc[train_idx]
 
-            model = xgb.XGBClassifier(
-                objective="binary:logistic",
+            model = xgb.XGBRegressor(
+                objective="reg:squarederror",
                 max_depth=6,
                 learning_rate=0.03,
                 n_estimators=300,
-                scale_pos_weight=2,
                 random_state=42,
                 n_jobs=-1,
                 verbosity=0,
@@ -289,44 +250,33 @@ class IntelligentFeatureSelector:
                 stab = stability[feat]
                 print(f"      {i:2d}. {feat:40s} | Imp: {imp:.4f} | Stab: {stab:.3f}")
 
-        return trainer, baseline_metrics, stability
+        baseline_metrics = {
+            "target_mean": y_aligned.mean(),
+            "target_std": y_aligned.std(),
+        }
+
+        return None, baseline_metrics, stability
 
     def _rank_features_with_stability(
         self, stability_scores: pd.Series, min_stability: float, verbose: bool
     ) -> pd.DataFrame:
-        if (
-            not hasattr(self.baseline_trainer, "feature_importance")
-            or not self.baseline_trainer.feature_importance
-        ):
-            raise ValueError(
-                "Baseline trainer does not have feature_importance computed"
-            )
-
-        first_horizon = list(self.baseline_trainer.feature_importance.keys())[0]
-        importance_df = self.baseline_trainer.feature_importance[first_horizon].copy()
-
-        all_features = stability_scores.index.tolist()
-        feature_mapping = {}
-        for feat_name in importance_df["feature"]:
-            if feat_name.startswith("f") and feat_name[1:].isdigit():
-                idx = int(feat_name[1:])
-                if idx < len(all_features):
-                    feature_mapping[feat_name] = all_features[idx]
-            else:
-                feature_mapping[feat_name] = feat_name
-
-        importance_df["feature"] = importance_df["feature"].map(feature_mapping)
-
-        combined = importance_df.copy()
-        combined = combined.merge(
-            stability_scores.to_frame(), left_on="feature", right_index=True, how="left"
+        importance_df = pd.DataFrame(
+            {
+                "feature": stability_scores.index,
+                "importance": stability_scores.values,
+                "stability": stability_scores.values,
+            }
         )
-        combined["stability"] = combined["stability"].fillna(0)
-        combined["weighted_importance"] = combined["importance"] * combined["stability"]
-        combined = combined.sort_values("weighted_importance", ascending=False)
 
-        high_stability = combined[combined["stability"] >= min_stability]
-        top_by_importance = combined.nlargest(100, "weighted_importance")
+        importance_df["weighted_importance"] = (
+            importance_df["importance"] * importance_df["stability"]
+        )
+        importance_df = importance_df.sort_values(
+            "weighted_importance", ascending=False
+        )
+
+        high_stability = importance_df[importance_df["stability"] >= min_stability]
+        top_by_importance = importance_df.nlargest(100, "weighted_importance")
 
         combined_filtered = pd.concat(
             [high_stability, top_by_importance]
@@ -336,7 +286,7 @@ class IntelligentFeatureSelector:
         )
 
         if verbose:
-            print(f"   Total features with importance: {len(combined)}")
+            print(f"   Total features with importance: {len(importance_df)}")
             print(
                 f"   High stability (>= {min_stability}): {len(high_stability)} features"
             )
@@ -428,8 +378,8 @@ class IntelligentFeatureSelector:
                     print("   WARNING: Removed vix_regime from features (data leakage)")
 
             vix_future = vix.shift(-default_horizon)
-            vix_pct_change = (vix_future - vix) / vix
-            y = (vix_pct_change > self.expansion_threshold).astype(int)
+            y = ((vix_future / vix) - 1) * 100
+            y = y.clip(-50, 200)
 
             common_idx = X_subset.index.intersection(vix.index).intersection(
                 y.dropna().index
@@ -446,12 +396,11 @@ class IntelligentFeatureSelector:
                 X_train, X_test = X_aligned.iloc[train_idx], X_aligned.iloc[test_idx]
                 y_train, y_test = y_aligned.iloc[train_idx], y_aligned.iloc[test_idx]
 
-                model = xgb.XGBClassifier(
-                    objective="binary:logistic",
+                model = xgb.XGBRegressor(
+                    objective="reg:squarederror",
                     max_depth=6,
                     learning_rate=0.05,
                     n_estimators=300,
-                    scale_pos_weight=3,
                     random_state=42,
                     n_jobs=-1,
                     verbosity=0,
@@ -459,20 +408,18 @@ class IntelligentFeatureSelector:
                 model.fit(X_train, y_train, verbose=False)
 
                 y_pred = model.predict(X_test)
-                from sklearn.metrics import balanced_accuracy_score
+                rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+                cv_scores.append(rmse)
 
-                acc = balanced_accuracy_score(y_test, y_pred)
-                cv_scores.append(acc)
+            mean_rmse = np.mean(cv_scores)
+            std_rmse = np.std(cv_scores)
 
-            mean_acc = np.mean(cv_scores)
-            std_acc = np.std(cv_scores)
-
-            results.append({"size": size, "accuracy": mean_acc, "std": std_acc})
+            results.append({"size": size, "rmse": mean_rmse, "std": std_rmse})
 
             if verbose:
-                print(f"   Size {size:3d}: Accuracy = {mean_acc:.4f} ± {std_acc:.4f}")
+                print(f"   Size {size:3d}: RMSE = {mean_rmse:.2f}% ± {std_rmse:.2f}%")
 
-        best_result = max(results, key=lambda x: x["accuracy"])
+        best_result = min(results, key=lambda x: x["rmse"])
         optimal_size = best_result["size"]
         optimal_features = ranked_features[:optimal_size]
 
@@ -480,9 +427,7 @@ class IntelligentFeatureSelector:
 
         if verbose:
             print(f"\n   OK: Optimal size: {optimal_size} features")
-            print(
-                f"      Accuracy: {best_result['accuracy']:.4f} ± {best_result['std']:.4f}"
-            )
+            print(f"      RMSE: {best_result['rmse']:.2f}% ± {best_result['std']:.2f}%")
 
         return optimal_features, optimal_size
 

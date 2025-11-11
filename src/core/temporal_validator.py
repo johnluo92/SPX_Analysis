@@ -2,6 +2,7 @@
 Temporal Safety Validator - Prevent Look-Ahead Bias
 ====================================================
 Three-tier validation system to ensure no data leakage in training/prediction.
+Enhanced with Feature Quality Scoring for confidence models.
 """
 
 import re
@@ -13,17 +14,28 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
+# Import quality config
+from config import FEATURE_QUALITY_CONFIG, PUBLICATION_LAGS
+
 
 class TemporalSafetyValidator:
-    """Comprehensive temporal safety validation."""
+    """Comprehensive temporal safety validation with feature quality scoring."""
 
     def __init__(self, publication_lags: Dict[str, int] = None):
         """
         Args:
             publication_lags: Dict mapping data sources to publication delays (days)
         """
-        self.publication_lags = publication_lags or {}
+        self.publication_lags = publication_lags or PUBLICATION_LAGS
         self.audit_results = {}
+
+        # Track last update time per feature (for staleness detection)
+        self.last_update_timestamps = {}  # {feature_name: pd.Timestamp}
+
+        # Quality configuration
+        self.quality_config = FEATURE_QUALITY_CONFIG
+
+        print("🔍 Temporal Validator initialized with feature quality scoring")
 
     # ========================================================================
     # TIER 1: STATIC CODE AUDIT (One-time check)
@@ -496,6 +508,288 @@ class TemporalSafetyValidator:
         return results
 
     # ========================================================================
+    # FEATURE QUALITY SCORING SYSTEM
+    # ========================================================================
+
+    def compute_feature_quality(
+        self, feature_dict: dict, date: pd.Timestamp = None
+    ) -> float:
+        """
+        Compute feature quality score for a single observation.
+
+        Quality score considers:
+          1. Missingness: Are critical features present?
+          2. Staleness: How old is each feature?
+          3. Lag compliance: Does feature respect publication delay?
+
+        Args:
+            feature_dict: Dict of {feature_name: value}
+            date: Date of observation (for staleness calculation)
+
+        Returns:
+            float: Quality score [0, 1] where:
+                1.0 = Perfect data quality
+                0.8-1.0 = Good quality (minor issues)
+                0.5-0.8 = Degraded quality (proceed with caution)
+                0.3-0.5 = Poor quality (high uncertainty)
+                <0.3 = Unusable (refuse to forecast)
+        """
+        if date is None:
+            date = pd.Timestamp.now()
+
+        scores = []
+
+        # 1. Check critical features (must be present)
+        critical_features = self.quality_config["missingness_penalty"][
+            "critical_features"
+        ]
+        for feat in critical_features:
+            if feat in feature_dict:
+                if pd.isna(feature_dict[feat]) or feature_dict[feat] is None:
+                    scores.append(0.0)  # Critical missing = complete failure
+                else:
+                    scores.append(1.0)
+            else:
+                # Feature not even in dict (shouldn't happen, but handle)
+                scores.append(0.0)
+
+        # 2. Check important features (0.5 penalty if missing)
+        important_features = self.quality_config["missingness_penalty"][
+            "important_features"
+        ]
+        for feat in important_features:
+            if feat in feature_dict:
+                if pd.isna(feature_dict[feat]) or feature_dict[feat] is None:
+                    scores.append(0.5)  # Important missing = degraded
+                else:
+                    # Check staleness
+                    staleness_score = self._compute_staleness_score(feat, date)
+                    scores.append(staleness_score)
+            else:
+                scores.append(0.5)
+
+        # 3. Check optional features (0.9 penalty if missing)
+        optional_features = self.quality_config["missingness_penalty"][
+            "optional_features"
+        ]
+        for feat in optional_features:
+            if feat in feature_dict:
+                if pd.isna(feature_dict[feat]) or feature_dict[feat] is None:
+                    scores.append(0.9)  # Optional missing = minor impact
+                else:
+                    staleness_score = self._compute_staleness_score(feat, date)
+                    scores.append(staleness_score)
+            else:
+                scores.append(0.9)
+
+        # Average all component scores
+        if len(scores) == 0:
+            return 1.0  # No tracked features = assume good quality
+
+        quality_score = np.mean(scores)
+
+        # Clip to [0, 1] range
+        quality_score = np.clip(quality_score, 0.0, 1.0)
+
+        return quality_score
+
+    def _compute_staleness_score(self, feature_name: str, date: pd.Timestamp) -> float:
+        """
+        Score feature freshness based on time since last update.
+
+        Args:
+            feature_name: Name of feature
+            date: Current date
+
+        Returns:
+            float: Staleness score [0, 1] where:
+                1.0 = Fresh (updated recently)
+                0.5 = Stale (beyond typical update frequency)
+                0.2 = Very stale (ancient data)
+        """
+        # Check if we have last update timestamp
+        if feature_name not in self.last_update_timestamps:
+            # No tracking data - assume fresh for now
+            return 1.0
+
+        last_update = self.last_update_timestamps[feature_name]
+        days_stale = (date - last_update).days
+
+        # Get expected lag for this feature
+        expected_lag = self.publication_lags.get(feature_name, 1)  # Default 1 day
+
+        # Score based on staleness relative to expected lag
+        staleness_config = self.quality_config["staleness_penalty"]
+
+        if days_stale <= expected_lag:
+            return staleness_config["none"]  # 1.0
+        elif days_stale <= expected_lag + 3:
+            return staleness_config["minor"]  # 0.95
+        elif days_stale <= expected_lag + 7:
+            return staleness_config["moderate"]  # 0.80
+        elif days_stale <= expected_lag + 14:
+            return staleness_config["severe"]  # 0.50
+        else:
+            return staleness_config["critical"]  # 0.20
+
+    def compute_feature_quality_batch(self, df: pd.DataFrame) -> pd.Series:
+        """
+        Compute quality scores for entire DataFrame (vectorized).
+
+        More efficient than calling compute_feature_quality() row-by-row.
+
+        Args:
+            df: DataFrame with features
+
+        Returns:
+            pd.Series: Quality scores indexed by date
+        """
+        quality_scores = []
+
+        for date, row in df.iterrows():
+            feature_dict = row.to_dict()
+            quality = self.compute_feature_quality(feature_dict, date)
+            quality_scores.append(quality)
+
+        return pd.Series(quality_scores, index=df.index)
+
+    def update_feature_timestamp(
+        self, feature_name: str, timestamp: pd.Timestamp = None
+    ):
+        """
+        Record when a feature was last updated.
+
+        Called by data_fetcher after successful fetch.
+
+        Args:
+            feature_name: Name of feature
+            timestamp: Update time (defaults to now)
+        """
+        if timestamp is None:
+            timestamp = pd.Timestamp.now()
+
+        self.last_update_timestamps[feature_name] = timestamp
+
+    def get_feature_age(
+        self, feature_name: str, current_date: pd.Timestamp = None
+    ) -> int:
+        """
+        Get days since feature was last updated.
+
+        Args:
+            feature_name: Name of feature
+            current_date: Reference date (defaults to now)
+
+        Returns:
+            int: Days since last update (or 0 if never tracked)
+        """
+        if current_date is None:
+            current_date = pd.Timestamp.now()
+
+        if feature_name not in self.last_update_timestamps:
+            return 0  # Unknown age
+
+        last_update = self.last_update_timestamps[feature_name]
+        return (current_date - last_update).days
+
+    def check_quality_threshold(
+        self, quality_score: float, strict: bool = False
+    ) -> tuple:
+        """
+        Check if quality score meets minimum threshold for forecasting.
+
+        Args:
+            quality_score: Quality score [0, 1]
+            strict: If True, use higher threshold
+
+        Returns:
+            tuple: (usable: bool, warning_message: str)
+        """
+        thresholds = self.quality_config["quality_thresholds"]
+
+        min_threshold = thresholds["acceptable"] if not strict else thresholds["good"]
+
+        if quality_score >= thresholds["excellent"]:
+            return (True, "Excellent data quality")
+        elif quality_score >= thresholds["good"]:
+            return (True, "Good data quality")
+        elif quality_score >= min_threshold:
+            return (True, "Acceptable data quality (degraded forecast)")
+        elif quality_score >= thresholds["poor"]:
+            return (False, "Poor data quality - critical features missing or stale")
+        else:
+            return (False, "Unusable data quality - refuse to forecast")
+
+    def get_quality_report(self, feature_dict: dict, date: pd.Timestamp = None) -> dict:
+        """
+        Generate detailed quality report for diagnostics.
+
+        Returns breakdown of which features are causing quality issues.
+
+        Args:
+            feature_dict: Features to analyze
+            date: Date of observation
+
+        Returns:
+            dict: Detailed report with component scores
+        """
+        if date is None:
+            date = pd.Timestamp.now()
+
+        report = {
+            "overall_quality": self.compute_feature_quality(feature_dict, date),
+            "date": str(date),
+            "critical_features": {},
+            "important_features": {},
+            "optional_features": {},
+            "issues": [],
+        }
+
+        # Check critical features
+        for feat in self.quality_config["missingness_penalty"]["critical_features"]:
+            if feat in feature_dict:
+                is_missing = pd.isna(feature_dict[feat]) or feature_dict[feat] is None
+                age = self.get_feature_age(feat, date)
+                report["critical_features"][feat] = {
+                    "present": not is_missing,
+                    "age_days": age,
+                    "expected_lag": self.publication_lags.get(feat, 1),
+                }
+                if is_missing:
+                    report["issues"].append(f"CRITICAL: {feat} is missing")
+            else:
+                report["critical_features"][feat] = {"present": False}
+                report["issues"].append(f"CRITICAL: {feat} not in feature set")
+
+        # Check important features
+        for feat in self.quality_config["missingness_penalty"]["important_features"]:
+            if feat in feature_dict:
+                is_missing = pd.isna(feature_dict[feat]) or feature_dict[feat] is None
+                age = self.get_feature_age(feat, date)
+                report["important_features"][feat] = {
+                    "present": not is_missing,
+                    "age_days": age,
+                    "expected_lag": self.publication_lags.get(feat, 1),
+                }
+                if is_missing:
+                    report["issues"].append(f"Important: {feat} is missing")
+                elif age > self.publication_lags.get(feat, 1) + 7:
+                    report["issues"].append(f"Important: {feat} is stale ({age} days)")
+
+        # Check optional features (summary only)
+        optional_count = len(
+            self.quality_config["missingness_penalty"]["optional_features"]
+        )
+        optional_present = sum(
+            1
+            for feat in self.quality_config["missingness_penalty"]["optional_features"]
+            if feat in feature_dict and not pd.isna(feature_dict.get(feat))
+        )
+        report["optional_features"]["coverage"] = f"{optional_present}/{optional_count}"
+
+        return report
+
+    # ========================================================================
     # HELPER METHODS
     # ========================================================================
 
@@ -546,6 +840,11 @@ class TemporalSafetyValidator:
                 "tier4_walk_forward_gap": "Automated test available via test_feature_availability_at_prediction_time()",
             },
             "publication_lags": self.publication_lags,
+            "feature_quality": {
+                "enabled": True,
+                "tracked_features": len(self.last_update_timestamps),
+                "quality_thresholds": self.quality_config["quality_thresholds"],
+            },
         }
 
         # Add metadata check if requested

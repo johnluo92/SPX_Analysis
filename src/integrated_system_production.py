@@ -1,6 +1,6 @@
-"""Integrated Market Analysis System V4 - Refactored
-Simplified architecture with anomaly detection at the core.
-Includes XGBoost feature selection and VIX expansion forecasting.
+"""Integrated Market Analysis System V5 - Probabilistic Forecasting
+Upgraded architecture with probabilistic distribution forecasting.
+Anomaly detection preserved but probabilistic forecasting is primary focus.
 """
 
 import argparse
@@ -8,6 +8,8 @@ import gc
 import json
 import os
 import pickle
+import subprocess
+import uuid
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -18,18 +20,28 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 from config import (
+    CALENDAR_COHORTS,
     CBOE_DATA_DIR,
     ENABLE_TRAINING,
+    FEATURE_QUALITY_CONFIG,
+    PREDICTION_DB_CONFIG,
     RANDOM_STATE,
     REGIME_BOUNDARIES,
     REGIME_NAMES,
+    TARGET_CONFIG,
     TRAINING_YEARS,
 )
 from core.anomaly_detector import MultiDimensionalAnomalyDetector
 from core.data_fetcher import UnifiedDataFetcher
 from core.feature_engine import UnifiedFeatureEngine
+from core.forecast_calibrator import ForecastCalibrator
+from core.prediction_database import PredictionDatabase
+from core.temporal_validator import TemporalSafetyValidator as TemporalValidator
 from core.xgboost_feature_selector_v2 import run_intelligent_feature_selection
-from core.xgboost_trainer_v2 import train_vix_expansion_model
+from core.xgboost_trainer_v2 import (
+    ProbabilisticVIXForecaster,
+    train_probabilistic_forecaster,
+)
 
 try:
     import psutil
@@ -38,10 +50,15 @@ try:
 except ImportError:
     PSUTIL_AVAILABLE = False
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class AnomalyOrchestrator:
     """
-    Orchestrates anomaly detection workflow:
+    Orchestrates anomaly detection workflow (preserved for backward compatibility).
     1. Manages VIX/SPX history
     2. Maintains regime statistics
     3. Coordinates anomaly detector
@@ -290,24 +307,62 @@ class AnomalyOrchestrator:
         return pd.DataFrame(data, index=dates)
 
 
-class IntegratedMarketSystemV4:
+class IntegratedSystem:
     """
-    Main system integrating:
-    - Feature engineering (UnifiedFeatureEngine)
-    - Anomaly detection (AnomalyOrchestrator)
-    - XGBoost feature selection and VIX expansion forecasting
-    - Market state reporting
-    - Memory monitoring
+    Main system integrating probabilistic forecasting with anomaly detection.
+
+    Components:
+      - Feature Engine: Generate 232 features with calendar cohorts
+      - Probabilistic Forecaster: Multi-output distribution model
+      - Prediction Database: Store forecasts for backtesting
+      - Anomaly Detector: Identify market regime anomalies (parallel)
+      - Temporal Validator: Check data quality
+
+    Example:
+        >>> system = IntegratedSystem()
+        >>> distribution = system.generate_forecast()
+        >>> print(distribution['point_estimate'])  # 8.5% expected VIX change
     """
 
-    def __init__(self, cboe_data_dir: str = CBOE_DATA_DIR):
+    def __init__(self, models_dir="models"):
+        """
+        Initialize integrated system.
+
+        Args:
+            models_dir: Directory containing trained models
+        """
+        logger.info("=" * 80)
+        logger.info("INTEGRATED PROBABILISTIC FORECASTING SYSTEM V5")
+        logger.info("=" * 80)
+
+        # Core components
         self.data_fetcher = UnifiedDataFetcher()
         self.feature_engine = UnifiedFeatureEngine(data_fetcher=self.data_fetcher)
+        self.forecaster = ProbabilisticVIXForecaster()
+        self.validator = TemporalValidator()
+        self.prediction_db = PredictionDatabase()
+
+        # Anomaly detector (runs independently)
         self.orchestrator = AnomalyOrchestrator()
+
+        # Load trained models
+        self.models_dir = Path(models_dir)
+        self._load_models()
+        # Load calibrator (if available)
+        self.calibrator = ForecastCalibrator.load()
+        if self.calibrator:
+            logger.info("📊 Forecast calibrator loaded")
+        else:
+            logger.info("ℹ️  No calibrator found - forecasts will not be calibrated")
+
+        # State tracking
+        self.last_forecast = None
+        self.forecast_history = []
         self.trained = False
         self._cached_anomaly_result = None
         self._cache_timestamp = None
 
+        # Memory monitoring
         if PSUTIL_AVAILABLE:
             self.process = psutil.Process(os.getpid())
             self.baseline_memory_mb = None
@@ -316,15 +371,311 @@ class IntegratedMarketSystemV4:
         else:
             self.memory_monitoring_enabled = False
 
+        logger.info("✅ System initialized")
+
+    def _load_models(self):
+        """Load all trained cohort models."""
+        logger.info("📂 Loading trained models...")
+
+        model_files = list(self.models_dir.glob("probabilistic_forecaster_*.pkl"))
+
+        if len(model_files) == 0:
+            logger.warning("⚠️ No trained models found. Run training first.")
+            return
+
+        for model_file in model_files:
+            cohort = model_file.stem.replace("probabilistic_forecaster_", "")
+            self.forecaster.load(cohort, self.models_dir)
+            logger.info(f"   ✅ Loaded: {cohort}")
+
+        logger.info(f"📊 Total cohorts loaded: {len(self.forecaster.models)}")
+
+    def _log_forecast_summary(self, distribution):
+        """Log human-readable forecast summary."""
+        logger.info("\n📊 FORECAST SUMMARY")
+        logger.info("─" * 60)
+
+        # Point estimate
+        point = distribution["point_estimate"]
+        logger.info(f"Point Estimate:     {point:+.1f}%")
+
+        # Quantiles
+        quantiles = distribution["quantiles"]
+        logger.info(f"Distribution:")
+        logger.info(f"   10th percentile: {quantiles['q10']:+.1f}%")
+        logger.info(f"   25th percentile: {quantiles['q25']:+.1f}%")
+        logger.info(f"   Median (50th):   {quantiles['q50']:+.1f}%")
+        logger.info(f"   75th percentile: {quantiles['q75']:+.1f}%")
+        logger.info(f"   90th percentile: {quantiles['q90']:+.1f}%")
+
+        # Regimes
+        regimes = distribution["regime_probabilities"]
+        logger.info(f"Regime Probabilities:")
+        for regime, prob in regimes.items():
+            logger.info(f"   {regime.capitalize():10s}: {prob * 100:5.1f}%")
+
+        # Confidence
+        conf = distribution["confidence_score"]
+        logger.info(f"Confidence Score:   {conf:.2f}")
+
+        # Interpretation
+        current_vix = distribution["metadata"]["current_vix"]
+        expected_vix = current_vix * (1 + point / 100)
+        logger.info(f"\nInterpretation:")
+        logger.info(f"   Current VIX: {current_vix:.2f}")
+        logger.info(
+            f"   Expected VIX in {TARGET_CONFIG['horizon_days']} days: {expected_vix:.2f}"
+        )
+        logger.info(
+            f"   90% confidence range: [{current_vix * (1 + quantiles['q10'] / 100):.2f}, {current_vix * (1 + quantiles['q90'] / 100):.2f}]"
+        )
+
+    def _store_prediction(self, distribution, observation):
+        """
+        Store prediction in database for backtesting.
+
+        Args:
+            distribution: Forecast distribution object
+            observation: Original feature row
+
+        Returns:
+            str: prediction_id (UUID)
+        """
+        prediction_id = str(uuid.uuid4())
+
+        # Extract features used (for provenance)
+        features_used = {
+            feat: float(observation[feat]) for feat in self.forecaster.feature_names
+        }
+
+        # Build database record
+        record = {
+            "prediction_id": prediction_id,
+            "timestamp": pd.Timestamp.now(),
+            "forecast_date": pd.Timestamp(distribution["metadata"]["forecast_date"]),
+            "horizon": TARGET_CONFIG["horizon_days"],
+            # Context
+            "calendar_cohort": distribution["cohort"],
+            "cohort_weight": distribution["metadata"]["cohort_weight"],
+            # Predictions
+            "point_estimate": distribution["point_estimate"],
+            "q10": distribution["quantiles"]["q10"],
+            "q25": distribution["quantiles"]["q25"],
+            "q50": distribution["quantiles"]["q50"],
+            "q75": distribution["quantiles"]["q75"],
+            "q90": distribution["quantiles"]["q90"],
+            "prob_low": distribution["regime_probabilities"]["low"],
+            "prob_normal": distribution["regime_probabilities"]["normal"],
+            "prob_elevated": distribution["regime_probabilities"]["elevated"],
+            "prob_crisis": distribution["regime_probabilities"]["crisis"],
+            "confidence_score": distribution["confidence_score"],
+            # Metadata
+            "feature_quality": distribution["metadata"]["feature_quality"],
+            "num_features_used": distribution["metadata"]["features_used"],
+            "current_vix": distribution["metadata"]["current_vix"],
+            # Provenance
+            "features_used": json.dumps(features_used),
+            "model_version": self._get_model_version(),
+        }
+
+        # Store in database
+        self.prediction_db.store_prediction(record)
+
+        return prediction_id
+
+    def _get_model_version(self):
+        """Get current model version (git hash or timestamp)."""
+        try:
+            git_hash = (
+                subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+                .decode()
+                .strip()
+            )
+            return f"git-{git_hash}"
+        except:
+            return f"v{pd.Timestamp.now().strftime('%Y%m%d')}"
+
+    def generate_forecast(self, date=None, store_prediction=True):
+        """
+        Generate probabilistic VIX forecast for given date.
+
+        **FIXED VERSION** - Handles object dtype bug in feature extraction.
+        """
+        logger.info("\n" + "=" * 80)
+        logger.info("GENERATING PROBABILISTIC FORECAST")
+        logger.info("=" * 80)
+
+        # 1. Build features
+        logger.info("🔧 Building features...")
+        feature_data = self.feature_engine.build_complete_features(years=15)
+        df = feature_data["features"]
+
+        # **FIX 1: Force numeric dtypes immediately after loading**
+        metadata_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
+        for col in df.columns:
+            if col not in metadata_cols and df[col].dtype == object:
+                logger.warning(f"⚠️  Converting object column to numeric: {col}")
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+        # Verify no object columns remain (except metadata)
+        object_cols = df.select_dtypes(include=["object"]).columns.tolist()
+        unexpected = [c for c in object_cols if c not in metadata_cols]
+        if unexpected:
+            logger.error(f"❌ Unexpected object columns: {unexpected[:5]}")
+            raise ValueError(
+                f"DataFrame contains {len(unexpected)} non-numeric columns"
+            )
+
+        logger.info(f"✅ Features validated: {df.shape}, dtypes OK")
+
+        # 2. Select observation date
+        if date is None:
+            date = df.index[-1]
+            logger.info(f"📅 Using latest date: {date.strftime('%Y-%m-%d')}")
+        else:
+            date = pd.Timestamp(date)
+            logger.info(f"📅 Forecast date: {date.strftime('%Y-%m-%d')}")
+
+        if date not in df.index:
+            raise ValueError(f"Date {date} not in feature data")
+
+        observation = df.loc[date]
+
+        # 3. Check data quality
+        logger.info("🔍 Checking data quality...")
+        feature_dict = observation.to_dict()
+        quality_score = self.validator.compute_feature_quality(feature_dict, date)
+        usable, quality_msg = self.validator.check_quality_threshold(quality_score)
+
+        logger.info(f"   Quality Score: {quality_score:.2f}")
+        logger.info(f"   Status: {quality_msg}")
+
+        if not usable:
+            report = self.validator.get_quality_report(feature_dict, date)
+            logger.error("❌ Data quality insufficient:")
+            for issue in report["issues"]:
+                logger.error(f"   • {issue}")
+            raise ValueError(f"Cannot forecast: {quality_msg}")
+
+        # 4. Get calendar cohort
+        cohort = observation.get("calendar_cohort", "mid_cycle")
+        cohort_weight = observation.get("cohort_weight", 1.0)
+        logger.info(f"📅 Calendar Cohort: {cohort} (weight: {cohort_weight:.2f})")
+
+        # 5. Check if cohort model exists
+        if cohort not in self.forecaster.models:
+            logger.warning(f"⚠️  Cohort {cohort} not trained, falling back to mid_cycle")
+            cohort = "mid_cycle"
+
+            if cohort not in self.forecaster.models:
+                raise ValueError("No trained models available. Run training first.")
+
+        # 6. Prepare features for prediction
+        logger.info("🎯 Preparing features for prediction...")
+
+        # **FIX 2: Robust feature extraction with explicit dtype handling**
+        feature_values = observation[self.forecaster.feature_names]
+
+        # Convert to numeric array (this handles any lingering string values)
+        feature_array = pd.to_numeric(feature_values, errors="coerce").values
+
+        # Create DataFrame with explicit float64 dtype
+        X_df = pd.DataFrame(
+            feature_array.reshape(1, -1),
+            columns=self.forecaster.feature_names,
+            dtype=np.float64,
+        )
+
+        # Fill any NaNs with 0 (consistent with training)
+        X_df = X_df.fillna(0.0)
+
+        # **FIX 3: Validation before prediction**
+        non_numeric = X_df.select_dtypes(include=["object"]).columns.tolist()
+        if non_numeric:
+            logger.error(f"❌ Non-numeric columns detected: {non_numeric}")
+            logger.error(f"   Sample values: {X_df[non_numeric].iloc[0].to_dict()}")
+            raise ValueError(
+                f"Feature DataFrame contains {len(non_numeric)} object columns"
+            )
+
+        logger.info(
+            f"✅ Features prepared: shape={X_df.shape}, dtype={X_df.dtypes.unique()[0]}"
+        )
+
+        # 7. Generate distribution
+        logger.info("🎯 Generating probabilistic forecast...")
+
+        try:
+            distribution = self.forecaster.predict(X_df, cohort)
+        except Exception as e:
+            logger.error(f"❌ Prediction failed: {e}")
+            logger.error(f"   X_df dtypes: {X_df.dtypes.value_counts().to_dict()}")
+            logger.error(f"   X_df shape: {X_df.shape}")
+            logger.error(f"   Sample values: {X_df.iloc[0, :5].to_dict()}")
+            raise
+
+        # 7.5 Apply calibration if available
+        if self.calibrator:
+            distribution = self.calibrator.calibrate(distribution)
+            logger.info("🎯 Applied forecast calibration")
+
+        # Adjust confidence by cohort weight
+        distribution["confidence_score"] *= 2 - cohort_weight
+        distribution["confidence_score"] = np.clip(
+            distribution["confidence_score"], 0, 1
+        )
+
+        # 8. Add metadata
+        forecast_date = date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+        distribution["metadata"] = {
+            "observation_date": date.strftime("%Y-%m-%d"),
+            "forecast_date": forecast_date.strftime("%Y-%m-%d"),
+            "horizon_days": TARGET_CONFIG["horizon_days"],
+            "feature_quality": float(quality_score),
+            "cohort_weight": float(cohort_weight),
+            "current_vix": float(observation["vix"]),
+            "features_used": len(self.forecaster.feature_names),
+        }
+
+        # 9. Log forecast summary
+        self._log_forecast_summary(distribution)
+
+        # 10. Store in database
+        if store_prediction:
+            prediction_id = self._store_prediction(distribution, observation)
+            distribution["prediction_id"] = prediction_id
+            logger.info(f"💾 Stored prediction: {prediction_id}")
+
+        # 11. Update state
+        self.last_forecast = distribution
+        self.forecast_history.append({"date": date, "distribution": distribution})
+
+        logger.info("=" * 80)
+        logger.info("✅ FORECAST COMPLETE")
+        logger.info("=" * 80)
+
+        return distribution
+
+    def run(self, date=None):
+        """
+        Legacy method - redirects to generate_forecast().
+
+        Kept for backward compatibility with existing scripts.
+        """
+        logger.warning("⚠️ run() is deprecated, use generate_forecast()")
+        return self.generate_forecast(date)
+
     def train(
         self,
         years: int = TRAINING_YEARS,
         real_time_vix: bool = True,
         verbose: bool = False,
-        enable_anomaly: bool = True,
+        enable_anomaly: bool = False,
     ):
-        """Train the complete system."""
-        print(f"\n{'=' * 80}\nINTEGRATED MARKET SYSTEM V4 - REFACTORED\n{'=' * 80}")
+        """Train the complete system (backward compatible with anomaly system)."""
+        print(
+            f"\n{'=' * 80}\nINTEGRATED SYSTEM V5 - PROBABILISTIC FORECASTING\n{'=' * 80}"
+        )
         print(
             f"Config: {years}y training | Real-time VIX: {real_time_vix} | Anomaly: {enable_anomaly}"
         )
@@ -411,63 +762,8 @@ class IntegratedMarketSystemV4:
 
         return selection_results
 
-    def train_xgboost_models(
-        self,
-        selected_features: list,
-        horizons: list = [5],
-        optimize_hyperparams: int = 0,
-        expansion_threshold: float = 0.15,
-        crisis_balanced: bool = True,
-        compute_shap: bool = True,
-        verbose: bool = True,
-    ):
-        """Train XGBoost VIX expansion models."""
-        if not self.trained:
-            raise ValueError("Must train system first")
-
-        print(f"\n{'=' * 80}\nTRAINING VIX EXPANSION MODEL\n{'=' * 80}")
-
-        filtered_features = self.orchestrator.features[selected_features]
-        self.orchestrator.features = filtered_features
-
-        trainer = train_vix_expansion_model(
-            self,
-            horizons=horizons,
-            optimize_hyperparams=optimize_hyperparams,
-            expansion_threshold=expansion_threshold,
-            crisis_balanced=crisis_balanced,
-            compute_shap=compute_shap,
-            verbose=verbose,
-        )
-
-        print(f"\n✅ VIX expansion model training complete")
-        print(f"   Horizons trained: {trainer.trained_horizons}")
-        print(f"   Expansion threshold: {expansion_threshold:.1%}")
-        print(f"   Models saved to: ./models/")
-
-        output_dir = Path("./json_data")
-        output_dir.mkdir(exist_ok=True, parents=True)
-
-        model_metadata = {
-            "timestamp": datetime.now().isoformat(),
-            "selected_features_count": len(selected_features),
-            "trained_horizons": trainer.trained_horizons,
-            "expansion_threshold": expansion_threshold,
-            "model_files": {
-                f"{horizon}d": f"./models/vix_expansion_{horizon}d.json"
-                for horizon in trainer.trained_horizons
-            },
-        }
-
-        with open(output_dir / "xgboost_models.json", "w") as f:
-            json.dump(model_metadata, f, indent=2)
-
-        print(f"✅ Exported metadata to ./json_data/xgboost_models.json")
-
-        return trainer
-
     def get_market_state(self) -> dict:
-        """Generate comprehensive market state snapshot."""
+        """Generate comprehensive market state snapshot (legacy anomaly method)."""
         if not self.trained:
             raise ValueError("Must train system first")
 
@@ -697,39 +993,115 @@ class IntegratedMarketSystemV4:
         except Exception as e:
             return {"error": str(e)}
 
+    def train_probabilistic_models(
+        self, years: int = TRAINING_YEARS, save_dir: str = "models"
+    ):
+        """
+        Train probabilistic forecasting models.
+
+        This is separate from the legacy anomaly training.
+
+        Args:
+            years: Training window in years
+            save_dir: Where to save trained models
+
+        Returns:
+            Dict of training metrics per cohort
+        """
+        logger.info("=" * 80)
+        logger.info("TRAINING PROBABILISTIC FORECASTING MODELS")
+        logger.info("=" * 80)
+
+        # Build features
+        logger.info("\n[1/2] Building features...")
+        feature_data = self.feature_engine.build_complete_features(years=years)
+        df = feature_data["features"]
+
+        logger.info(f"✅ Features: {df.shape}")
+        logger.info(f"   Date range: {df.index[0].date()} to {df.index[-1].date()}")
+
+        # Validate required columns
+        required = ["vix", "calendar_cohort", "cohort_weight", "feature_quality"]
+        missing = [col for col in required if col not in df.columns]
+
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
+
+        # Train models
+        logger.info("\n[2/2] Training models per cohort...")
+        self.forecaster = ProbabilisticVIXForecaster()
+        metrics = self.forecaster.train(df, save_dir=save_dir)
+
+        logger.info("\n" + "=" * 80)
+        logger.info("✅ PROBABILISTIC TRAINING COMPLETE")
+        logger.info("=" * 80)
+        logger.info(f"Cohorts trained: {len(self.forecaster.models)}")
+        logger.info(f"Models saved to: {Path(save_dir).absolute()}")
+
+        # Reload models to verify
+        self._load_models()
+
+        return metrics
+
+    def generate_forecast_batch(
+        self, start_date: str, end_date: str, frequency: str = "daily"
+    ):
+        """Generate forecasts for date range and store in database."""
+        logger.info(f"\n{'=' * 80}")
+        logger.info(f"BATCH FORECASTING: {start_date} to {end_date}")
+        logger.info(f"{'=' * 80}")
+
+        # Build features once
+        feature_data = self.feature_engine.build_complete_features(years=15)
+        df = feature_data["features"]
+
+        # Filter to date range
+        start = pd.Timestamp(start_date)
+        end = pd.Timestamp(end_date)
+        date_range = df[(df.index >= start) & (df.index <= end)].index
+
+        forecasts = []
+        for date in date_range:
+            try:
+                # Generate forecast (already stores in DB via generate_forecast)
+                distribution = self.generate_forecast(date=date, store_prediction=True)
+                forecasts.append(distribution)
+
+                if len(forecasts) % 50 == 0:
+                    logger.info(
+                        f"   Progress: {len(forecasts)}/{len(date_range)} forecasts"
+                    )
+            except Exception as e:
+                logger.warning(f"   Failed {date.date()}: {e}")
+                continue
+
+        logger.info(f"✅ Generated {len(forecasts)} forecasts")
+        return forecasts
+
 
 def main():
     """Main execution function with CLI argument support."""
-    parser = argparse.ArgumentParser(description="Integrated Market Analysis System V4")
+    parser = argparse.ArgumentParser(description="Integrated Market Analysis System V5")
 
     parser.add_argument(
         "--mode",
-        choices=["anomaly", "xgboost_select", "xgboost_full"],
-        default="anomaly",
-        help="Execution mode: anomaly detection, XGBoost feature selection, or full XGBoost training",
+        choices=["forecast", "batch", "anomaly"],  # Only keep working modes
+        default="forecast",
+        help="Execution mode: single forecast, batch backtest, or anomaly detection",
     )
 
     parser.add_argument(
-        "--optimize",
-        type=int,
-        default=0,
-        metavar="N",
-        help="Number of Optuna trials for hyperparameter optimization (0=use defaults)",
+        "--start-date",
+        type=str,
+        default=None,
+        help="Start date for batch forecasting (YYYY-MM-DD)",
     )
 
     parser.add_argument(
-        "--horizons",
-        type=int,
-        nargs="+",
-        default=[5],
-        help="Horizons to train (e.g., --horizons 1 3 5 10)",
-    )
-
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.15,
-        help="VIX expansion threshold (default 15%%)",
+        "--end-date",
+        type=str,
+        default=None,
+        help="End date for batch forecasting (YYYY-MM-DD)",
     )
 
     args = parser.parse_args()
@@ -741,9 +1113,124 @@ def main():
         print(f"{'=' * 80}\n")
         return
 
-    system = IntegratedMarketSystemV4()
+    system = IntegratedSystem()
 
-    if args.mode == "anomaly":
+    if args.mode == "train":
+        logger.info("🎯 MODE: Train probabilistic models")
+
+        try:
+            metrics = system.train_probabilistic_models(
+                years=args.years, save_dir="models"
+            )
+
+            print(f"\n{'=' * 80}")
+            print("✅ TRAINING SUCCESSFUL")
+            print(f"{'=' * 80}")
+            print(f"Cohorts trained: {len(metrics)}")
+            print(f"\nRun forecasting with:")
+            print(f"  python integrated_system_production.py --mode forecast")
+            print(f"{'=' * 80}\n")
+
+        except Exception as e:
+            logger.error(f"❌ Training failed: {e}", exc_info=True)
+            return
+
+    if args.mode == "forecast":
+        # Generate single probabilistic forecast
+        try:
+            distribution = system.generate_forecast()
+
+            print(f"\n{'=' * 80}")
+            print("PROBABILISTIC FORECAST GENERATED")
+            print(f"{'=' * 80}")
+            print(f"\nPoint Estimate: {distribution['point_estimate']:+.1f}%")
+            print(f"Confidence: {distribution['confidence_score']:.2f}")
+            print(f"Cohort: {distribution['cohort']}")
+            print(f"\nFull distribution saved to database")
+            print(f"{'=' * 80}\n")
+
+        except ValueError as e:
+            print(f"\n❌ Forecast failed: {e}\n")
+
+    elif args.mode == "batch":
+        # Batch backtesting
+        if not args.start_date or not args.end_date:
+            print("❌ Error: --start-date and --end-date required for batch mode")
+            return
+
+        forecasts = system.generate_forecast_batch(
+            args.start_date, args.end_date, frequency="daily"
+        )
+
+        print(f"\n{'=' * 80}")
+        print(f"BATCH FORECASTING COMPLETE")
+        print(f"{'=' * 80}")
+        print(f"Generated {len(forecasts)} forecasts")
+        print(f"Period: {args.start_date} to {args.end_date}")
+        print(f"\nBackfilling actuals...")
+
+        system.prediction_db.backfill_actuals()
+
+        print(f"\nComputing performance metrics...")
+        summary = system.prediction_db.get_performance_summary()
+
+        print(f"\n📊 PERFORMANCE SUMMARY")
+        print("=" * 80)
+
+        if "error" in summary:
+            print(f"⚠️  {summary['error']}")
+            print("\nNo actuals available yet. Predictions need time to mature.")
+            print(f"Forecast horizon: {HORIZON} days")
+            print("\nTo see metrics:")
+            print("  1. Wait for forecasts to mature (5+ days)")
+            print("  2. Run: python integrated_system_production.py --mode batch")
+            print("  3. Then run: python diagnostics/walk_forward_validation.py")
+        else:
+            print(f"Predictions evaluated: {summary.get('n_predictions', 0)}")
+
+            if summary.get("n_predictions", 0) > 0:
+                if "point_estimate" in summary:
+                    print(
+                        f"Point Estimate MAE: {summary['point_estimate']['mae']:.2f}%"
+                    )
+                    print(
+                        f"Point Estimate RMSE: {summary['point_estimate']['rmse']:.2f}%"
+                    )
+
+                if "quantile_coverage" in summary:
+                    print(f"\nQuantile Coverage:")
+                    for q, coverage in summary["quantile_coverage"].items():
+                        expected = (
+                            int(q[1:]) / 100
+                        )  # Extract number from 'q10', 'q25', etc.
+                        diff = coverage - expected
+                        status = "✅" if abs(diff) < 0.10 else "⚠️"
+                        print(
+                            f"  {status} {q}: {coverage:.1%} (expected {expected:.1%}, diff: {diff:+.1%})"
+                        )
+
+                if "regime_brier_score" in summary:
+                    brier = summary["regime_brier_score"]
+                    if not pd.isna(brier):
+                        print(f"\nRegime Classification Brier Score: {brier:.3f}")
+
+                if "confidence_correlation" in summary:
+                    corr = summary["confidence_correlation"]
+                    if not pd.isna(corr):
+                        print(f"Confidence vs Error Correlation: {corr:.3f}")
+                        if corr < -0.1:
+                            print("  ✅ Confidence scores are predictive of accuracy")
+                        else:
+                            print("  ⚠️ Confidence scores may need recalibration")
+
+                if "by_cohort" in summary and summary["by_cohort"]:
+                    print(f"\nPerformance by Cohort:")
+                    for cohort, metrics in summary["by_cohort"].items():
+                        print(
+                            f"  {cohort}: MAE={metrics['mae']:.2f}% (n={metrics['n']})"
+                        )
+
+    elif args.mode == "anomaly":
         system.train(
             years=TRAINING_YEARS, real_time_vix=True, verbose=False, enable_anomaly=True
         )
@@ -775,54 +1262,6 @@ def main():
             print("   • live_state.json    (15 KB, updates every refresh)")
             print("   • historical.json    (300 KB, static)")
             print("   • model_cache.pkl    (15 MB, static)")
-
-    elif args.mode == "xgboost_select":
-        system.train(
-            years=TRAINING_YEARS,
-            real_time_vix=False,
-            verbose=False,
-            enable_anomaly=False,
-        )
-
-        selection_results = system.run_feature_selection(
-            horizons=args.horizons,
-            min_stability=0.3,
-            max_correlation=0.95,
-            preserve_forward_indicators=True,
-            verbose=True,
-        )
-
-        print(f"\n{'=' * 80}\nFEATURE SELECTION COMPLETE\n{'=' * 80}")
-
-    elif args.mode == "xgboost_full":
-        system.train(
-            years=TRAINING_YEARS,
-            real_time_vix=False,
-            verbose=False,
-            enable_anomaly=False,
-        )
-
-        selection_results = system.run_feature_selection(
-            horizons=args.horizons,
-            min_stability=0.3,
-            max_correlation=0.95,
-            preserve_forward_indicators=True,
-            verbose=True,
-        )
-
-        selected_features = selection_results["selected_features"]
-
-        system.train_xgboost_models(
-            selected_features=selected_features,
-            horizons=args.horizons,
-            optimize_hyperparams=args.optimize,
-            expansion_threshold=args.threshold,
-            crisis_balanced=True,
-            compute_shap=True,
-            verbose=True,
-        )
-
-        print(f"\n{'=' * 80}\nXGBOOST TRAINING COMPLETE\n{'=' * 80}")
 
     if system.memory_monitoring_enabled:
         mem_report = system.get_memory_report()

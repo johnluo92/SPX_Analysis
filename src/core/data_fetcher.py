@@ -1,4 +1,4 @@
-"""Unified Data Fetcher V10 - FIXED: Intelligent caching, reduced noise"""
+"""Unified Data Fetcher V11 - Added FOMC Calendar Integration"""
 
 import json
 import logging
@@ -20,15 +20,17 @@ warnings.filterwarnings("ignore")
 class DataFetchLogger:
     def __init__(self, name: str = "DataFetcher"):
         self.logger = logging.getLogger(name)
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setFormatter(
-                logging.Formatter(
-                    "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
-                )
+        self.logger.handlers.clear()  # Clear any existing handlers
+        self.logger.propagate = False  # Prevent propagation to root logger
+
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
             )
-            self.logger.addHandler(handler)
-            self.logger.setLevel(logging.INFO)
+        )
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.INFO)
 
     def info(self, msg: str):
         self.logger.info(msg)
@@ -197,12 +199,6 @@ class UnifiedDataFetcher:
             try:
                 data.index = pd.to_datetime(data.index)
             except Exception as e:
-                print(f"DIAGNOSTIC: Yahoo fetch failed for {ticker}")
-                print(f"  - Error: {e}")
-                print(f"  - Date range: {start_date} to {end_date}")
-                print(
-                    f"  - Check: 1) Network connectivity 2) ./data_cache/ for cached data"
-                )
                 self.logger.error(f"{name}: Index conversion failed - {e}")
                 return None
 
@@ -546,12 +542,6 @@ class UnifiedDataFetcher:
             return df.iloc[:, 0] if len(df.columns) > 0 else None
 
         except Exception as e:
-            print(f"DIAGNOSTIC: Yahoo fetch failed for {ticker}")
-            print(f"  - Error: {e}")
-            print(f"  - Date range: {start_date} to {end_date}")
-            print(
-                f"  - Check: 1) Network connectivity 2) ./data_cache/ for cached data"
-            )
             self.logger.error(f"CBOE:{symbol}: {str(e)[:100]}")
             return None
 
@@ -566,3 +556,146 @@ class UnifiedDataFetcher:
         if series_dict:
             self.logger.info(f"CBOE: ✅ {len(series_dict)} series loaded")
         return series_dict
+
+    def fetch_fomc_calendar(
+        self, start_year: int = 2009, end_year: int = 2030
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch FOMC meeting calendar from CSV.
+
+        Used by feature_engine.py for cohort classification, NOT as a feature.
+        The calendar enables context-specific model training (e.g., "VIX distribution
+        during FOMC week" vs "VIX distribution mid-cycle").
+
+        Args:
+            start_year: Earliest year to include (default: 2009)
+            end_year: Latest year to include (default: 2030)
+
+        Returns:
+            DataFrame with:
+                - index: pd.DatetimeIndex (meeting date, tz-naive, date-only)
+                - meeting_type: str ('scheduled', 'emergency', 'notation_vote')
+
+        Returns None if calendar file missing or invalid.
+
+        Example:
+            >>> df = fetcher.fetch_fomc_calendar(2024, 2025)
+            >>> df.loc['2025-01-29']
+            meeting_type    scheduled
+            Name: 2025-01-29 00:00:00, dtype: object
+        """
+        cache_path = self.cache_dir / "fomc_calendar.csv"
+
+        # Check if CSV exists
+        if not cache_path.exists():
+            self.logger.error(f"FOMC: Calendar file not found at {cache_path}")
+            self.logger.error(
+                "FOMC: Please create data_cache/fomc_calendar.csv with columns: date,meeting_type"
+            )
+            return None
+
+        # Load from CSV
+        try:
+            df = pd.read_csv(cache_path, parse_dates=["date"])
+
+            # Validate columns
+            if "date" not in df.columns or "meeting_type" not in df.columns:
+                self.logger.error(
+                    "FOMC: Invalid CSV format. Required columns: date, meeting_type"
+                )
+                return None
+
+            # Set index and normalize
+            df = df.set_index("date")
+            df = self._normalize_data(df, "FOMC:calendar")
+
+            if df is None or df.empty:
+                self.logger.error("FOMC: Calendar normalization failed")
+                return None
+
+            # Filter to requested year range
+            df = df[(df.index.year >= start_year) & (df.index.year <= end_year)]
+
+            if df.empty:
+                self.logger.warning(
+                    f"FOMC: No meetings found in range {start_year}-{end_year}"
+                )
+                return None
+
+            self.logger.info(f"FOMC: ✅ {len(df)} meetings ({start_year}-{end_year})")
+            return df
+
+        except Exception as e:
+            self.logger.error(f"FOMC: Failed to load calendar - {str(e)[:100]}")
+            return None
+
+    def update_fomc_calendar_from_csv(self, csv_path: str) -> Optional[pd.DataFrame]:
+        """
+        Update FOMC calendar by merging with user-provided CSV.
+
+        Useful for adding:
+          - Emergency meetings (e.g., COVID March 2020, 2008 crisis)
+          - Newly announced future meetings
+          - Minutes release dates (if tracking those)
+
+        Args:
+            csv_path: Path to CSV with columns [date, meeting_type]
+
+        Returns:
+            Updated DataFrame with merged calendar, or None on error
+
+        Example CSV format:
+            date,meeting_type
+            2024-01-31,scheduled
+            2024-03-05,emergency
+
+        Example usage:
+            >>> fetcher.update_fomc_calendar_from_csv('emergency_fomc.csv')
+            FOMC: ✅ Calendar updated: 165 total meetings
+            FOMC:    Added 1 new meetings
+        """
+        try:
+            # Load user CSV
+            import_df = pd.read_csv(csv_path, parse_dates=["date"])
+
+            if (
+                "date" not in import_df.columns
+                or "meeting_type" not in import_df.columns
+            ):
+                self.logger.error(
+                    "FOMC: Invalid import CSV. Required columns: date, meeting_type"
+                )
+                return None
+
+            # Load existing calendar
+            existing_df = self.fetch_fomc_calendar()
+            if existing_df is None:
+                self.logger.error("FOMC: Cannot update - existing calendar not found")
+                return None
+
+            # Merge
+            existing_df = existing_df.reset_index()
+            existing_df.rename(columns={existing_df.columns[0]: "date"}, inplace=True)
+
+            combined = pd.concat([existing_df, import_df])
+            combined = combined.drop_duplicates(subset=["date"], keep="last")
+            combined = combined.sort_values("date")
+
+            # Save updated calendar
+            cache_path = self.cache_dir / "fomc_calendar.csv"
+            combined.to_csv(cache_path, index=False)
+
+            added_count = len(combined) - len(existing_df)
+            self.logger.info(
+                f"FOMC: ✅ Calendar updated: {len(combined)} total meetings"
+            )
+            if added_count > 0:
+                self.logger.info(f"FOMC:    Added {added_count} new meetings")
+
+            # Return as DataFrame with proper index
+            combined = combined.set_index("date")
+            return self._normalize_data(combined, "FOMC:calendar")
+
+        except Exception as e:
+            self.logger.error(f"FOMC: Update failed - {str(e)[:100]}")
+            return None

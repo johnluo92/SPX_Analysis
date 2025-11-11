@@ -1,0 +1,98 @@
+{
+  "overall": {
+    "n_forecasts": 14,
+    "mae": 12.999543192465229,
+    "rmse": 17.39093628960382,
+    "mape": 74.9912672522968,
+    "median_abs_error": 9.603770507936954,
+    "bias": 12.999543192465229,
+    "forecast_width_mean": 24.674793820296014,
+    "forecast_iqr_mean": 11.521830486399788
+  },
+  "quantile_calibration": {
+    "q10": {
+      "observed": 0.35714285714285715,
+      "expected": 0.1,
+      "diff": 0.2571428571428571,
+      "calibrated": false
+    },
+    "q25": {
+      "observed": 0.42857142857142855,
+      "expected": 0.25,
+      "diff": 0.17857142857142855,
+      "calibrated": false
+    },
+    "q50": {
+      "observed": 0.5,
+      "expected": 0.5,
+      "diff": 0.0,
+      "calibrated": true
+    },
+    "q75": {
+      "observed": 0.7142857142857143,
+      "expected": 0.75,
+      "diff": -0.0357142857142857,
+      "calibrated": true
+    },
+    "q90": {
+      "observed": 0.7857142857142857,
+      "expected": 0.9,
+      "diff": -0.11428571428571432,
+      "calibrated": false
+    },
+    "interval_80": {
+      "coverage": 0.42857142857142855
+    },
+    "interval_50": {
+      "coverage": 0.2857142857142857
+    }
+  },
+  "by_cohort": {
+    "mid_cycle": {
+      "n": 6,
+      "mae": 20.155926033097828,
+      "rmse": 24.69827435527598,
+      "forecast_width": 26.745153506596882,
+      "q50_coverage": 0.0
+    }
+  },
+  "by_regime": {
+    "Normal": {
+      "n": 9,
+      "mae": 13.254252941596597,
+      "mean_forecast_width": 27.163254456387627
+    },
+    "Elevated": {
+      "n": 1,
+      "mae": 37.97797651770737,
+      "mean_forecast_width": 24.888158798217773
+    },
+    "Low": {
+      "n": 4,
+      "mae": 6.18183792560911,
+      "mean_forecast_width": 19.02241614460945
+    }
+  },
+  "confidence_analysis": {
+    "by_bin": {
+      "Low": {
+        "mean_abs_error": 5.9976107872616025,
+        "count": 3
+      },
+      "Medium": {
+        "mean_abs_error": 8.1103951315579,
+        "count": 6
+      },
+      "Very High": {
+        "mean_abs_error": 23.06768030867619,
+        "count": 5
+      }
+    },
+    "correlation": 0.5297230442073387,
+    "is_useful": false
+  },
+  "time_series": {
+    "has_trend": false,
+    "recent_mae": 6.734108073472197
+  }
+}

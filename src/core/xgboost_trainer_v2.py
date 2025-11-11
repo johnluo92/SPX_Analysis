@@ -1,1151 +1,807 @@
 """
-XGBoost Training System V2 - VIX Expansion Forecasting
-========================================================
-
-Production-grade XGBoost trainer for predicting forward VIX expansion/compression.
-Target: Binary classification of whether VIX expands >threshold% over forecast horizon.
-
-FEATURES:
-- Multi-horizon training (1d, 3d, 5d, 10d forward predictions)
-- Optuna hyperparameter optimization with early stopping
-- Crisis-aware cross-validation
-- Temporal safety validation
-- SHAP explainability (with fallback to gain-based importance)
-- Probability calibration for improved reliability
+Probabilistic VIX Forecasting System
+Trains multi-output XGBoost models for distribution forecasting
 """
 
 import json
+import logging
+import pickle
 import warnings
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import xgboost as xgb
-from sklearn.calibration import CalibratedClassifierCV, calibration_curve
-from sklearn.metrics import (
-    balanced_accuracy_score,
-    brier_score_loss,
-    confusion_matrix,
-    f1_score,
-    log_loss,
-    precision_recall_curve,
-    precision_score,
-    recall_score,
-)
+from sklearn.isotonic import IsotonicRegression
+from sklearn.metrics import log_loss, mean_absolute_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
+from xgboost import XGBClassifier, XGBRegressor
 
-from config import CRISIS_PERIODS
+from config import CALENDAR_COHORTS, TARGET_CONFIG, XGBOOST_CONFIG
 
 warnings.filterwarnings("ignore")
-
-from dataclasses import dataclass
-from typing import Optional
-
-from scipy.stats import norm
-
-try:
-    import optuna
-    from optuna.pruners import MedianPruner
-    from optuna.samplers import TPESampler
-
-    OPTUNA_AVAILABLE = True
-except ImportError:
-    OPTUNA_AVAILABLE = False
-    warnings.warn(
-        "WARNING: Optuna not available - hyperparameter optimization disabled"
-    )
-
-try:
-    from core.temporal_validator import TemporalSafetyValidator
-
-    VALIDATOR_AVAILABLE = True
-except ImportError:
-    VALIDATOR_AVAILABLE = False
-    warnings.warn("WARNING: Temporal validator not available")
-
-try:
-    from config import HYPERPARAMETER_SEARCH_SPACE, OPTUNA_CONFIG
-except ImportError:
-    OPTUNA_CONFIG = {"n_trials": 50}
-    HYPERPARAMETER_SEARCH_SPACE = {}
-
-try:
-    import shap
-
-    SHAP_AVAILABLE = True
-except ImportError:
-    SHAP_AVAILABLE = False
-    warnings.warn("WARNING: SHAP not available - using gain-based importance")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+class ProbabilisticVIXForecaster:
+    """
+    Multi-output forecaster producing full VIX distribution.
 
-import numpy as np
-from scipy.stats import norm
-from sklearn.isotonic import IsotonicRegression
+    Trains 8 models per calendar cohort:
+      - 1 point estimate (mean VIX % change)
+      - 5 quantiles (10th, 25th, 50th, 75th, 90th percentiles)
+      - 1 regime classifier (4 classes: Low/Normal/Elevated/Crisis)
+      - 1 confidence scorer (forecast quality)
+    """
 
+    def __init__(self):
+        self.horizon = TARGET_CONFIG["horizon_days"]
+        self.quantiles = TARGET_CONFIG["quantiles"]["levels"]
+        self.regime_boundaries = TARGET_CONFIG["regimes"]["boundaries"]
+        self.regime_labels = TARGET_CONFIG["regimes"]["labels"]
 
-@dataclass
-class VIXDistribution:
-    """Container for a complete VIX forecast distribution"""
+        self.models = {}  # {cohort: {model_type: model}}
+        self.calibrators = {}  # {cohort: {model_type: IsotonicRegression}}
+        self.feature_names = None
 
-    timestamp: pd.Timestamp
-    point_estimate: float  # Expected % change
-    quantiles: Dict[float, float]  # {0.10: val, 0.25: val, ...}
-    regime_probs: Dict[str, float]  # {'low_vol': 0.2, 'normal': 0.6, ...}
-    confidence_score: float  # 0-1 based on feature quality
-    feature_provenance: Dict[str, bool]  # Which features were available
-    calendar_context: str  # Which context was active
-    actual_outcome: Optional[float] = None  # Populated post-facto
+        logger.info("🎯 Probabilistic VIX Forecaster initialized")
+        logger.info(f"   Horizon: {self.horizon} days")
+        logger.info(f"   Quantiles: {self.quantiles}")
+        logger.info(f"   Regimes: {self.regime_labels}")
 
+    def _create_targets(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate all target variables from raw VIX data.
+        No data leakage - all targets use future VIX values only.
+        """
+        df = df.copy()
 
-class VIXExpansionTrainer:
-    """Production XGBoost trainer for VIX expansion forecasting."""
+        # 1. Point Estimate: Future VIX % change (no leakage)
+        future_vix = df["vix"].shift(-self.horizon)
+        df["target_point"] = ((future_vix / df["vix"]) - 1) * 100
 
-    def __init__(self, output_dir: str = "./models", expansion_threshold: float = 0.15):
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True, parents=True)
-        self.expansion_threshold = expansion_threshold
-        self.models = {}
-        self.feature_columns = None
-        self.validation_results = {}
-        self.feature_importance = {}
-        self.shap_explainers = {}
-        self.trained_horizons = []
-        self.optuna_studies = {}
-        self.best_params = {}
+        # Clip extremes
+        point_min, point_max = TARGET_CONFIG["point_estimate"]["range"]
+        df["target_point"] = df["target_point"].clip(point_min, point_max)
 
-        if VALIDATOR_AVAILABLE:
-            try:
-                from config import PUBLICATION_LAGS
-
-                self.validator = TemporalSafetyValidator(PUBLICATION_LAGS)
-            except ImportError:
-                self.validator = TemporalSafetyValidator()
-        else:
-            self.validator = None
-
-    def train(
-        self,
-        features: pd.DataFrame,
-        vix: pd.Series,
-        spx: pd.Series,
-        horizons: List[int] = [5],
-        n_splits: int = 5,
-        optimize_hyperparams: int = 0,
-        crisis_balanced: bool = True,
-        compute_shap: bool = True,
-        verbose: bool = True,
-        enable_temporal_validation: bool = True,
-    ) -> Dict:
-        if verbose:
-            print(f"\n{'=' * 80}")
-            print(f"XGBOOST V2 - VIX EXPANSION FORECASTING")
-            print(f"{'=' * 80}")
-            print(f"Features: {len(features.columns)} | Samples: {len(features):,}")
-            print(f"Horizons: {horizons} days")
-            print(f"Expansion threshold: {self.expansion_threshold:.1%}")
-            if optimize_hyperparams > 0:
-                print(f"Optimization: {optimize_hyperparams} trials per horizon")
-            else:
-                print(f"Optimization: Using default parameters")
-
-        all_results = {}
-
-        for horizon in horizons:
-            if verbose:
-                print(f"\n{'=' * 80}")
-                print(f"TRAINING {horizon}-DAY HORIZON")
-                print(f"{'=' * 80}")
-
-            X, y_expansion = self._prepare_data(features, vix, spx, horizon, verbose)
-
-            if crisis_balanced:
-                tscv = self._create_crisis_balanced_cv(
-                    X, y_expansion, n_splits, verbose
-                )
-            else:
-                tscv = TimeSeriesSplit(n_splits=n_splits, test_size=252)
-
-            if optimize_hyperparams > 0:
-                should_skip = self._should_skip_optimization(
-                    horizon, force_optimize=True
-                )
-                if should_skip:
-                    if verbose:
-                        print(
-                            f"\n[CACHE] Using cached hyperparameters (study < 7 days old)"
-                        )
-                    db_path = (
-                        self.output_dir
-                        / "optuna_studies"
-                        / f"optimization_{horizon}d.db"
-                    )
-                    storage = f"sqlite:///{db_path}"
-                    study = optuna.load_study(
-                        study_name=f"vix_expansion_{horizon}d", storage=storage
-                    )
-                    best_params = study.best_params
-                    self._convert_optuna_params(best_params)
-                else:
-                    best_params = self._optimize_hyperparameters(
-                        X, y_expansion, tscv, optimize_hyperparams, horizon, verbose
-                    )
-            else:
-                best_params = self._get_default_params()
-
-            model, metrics = self._train_expansion_model(
-                X, y_expansion, tscv, best_params, verbose, enable_temporal_validation
-            )
-            self.models[horizon] = model
-            self.validation_results[horizon] = metrics
-
-            all_results[horizon] = {"metrics": metrics, "params": best_params}
-
-            if verbose:
-                print(f"OK: {horizon}d model trained")
-
-        self.trained_horizons = horizons
-
-        default_horizon = 5 if 5 in self.models else horizons[0]
-        X_importance, y_importance = self._prepare_data(
-            features, vix, spx, default_horizon, verbose=False
+        logger.info(
+            f"   Point target range: {df['target_point'].min():.1f}% to {df['target_point'].max():.1f}%"
         )
 
-        if compute_shap and SHAP_AVAILABLE:
-            self._compute_shap_importance(default_horizon, X_importance, verbose)
-        else:
-            self._compute_gain_importance(default_horizon, verbose)
+        # 2. Quantiles: Use same target_point for all quantile models
+        # XGBoost will learn different quantiles via pinball loss (no leakage)
+        for q in self.quantiles:
+            col_name = f"target_q{int(q * 100)}"
+            df[col_name] = df["target_point"]  # Same target, different loss function
 
-        if len(horizons) > 1 and verbose:
-            self._validate_multi_horizon(features, vix, spx, horizons, verbose)
+        logger.info(f"   Quantile targets created (XGBoost learns via pinball loss)")
 
-        if verbose:
-            self._validate_on_crises(features, vix, spx, default_horizon, verbose)
+        # 3. Regime: Classify future VIX level (no leakage)
+        regime_bins = [-np.inf] + self.regime_boundaries + [np.inf]
+        df["target_regime"] = pd.cut(
+            future_vix,
+            bins=regime_bins,
+            labels=list(range(len(self.regime_labels))),
+            include_lowest=True,
+        )
+        df["target_regime"] = df["target_regime"].astype(float)
 
-        try:
-            self._validate_model_performance(default_horizon, verbose)
-        except AssertionError as e:
-            if verbose:
-                print(f"\n{e}")
-                print("\n💡 Suggestions:")
-                print(
-                    f"  1. Lower expansion threshold (current: {self.expansion_threshold:.1%})"
-                )
-                print(
-                    "  2. Increase cost_ratio in _calculate_optimal_scale_pos_weight()"
-                )
-                print("  3. Run hyperparameter optimization (--optimize 50)")
-            raise
-
-        self._save_models(verbose)
-
-        return {
-            "models": self.models,
-            "trained_horizons": self.trained_horizons,
-            "all_results": all_results,
-            "feature_importance": self.feature_importance,
-            "best_params": self.best_params,
-            "optuna_studies": self.optuna_studies,
-        }
-
-    def _calculate_optimal_scale_pos_weight(
-        self, y: pd.Series, cost_ratio: float = 2.0
-    ) -> float:
-        n_negative = (y == 0).sum()
-        n_positive = (y == 1).sum()
-
-        if n_positive == 0:
-            return 2.0
-
-        base_scale = n_negative / n_positive
-        adjusted_scale = base_scale * cost_ratio
-        return np.clip(adjusted_scale, 2.0, 20.0)
-
-    def _prepare_data(
-        self,
-        features: pd.DataFrame,
-        vix: pd.Series,
-        spx: pd.Series,
-        horizon: int,
-        verbose: bool,
-    ) -> Tuple[pd.DataFrame, pd.Series]:
-        if "vix_regime" in features.columns:
-            features = features.drop(columns=["vix_regime"])
-            if verbose:
-                print("   WARNING: Removed vix_regime from features (data leakage)")
-
-        aligned_idx = features.index.intersection(vix.index).intersection(spx.index)
-        X = features.loc[aligned_idx].copy()
-        vix_aligned = vix.loc[aligned_idx]
-
-        vix_future = vix_aligned.shift(-horizon)
-        vix_pct_change = (vix_future - vix_aligned) / vix_aligned
-        y_expansion = (vix_pct_change > self.expansion_threshold).astype(int)
-
-        valid_idx = ~(vix_future.isna() | y_expansion.isna())
-        X = X[valid_idx]
-        y_expansion = y_expansion[valid_idx]
-
-        self.feature_columns = X.columns.tolist()
-
-        if verbose:
-            print(f"   Raw data: {len(features)} rows")
-            print(f"   After alignment: {len(X)} samples")
-            print(f"   Date range: {X.index[0].date()} → {X.index[-1].date()}")
-            print(
-                f"   Target: Forward VIX Expansion ({horizon}-day, threshold={self.expansion_threshold:.1%})"
-            )
-            n_no_expansion = (y_expansion == 0).sum()
-            n_expansion = (y_expansion == 1).sum()
-            print(
-                f"      Class 0 (No Expansion): {n_no_expansion} ({n_no_expansion / len(y_expansion) * 100:5.1f}%)"
-            )
-            print(
-                f"      Class 1 (Expansion): {n_expansion:4} ({n_expansion / len(y_expansion) * 100:5.1f}%)"
+        regime_counts = df["target_regime"].value_counts().sort_index()
+        logger.info("   Regime distribution:")
+        for regime_id, label in enumerate(self.regime_labels):
+            count = regime_counts.get(regime_id, 0)
+            pct = count / len(df) * 100 if len(df) > 0 else 0
+            logger.info(
+                f"      {label:10s} (class {regime_id}): {count:4d} ({pct:5.1f}%)"
             )
 
-        return X, y_expansion
+        # 4. Confidence: Combine feature quality + regime stability
+        regime_volatility = df["vix"].rolling(21, min_periods=10).std()
+        regime_stability = 1 / (
+            1 + regime_volatility / df["vix"].rolling(21, min_periods=10).mean()
+        )
+        regime_stability = regime_stability.fillna(0.5)
 
-    def _create_crisis_balanced_cv(
-        self, X: pd.DataFrame, y: pd.Series, n_splits: int, verbose: bool
-    ) -> TimeSeriesSplit:
-        tscv = TimeSeriesSplit(n_splits=n_splits, test_size=252)
+        # Combine: 50% feature quality + 50% regime stability
+        df["target_confidence"] = (
+            0.5 * df["feature_quality"].fillna(0.5) + 0.5 * regime_stability
+        ).clip(0, 1)
 
-        if verbose:
-            print(f"\nCrisis-Balanced CV (with regime transition validation):")
-
-            try:
-                vix_series = X["vix"] if "vix" in X.columns else None
-            except:
-                vix_series = None
-                print(
-                    "   [INFO] VIX not directly available, checking fold coverage only"
-                )
-
-            for fold_idx, (train_idx, test_idx) in enumerate(tscv.split(X), 1):
-                test_dates = X.index[test_idx]
-
-                n_crisis = sum(
-                    any(
-                        pd.Timestamp(start) <= date <= pd.Timestamp(end)
-                        for date in test_dates
-                    )
-                    for start, end in CRISIS_PERIODS.values()
-                )
-
-                regime_transition = False
-                if vix_series is not None:
-                    fold_vix = vix_series.iloc[test_idx].dropna()
-                    if len(fold_vix) > 0:
-                        vix_min = fold_vix.min()
-                        vix_max = fold_vix.max()
-                        regime_transition = vix_min < 24.40 and vix_max > 24.40
-
-                transition_marker = "✓" if regime_transition else "○"
-                print(
-                    f"   Fold {fold_idx}: {n_crisis} crisis periods | Regime transition: {transition_marker}"
-                )
-
-        return tscv
-
-    def _get_default_params(self) -> dict:
-        return {
-            "objective": "binary:logistic",
-            "max_depth": 6,
-            "learning_rate": 0.05,
-            "n_estimators": 400,
-            "subsample": 0.7,
-            "colsample_bytree": 0.7,
-            "min_child_weight": 3,
-            "gamma": 0.05,
-            "reg_alpha": 0.05,
-            "reg_lambda": 1.0,
-            "eval_metric": "logloss",
-            "random_state": 42,
-            "n_jobs": -1,
-            "verbosity": 0,
-        }
-
-    def _should_skip_optimization(
-        self, horizon: int, force_optimize: bool = False
-    ) -> bool:
-        if force_optimize or not OPTUNA_AVAILABLE:
-            return False
-
-        db_path = self.output_dir / "optuna_studies" / f"optimization_{horizon}d.db"
-        if not db_path.exists():
-            return False
-
-        try:
-            storage = f"sqlite:///{db_path}"
-            study = optuna.load_study(
-                study_name=f"vix_expansion_{horizon}d", storage=storage
-            )
-
-            if len(study.trials) == 0:
-                return False
-
-            last_trial_time = study.trials[-1].datetime_complete
-            if last_trial_time is None:
-                return False
-
-            days_since_last = (datetime.now() - last_trial_time).days
-
-            patience = OPTUNA_CONFIG.get("early_stopping_patience", 15)
-            if len(study.trials) >= patience:
-                recent_trials = study.trials[-patience:]
-                best_in_recent = min(
-                    t.value for t in recent_trials if t.value is not None
-                )
-                converged = best_in_recent >= study.best_value
-            else:
-                converged = False
-
-            return days_since_last <= 7 and converged
-
-        except Exception:
-            return False
-
-    def _optimize_hyperparameters(
-        self,
-        X: pd.DataFrame,
-        y: pd.Series,
-        tscv: TimeSeriesSplit,
-        n_trials: int,
-        horizon: int,
-        verbose: bool,
-    ) -> Dict:
-        if not OPTUNA_AVAILABLE:
-            if verbose:
-                print("   WARNING: Optuna not available, using defaults")
-            return self._get_default_params()
-
-        if verbose:
-            print(f"\n{'=' * 80}")
-            print(f"[OPT] HYPERPARAMETER OPTIMIZATION ({n_trials} trials)")
-            print(f"{'=' * 80}")
-
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
-
-        db_path = self.output_dir / "optuna_studies" / f"optimization_{horizon}d.db"
-        db_path.parent.mkdir(exist_ok=True, parents=True)
-        storage = f"sqlite:///{db_path}"
-
-        study = optuna.create_study(
-            study_name=f"vix_expansion_{horizon}d",
-            storage=storage,
-            load_if_exists=True,
-            direction="minimize",
-            sampler=TPESampler(seed=42),
-            pruner=MedianPruner(n_startup_trials=10, n_warmup_steps=5),
+        logger.info(
+            f"   Confidence labels: mean={df['target_confidence'].mean():.2f}, "
+            f"std={df['target_confidence'].std():.2f}"
         )
 
-        n_trials_before = len(study.trials)
-        if n_trials_before > 0 and verbose:
-            print(f"   [RESUME] Continuing from {n_trials_before} previous trials")
+        return df
 
-        def objective(trial):
-            params = self._suggest_params(trial)
-            fold_metrics = {"log_loss": [], "f1_expansion": []}
+    def train(self, df: pd.DataFrame, save_dir: str = "models") -> Dict:
+        """
+        Train separate model sets for each calendar cohort.
+        """
+        logger.info("=" * 80)
+        logger.info("PROBABILISTIC VIX FORECASTER - TRAINING")
+        logger.info("=" * 80)
 
-            for train_idx, test_idx in tscv.split(X):
-                X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-                y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+        # Validate required columns
+        required = ["vix", "calendar_cohort", "cohort_weight", "feature_quality"]
+        missing = [col for col in required if col not in df.columns]
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
 
-                model = xgb.XGBClassifier(**params)
-                model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
+        # Create targets
+        df = self._create_targets(df)
 
-                y_pred = model.predict(X_test)
-                y_pred_proba = model.predict_proba(X_test)[:, 1]
-
-                try:
-                    ll = log_loss(y_test, y_pred_proba, labels=[0, 1])
-                    fold_metrics["log_loss"].append(ll)
-                except ValueError:
-                    fold_metrics["log_loss"].append(10.0)
-
-                try:
-                    f1_scores = f1_score(y_test, y_pred, average=None, labels=[0, 1])
-                    f1_exp = f1_scores[1] if len(f1_scores) > 1 else 0.0
-                    fold_metrics["f1_expansion"].append(f1_exp)
-                except:
-                    fold_metrics["f1_expansion"].append(0.0)
-
-            trial.set_user_attr(
-                "mean_f1_expansion", np.mean(fold_metrics["f1_expansion"])
-            )
-            return np.mean(fold_metrics["log_loss"])
-
-        best_value = study.best_value if study.trials else float("inf")
-        patience_counter = 0
-
-        for _ in range(n_trials):
-            study.optimize(objective, n_trials=1, show_progress_bar=False)
-
-            if study.best_value < best_value:
-                best_value = study.best_value
-                patience_counter = 0
-                if verbose and len(study.trials) % 10 == 0:
-                    print(
-                        f"   Trial {len(study.trials)}: {study.best_value:.4f} [NEW BEST]"
-                    )
-            else:
-                patience_counter += 1
-                if verbose and len(study.trials) % 20 == 0:
-                    print(f"   Trial {len(study.trials)}: {study.trials[-1].value:.4f}")
-
-            if patience_counter >= OPTUNA_CONFIG.get("early_stopping_patience", 15):
-                if verbose:
-                    print(
-                        f"   [STOP] Early stopping (no improvement in {patience_counter} trials)"
-                    )
-                break
-
-        best_params = study.best_params
-        self._convert_optuna_params(best_params)
-
-        if verbose:
-            n_new_trials = len(study.trials) - n_trials_before
-            best_trial = study.best_trial
-            best_f1 = best_trial.user_attrs.get("mean_f1_expansion", "N/A")
-
-            print(f"   [OK] Best metrics:")
-            print(f"        Log Loss: {study.best_value:.4f}")
-            if isinstance(best_f1, float):
-                print(f"        F1 (Expansion): {best_f1:.4f}")
-            print(f"        Trials: {n_new_trials} new")
-
-        self.optuna_studies[horizon] = study
-        self.best_params[horizon] = best_params
-
-        if verbose:
-            self._analyze_hyperparameter_sensitivity(study, horizon)
-
-        return best_params
-
-    def _suggest_params(self, trial) -> Dict:
-        search_space = HYPERPARAMETER_SEARCH_SPACE.get("vix_expansion", {})
-
-        params = {
-            "objective": "binary:logistic",
-            "max_depth": trial.suggest_int(
-                "max_depth", *search_space.get("max_depth", (4, 12))
-            ),
-            "learning_rate": trial.suggest_float(
-                "learning_rate",
-                *search_space.get("learning_rate", (0.01, 0.1)),
-                log=True,
-            ),
-            "n_estimators": trial.suggest_int(
-                "n_estimators", *search_space.get("n_estimators", (200, 800)), step=50
-            ),
-            "subsample": trial.suggest_float(
-                "subsample", *search_space.get("subsample", (0.5, 0.9))
-            ),
-            "colsample_bytree": trial.suggest_float(
-                "colsample_bytree", *search_space.get("colsample_bytree", (0.5, 0.9))
-            ),
-            "min_child_weight": trial.suggest_int(
-                "min_child_weight", *search_space.get("min_child_weight", (3, 20))
-            ),
-            "gamma": trial.suggest_float(
-                "gamma", *search_space.get("gamma", (0.05, 0.5))
-            ),
-            "reg_alpha": trial.suggest_float(
-                "reg_alpha", *search_space.get("reg_alpha", (0.01, 0.5)), log=True
-            ),
-            "reg_lambda": trial.suggest_float(
-                "reg_lambda", *search_space.get("reg_lambda", (0.5, 5.0)), log=True
-            ),
-            "scale_pos_weight": trial.suggest_float(
-                "scale_pos_weight", *search_space.get("scale_pos_weight", (1, 5))
-            ),
-            "eval_metric": "logloss",
-            "random_state": 42,
-            "n_jobs": -1,
-            "verbosity": 0,
-        }
-
-        return params
-
-    def _convert_optuna_params(self, params: Dict):
-        params["objective"] = "binary:logistic"
-        params["eval_metric"] = "logloss"
-        params["random_state"] = 42
-        params["n_jobs"] = -1
-        params["verbosity"] = 0
-
-    def _analyze_hyperparameter_sensitivity(self, study, horizon: int):
-        print(f"\n{'=' * 80}")
-        print(f"HYPERPARAMETER SENSITIVITY ANALYSIS")
-        print(f"{'=' * 80}")
-
-        try:
-            importance = optuna.importance.get_param_importances(study)
-            print(f"\nTop parameters by importance:")
-            for i, (param, imp) in enumerate(
-                sorted(importance.items(), key=lambda x: x[1], reverse=True)[:5], 1
-            ):
-                print(f"   {i}. {param:<20} {imp:>6.1%}")
-
-            report = {
-                "timestamp": datetime.now().isoformat(),
-                "horizon": horizon,
-                "importance": importance,
-                "best_params": study.best_params,
-                "best_value": study.best_value,
-                "n_trials": len(study.trials),
-            }
-
-            with open(
-                self.output_dir / f"hyperparameter_sensitivity_{horizon}d.json", "w"
-            ) as f:
-                json.dump(report, f, indent=2)
-        except Exception as e:
-            print(f"   WARNING: Could not compute parameter importance: {e}")
-
-    def _train_expansion_model(
-        self,
-        X: pd.DataFrame,
-        y: pd.Series,
-        tscv,
-        params: dict,
-        verbose: bool,
-        enable_temporal_validation: bool,
-    ) -> Tuple[xgb.XGBClassifier, Dict]:
-        optimal_scale = self._calculate_optimal_scale_pos_weight(y, cost_ratio=2.0)
-        params["scale_pos_weight"] = optimal_scale
-
-        if verbose:
-            class_dist = y.value_counts(normalize=True)
-            print(
-                f"\n   Class Distribution: {class_dist[0]:.1%} negative, {class_dist[1]:.1%} positive"
-            )
-            print(f"   Using scale_pos_weight: {optimal_scale:.1f}")
-
-        cv_metrics = []
-        fold_predictions = []
-        fold_targets = []
-
-        for fold_idx, (train_idx, test_idx) in enumerate(tscv.split(X), 1):
-            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
-
-            if enable_temporal_validation and self.validator:
-                try:
-                    violations = self.validator.validate_split(
-                        X_train, X_test, X.columns.tolist()
-                    )
-                    if violations and verbose:
-                        print(f"   ⚠️  Fold {fold_idx} temporal issue: {violations[0]}")
-                except Exception as e:
-                    if verbose:
-                        print(f"   ⚠️  Temporal validation failed: {e}")
-
-            model = xgb.XGBClassifier(**params, enable_categorical=False)
-            model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
-
-            y_pred_proba = model.predict_proba(X_test)[:, 1]
-            fold_predictions.append(y_pred_proba)
-            fold_targets.append(y_test.values)
-
-            precisions, recalls, thresholds = precision_recall_curve(
-                y_test, y_pred_proba
-            )
-            f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-10)
-            optimal_idx = np.argmax(f1_scores)
-            optimal_threshold = (
-                thresholds[optimal_idx] if optimal_idx < len(thresholds) else 0.5
-            )
-
-            y_pred_optimal = (y_pred_proba >= optimal_threshold).astype(int)
-
-            accuracy = balanced_accuracy_score(y_test, y_pred_optimal)
-
-            try:
-                logloss = log_loss(y_test, y_pred_proba, labels=[0, 1])
-            except ValueError:
-                logloss = np.nan
-
-            try:
-                f1_scores_class = f1_score(
-                    y_test, y_pred_optimal, average=None, labels=[0, 1]
-                )
-                f1_no_exp = f1_scores_class[0] if len(f1_scores_class) > 0 else 0.0
-                f1_exp = f1_scores_class[1] if len(f1_scores_class) > 1 else 0.0
-            except:
-                f1_no_exp, f1_exp = 0.0, 0.0
-
-            recall_exp = recall_score(
-                y_test, y_pred_optimal, pos_label=1, zero_division=0
-            )
-            precision_exp = precision_score(
-                y_test, y_pred_optimal, pos_label=1, zero_division=0
-            )
-
-            cm = confusion_matrix(y_test, y_pred_optimal, labels=[0, 1])
-            tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
-
-            base_rate = y_test.mean()
-
-            if verbose:
-                logloss_str = f"{logloss:.3f}" if not np.isnan(logloss) else "N/A"
-                print(f"\n   Fold {fold_idx}/{tscv.n_splits}:")
-                print(
-                    f"      Optimal Threshold: {optimal_threshold:.3f} (default=0.500)"
-                )
-                print(f"      Accuracy: {accuracy:.3f} | Log Loss: {logloss_str}")
-                print(
-                    f"      F1 [No-Expansion={f1_no_exp:.2f}, Expansion={f1_exp:.2f}]"
-                )
-                print(
-                    f"      Expansion Metrics: Recall={recall_exp:.2f} | Precision={precision_exp:.2f}"
-                )
-                print(f"      Confusion: TP={tp}, FP={fp}, TN={tn}, FN={fn}")
-                print(f"      Base Rate: {base_rate:.1%}")
-
-            cv_metrics.append(
-                {
-                    "fold": fold_idx,
-                    "optimal_threshold": optimal_threshold,
-                    "accuracy": accuracy,
-                    "log_loss": logloss,
-                    "f1_no_expansion": f1_no_exp,
-                    "f1_expansion": f1_exp,
-                    "recall_expansion": recall_exp,
-                    "precision_expansion": precision_exp,
-                    "tp": int(tp),
-                    "fp": int(fp),
-                    "tn": int(tn),
-                    "fn": int(fn),
-                    "base_rate": base_rate,
-                }
-            )
-
-        all_pred = np.concatenate(fold_predictions)
-        all_true = np.concatenate(fold_targets)
-
-        precisions, recalls, thresholds = precision_recall_curve(all_true, all_pred)
-        f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-10)
-        global_optimal_idx = np.argmax(f1_scores)
-        global_optimal_threshold = (
-            thresholds[global_optimal_idx]
-            if global_optimal_idx < len(thresholds)
-            else 0.5
+        # Remove rows where targets are NaN (edge effects from shifts)
+        target_cols = ["target_point", "target_regime", "target_confidence"]
+        df_clean = df.dropna(subset=target_cols)
+        logger.info(
+            f"Training samples: {len(df_clean)} (dropped {len(df) - len(df_clean)} edge rows)"
         )
 
-        if verbose:
-            print(f"\n   📊 Global Optimal Threshold: {global_optimal_threshold:.3f}")
-            print(f"      (Used for all future predictions)")
-
-        if verbose:
-            print(f"\n{'=' * 80}")
-            print(f"TRAINING FINAL CALIBRATED MODEL")
-            print(f"{'=' * 80}")
-
-        X_train_final, y_train_final, X_cal, y_cal = self._get_calibration_split(
-            X, y, calibration_fraction=0.2
-        )
-
-        if verbose:
-            print(f"   Training set: {len(X_train_final)} samples")
-            print(
-                f"   Calibration set: {len(X_cal)} samples ({len(X_cal) / len(X):.1%})"
-            )
-
-        final_model_base = xgb.XGBClassifier(**params)
-        final_model_base.fit(X_train_final, y_train_final, verbose=False)
-
-        final_model = self._calibrate_model(
-            final_model_base, X_cal, y_cal, method="isotonic", verbose=verbose
-        )
-
-        if verbose:
-            y_prob_uncal = final_model_base.predict_proba(X_cal)[:, 1]
-            y_prob_cal = final_model.predict_proba(X_cal)[:, 1]
-            self._plot_calibration_curve(
-                y_cal,
-                y_prob_uncal,
-                y_prob_cal,
-                horizon=5,
-                output_dir=self.output_dir,
-                verbose=verbose,
-            )
-
-        final_model._optimal_threshold = global_optimal_threshold
-        final_model._feature_names = X.columns.tolist()
-
-        avg_accuracy = np.mean([m["accuracy"] for m in cv_metrics])
-        std_accuracy = np.std([m["accuracy"] for m in cv_metrics])
-        avg_f1_expansion = np.mean([m["f1_expansion"] for m in cv_metrics])
-        avg_recall_expansion = np.mean([m["recall_expansion"] for m in cv_metrics])
-        avg_precision_expansion = np.mean(
-            [m["precision_expansion"] for m in cv_metrics]
-        )
-
-        valid_logloss = [
-            m["log_loss"] for m in cv_metrics if not np.isnan(m["log_loss"])
+        # Extract feature names (exclude metadata and targets)
+        exclude_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
+        exclude_cols += [col for col in df_clean.columns if col.startswith("target_")]
+        self.feature_names = [
+            col for col in df_clean.columns if col not in exclude_cols
         ]
-        avg_logloss = np.mean(valid_logloss) if valid_logloss else np.nan
 
-        if verbose:
-            print(f"\n   ✅ CV Summary:")
-            print(f"      Accuracy: {avg_accuracy:.3f} ± {std_accuracy:.3f}")
-            if not np.isnan(avg_logloss):
-                print(f"      Log Loss: {avg_logloss:.3f}")
-            print(f"      Expansion F1: {avg_f1_expansion:.3f}")
-            print(f"      Expansion Recall: {avg_recall_expansion:.3f}")
-            print(f"      Expansion Precision: {avg_precision_expansion:.3f}")
+        logger.info(f"Features used: {len(self.feature_names)}")
 
-        return final_model, {
-            "cv_metrics": cv_metrics,
-            "mean_accuracy": avg_accuracy,
-            "mean_log_loss": avg_logloss,
-            "mean_f1_expansion": avg_f1_expansion,
-            "mean_recall_expansion": avg_recall_expansion,
-            "mean_precision_expansion": avg_precision_expansion,
-            "global_optimal_threshold": global_optimal_threshold,
-            "calibration_metadata": final_model._calibration_metadata,
-        }
+        # Train per cohort
+        cohort_metrics = {}
+        cohorts = df_clean["calendar_cohort"].unique()
 
-    def _validate_model_performance(self, horizon: int, verbose: bool):
-        if horizon not in self.validation_results:
-            return
+        for cohort in cohorts:
+            logger.info(f"\n{'─' * 80}")
+            logger.info(f"TRAINING COHORT: {cohort}")
+            logger.info(f"{'─' * 80}")
 
-        metrics = self.validation_results[horizon]
-        mean_f1 = metrics.get("mean_f1_expansion", 0.0)
-        mean_recall = metrics.get("mean_recall_expansion", 0.0)
+            cohort_df = df_clean[df_clean["calendar_cohort"] == cohort].copy()
+            logger.info(f"Cohort samples: {len(cohort_df)}")
 
-        MIN_F1 = 0.15
-        MIN_RECALL = 0.20
-
-        if mean_f1 < MIN_F1:
-            raise AssertionError(
-                f"❌ CRITICAL: Model {horizon}d has F1={mean_f1:.3f} for expansion class "
-                f"(threshold: {MIN_F1:.2f}). Model is not learning to predict expansions!"
-            )
-
-        if mean_recall < MIN_RECALL:
-            raise AssertionError(
-                f"❌ CRITICAL: Model {horizon}d has Recall={mean_recall:.3f} for expansion class "
-                f"(threshold: {MIN_RECALL:.2f}). Model misses too many expansions!"
-            )
-
-        if verbose:
-            print(
-                f"\n   ✅ Validation PASSED: F1={mean_f1:.3f}, Recall={mean_recall:.3f}"
-            )
-
-    def _compute_shap_importance(self, horizon: int, X: pd.DataFrame, verbose: bool):
-        if verbose:
-            print(f"\n{'=' * 80}")
-            print(f"FEATURE IMPORTANCE (SHAP)")
-            print(f"{'=' * 80}")
-
-        try:
-            model = self.models[horizon]
-
-            if isinstance(model, CalibratedClassifierCV):
-                base_model = model.calibrated_classifiers_[0].estimator
-            else:
-                base_model = model
-
-            explainer = shap.TreeExplainer(base_model)
-            shap_values = explainer.shap_values(X)
-
-            if isinstance(shap_values, list):
-                shap_values = shap_values[1]
-
-            feature_importance = pd.DataFrame(
-                {"feature": X.columns, "importance": np.abs(shap_values).mean(axis=0)}
-            ).sort_values("importance", ascending=False)
-
-            self.feature_importance[horizon] = feature_importance
-            self.shap_explainers[horizon] = explainer
-
-            if verbose:
-                print("   Using SHAP values\n")
-                print("   Top 10 Features:")
-                for idx, row in feature_importance.head(10).iterrows():
-                    print(f"      {row['feature']:<45} {row['importance']:.3f}")
-
-        except Exception as e:
-            if verbose:
-                print(f"   WARNING: SHAP failed ({e})")
-                print("      Using gain-based importance instead")
-            self._compute_gain_importance(horizon, verbose)
-
-    def _compute_gain_importance(self, horizon: int, verbose: bool):
-        model = self.models[horizon]
-
-        if isinstance(model, CalibratedClassifierCV):
-            base_model = model.calibrated_classifiers_[0].estimator
-        else:
-            base_model = model
-
-        importance_dict = base_model.get_booster().get_score(importance_type="gain")
-
-        feature_importance = pd.DataFrame(
-            [
-                {"feature": k, "importance": v}
-                for k, v in sorted(
-                    importance_dict.items(), key=lambda x: x[1], reverse=True
+            if len(cohort_df) < 200:
+                logger.warning(
+                    f"⚠️  Too few samples ({len(cohort_df)}) for {cohort}, skipping"
                 )
-            ]
-        )
-
-        feature_importance["importance"] /= feature_importance["importance"].sum()
-
-        self.feature_importance[horizon] = feature_importance
-
-        if verbose:
-            print("   Using gain-based importance\n")
-            print("   Top 10 Features:")
-            for idx, row in feature_importance.head(10).iterrows():
-                print(f"      {row['feature']:<45} {row['importance']:.3f}")
-
-    def _validate_multi_horizon(
-        self,
-        features: pd.DataFrame,
-        vix: pd.Series,
-        spx: pd.Series,
-        horizons: List[int],
-        verbose: bool,
-    ):
-        print(f"\n{'=' * 80}")
-        print(f"MULTI-HORIZON VALIDATION")
-        print(f"{'=' * 80}")
-
-        for horizon in horizons:
-            X, y = self._prepare_data(features, vix, spx, horizon, verbose=False)
-            model = self.models[horizon]
-
-            y_pred = model.predict(X)
-            accuracy = balanced_accuracy_score(y, y_pred)
-
-            print(f"   {horizon}d: Accuracy = {accuracy:.3f}")
-
-    def _validate_on_crises(
-        self,
-        features: pd.DataFrame,
-        vix: pd.Series,
-        spx: pd.Series,
-        horizon: int,
-        verbose: bool,
-    ):
-        print(f"\n{'=' * 80}")
-        print(f"CRISIS VALIDATION")
-        print(f"{'=' * 80}")
-
-        X, y = self._prepare_data(features, vix, spx, horizon, verbose=False)
-        model = self.models[horizon]
-
-        for crisis_name, (start, end) in CRISIS_PERIODS.items():
-            crisis_mask = (X.index >= start) & (X.index <= end)
-            if crisis_mask.sum() == 0:
                 continue
 
-            X_crisis = X[crisis_mask]
-            y_crisis = y[crisis_mask]
+            # Train all model types for this cohort
+            metrics = self._train_cohort_models(cohort, cohort_df)
+            cohort_metrics[cohort] = metrics
 
-            y_pred = model.predict(X_crisis)
-            accuracy = balanced_accuracy_score(y_crisis, y_pred)
+            # Save models immediately after training each cohort
+            self._save_cohort_models(cohort, save_dir)
 
-            print(f"   {crisis_name}: Accuracy = {accuracy:.3f}")
+        # Generate diagnostics
+        self._generate_diagnostics(cohort_metrics, save_dir)
 
-    def _calibrate_model(
-        self,
-        model,
-        X_cal: pd.DataFrame,
-        y_cal: pd.Series,
-        method: str = "isotonic",
-        verbose: bool = True,
-    ) -> CalibratedClassifierCV:
-        if verbose:
-            print(f"\n   📊 Calibrating probabilities using {method} method...")
+        logger.info("\n" + "=" * 80)
+        logger.info("✅ TRAINING COMPLETE")
+        logger.info("=" * 80)
 
-        calibrated_model = CalibratedClassifierCV(
-            estimator=model, method=method, cv="prefit"
-        )
-        calibrated_model.fit(X_cal, y_cal)
+        return cohort_metrics
 
-        uncalibrated_proba = model.predict_proba(X_cal)[:, 1]
-        calibrated_proba = calibrated_model.predict_proba(X_cal)[:, 1]
+    def _train_cohort_models(self, cohort: str, df: pd.DataFrame) -> Dict:
+        """Train all 8 models for a single cohort."""
+        X = df[self.feature_names]
 
-        brier_before = brier_score_loss(y_cal, uncalibrated_proba)
-        brier_after = brier_score_loss(y_cal, calibrated_proba)
-
-        improvement_pct = (1 - brier_after / brier_before) * 100
-
-        if verbose:
-            print(
-                f"      Brier Score: {brier_before:.4f} → {brier_after:.4f} (lower is better)"
+        # Check minimum sample size
+        min_samples = 100  # Absolute minimum
+        if len(df) < min_samples:
+            logger.warning(
+                f"⚠️  Skipping {cohort}: only {len(df)} samples (need >{min_samples})"
             )
-            print(f"      Calibration improvement: {improvement_pct:.1f}%")
+            raise ValueError(f"Insufficient samples for cohort {cohort}")
 
-        calibrated_model._calibration_metadata = {
-            "method": method,
-            "brier_before": float(brier_before),
-            "brier_after": float(brier_after),
-            "improvement_pct": float(improvement_pct),
-            "calibration_size": len(X_cal),
+        # Initialize model dictionary for this cohort
+        self.models[cohort] = {}
+        self.calibrators[cohort] = {}
+
+        metrics = {}
+
+        # 1. Point Estimate
+        logger.info("\n[1/4] Training point estimate model...")
+        y_point = df["target_point"]
+        model_point, metric_point = self._train_regressor(
+            X, y_point, objective="reg:squarederror", eval_metric="rmse"
+        )
+        self.models[cohort]["point"] = model_point
+        metrics["point"] = metric_point
+        logger.info(f"   ✅ Point RMSE: {metric_point['rmse']:.2f}%")
+
+        # 2. Quantiles (5 models)
+        logger.info("\n[2/4] Training quantile models...")
+        self.models[cohort]["quantiles"] = {}
+        metrics["quantiles"] = {}
+
+        for q in self.quantiles:
+            q_label = f"q{int(q * 100)}"
+            y_quantile = df[f"target_{q_label}"]
+
+            model_q, metric_q = self._train_regressor(
+                X,
+                y_quantile,
+                objective="reg:quantileerror",
+                quantile_alpha=q,
+                eval_metric="mae",
+            )
+            self.models[cohort]["quantiles"][q] = model_q
+            metrics["quantiles"][q_label] = metric_q
+            logger.info(f"   ✅ {q_label:3s} MAE: {metric_q['mae']:.2f}%")
+
+        # 3. Regime Classifier
+        # if training is to be skipped because of too few cohorts
+        # if len(df) < 500:
+        #     logger.warning(f"\n[3/4] Skipping regime classifier (insufficient samples)")
+        #     # Use a dummy classifier that always predicts proportional to training distribution
+        #     self.models[cohort]["regime"] = None
+        #     metrics["regime"] = {"accuracy": 0.0, "log_loss": 999.0, "skipped": True}
+        # else:
+        #     logger.info("\n[3/4] Training regime classifier...")
+
+        logger.info("\n[3/4] Training regime classifier...")
+        y_regime = df["target_regime"]
+        model_regime, metric_regime = self._train_classifier(
+            X, y_regime, num_classes=len(self.regime_labels)
+        )
+        self.models[cohort]["regime"] = model_regime
+        self.calibrators[cohort]["regime"] = self._calibrate_probabilities(
+            model_regime, X, y_regime
+        )
+        metrics["regime"] = metric_regime
+        logger.info(f"   ✅ Regime Accuracy: {metric_regime['accuracy']:.3f}")
+        logger.info(f"   ✅ Log Loss: {metric_regime['log_loss']:.3f}")
+
+        # 4. Confidence Scorer
+        logger.info("\n[4/4] Training confidence model...")
+        y_confidence = df["target_confidence"]
+        model_conf, metric_conf = self._train_regressor(
+            X, y_confidence, objective="reg:squarederror", eval_metric="rmse"
+        )
+        self.models[cohort]["confidence"] = model_conf
+        metrics["confidence"] = metric_conf
+        logger.info(f"   ✅ Confidence RMSE: {metric_conf['rmse']:.3f}")
+
+        return metrics
+
+    def _train_regressor(self, X, y, objective, eval_metric, quantile_alpha=None):
+        """Train single XGBoost regressor with adaptive CV."""
+        params = XGBOOST_CONFIG["shared_params"].copy()
+        params["objective"] = objective
+
+        if quantile_alpha:
+            params["quantile_alpha"] = quantile_alpha
+
+        # Adaptive CV splits based on sample size
+        n_samples = len(X)
+        if n_samples < 200:
+            n_splits = 2
+            test_size = int(n_samples * 0.25)
+        elif n_samples < 500:
+            n_splits = 3
+            test_size = int(n_samples * 0.20)
+        else:
+            n_splits = 5
+            test_size = int(n_samples * 0.20)
+
+        logger.info(f"   Using {n_splits} CV splits (n={n_samples})")
+
+        # Time series cross-validation
+        tscv = TimeSeriesSplit(n_splits=n_splits, test_size=test_size)
+
+        cv_scores = []
+        for train_idx, val_idx in tscv.split(X):
+            X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+            y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+
+            # Create params with early stopping for CV
+            cv_params = params.copy()
+            cv_params["early_stopping_rounds"] = 50
+
+            model = XGBRegressor(**cv_params)
+            model.fit(
+                X_train,
+                y_train,
+                eval_set=[(X_val, y_val)],
+                verbose=False,
+            )
+
+            y_pred = model.predict(X_val)
+
+            if eval_metric == "rmse":
+                score = np.sqrt(mean_squared_error(y_val, y_pred))
+            elif eval_metric == "mae":
+                score = mean_absolute_error(y_val, y_pred)
+
+            cv_scores.append(score)
+
+        # Train final model on full data WITHOUT early stopping
+        # (no validation set available when using all data)
+        final_params = params.copy()
+        # Remove early_stopping_rounds for final training
+        if "early_stopping_rounds" in final_params:
+            del final_params["early_stopping_rounds"]
+
+        final_model = XGBRegressor(**final_params)
+        final_model.fit(X, y, verbose=False)
+
+        metrics = {
+            eval_metric: np.mean(cv_scores),
+            f"{eval_metric}_std": np.std(cv_scores),
         }
 
-        return calibrated_model
+        return final_model, metrics
 
-    def _plot_calibration_curve(
-        self,
-        y_true,
-        y_prob_uncal,
-        y_prob_cal,
-        horizon: int,
-        output_dir: Path,
-        verbose: bool = True,
-    ):
+    def _train_classifier(self, X, y, num_classes):
+        """Train XGBoost classifier with adaptive CV and regime collapsing for small samples."""
+
+        # Check class distribution
+        class_counts = pd.Series(y).value_counts().sort_index()
+        logger.info(f"   Class distribution: {dict(class_counts)}")
+
+        # For small cohorts, collapse rare regimes
+        n_samples = len(X)
+        if n_samples < 500:
+            # Collapse Crisis (3) into Elevated (2)
+            y_collapsed = y.copy()
+            y_collapsed[y == 3] = 2
+
+            # If still too few samples in class 2, collapse into Normal (1)
+            if (y_collapsed == 2).sum() < 20:
+                y_collapsed[y_collapsed == 2] = 1
+                effective_classes = 2
+                logger.warning(
+                    f"   ⚠️  Collapsed to 2 classes (Low/Normal) due to sample size"
+                )
+            else:
+                effective_classes = 3
+                logger.warning(f"   ⚠️  Collapsed Crisis→Elevated (now 3 classes)")
+
+            y = y_collapsed
+            num_classes = effective_classes
+
+        # CRITICAL FIX: Relabel classes to ensure sequential 0,1,2... with no gaps
+        unique_classes = np.sort(y.unique())
+        class_mapping = {old: new for new, old in enumerate(unique_classes)}
+        y_relabeled = y.map(class_mapping)
+
+        # Verify relabeling worked correctly
+        relabeled_unique = np.sort(y_relabeled.unique())
+        expected_classes = np.arange(len(unique_classes))
+        assert np.array_equal(relabeled_unique, expected_classes), (
+            f"Relabeling failed: got {relabeled_unique}, expected {expected_classes}"
+        )
+
+        # Store inverse mapping for predictions
+        inverse_mapping = {new: old for old, new in class_mapping.items()}
+
+        logger.info(f"   Relabeled classes: {class_mapping}")
+        logger.info(f"   Unique relabeled values: {relabeled_unique}")
+
+        params = XGBOOST_CONFIG["shared_params"].copy()
+        params["objective"] = "multi:softprob"
+        params["num_class"] = len(unique_classes)
+
+        # Adaptive CV splits based on sample size
+        if n_samples < 200:
+            n_splits = 2
+            test_size = int(n_samples * 0.25)
+        elif n_samples < 500:
+            n_splits = 3
+            test_size = int(n_samples * 0.20)
+        else:
+            n_splits = 5
+            test_size = int(n_samples * 0.20)
+
+        logger.info(
+            f"   Using {n_splits} CV splits (n={n_samples}, {len(unique_classes)} classes)"
+        )
+
+        tscv = TimeSeriesSplit(n_splits=n_splits, test_size=test_size)
+
+        cv_accuracy = []
+        cv_logloss = []
+        valid_folds = 0
+        skipped_folds = 0
+
+        for fold_idx, (train_idx, val_idx) in enumerate(tscv.split(X)):
+            X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+            y_train, y_val = y_relabeled.iloc[train_idx], y_relabeled.iloc[val_idx]
+
+            # Check class distribution in this fold
+            train_classes = np.sort(y_train.unique())
+            val_classes = np.sort(y_val.unique())
+
+            logger.debug(
+                f"   Fold {fold_idx + 1}: train_classes={train_classes}, "
+                f"val_classes={val_classes}"
+            )
+
+            # CRITICAL FIX: Skip folds where training set doesn't have all classes
+            # XGBoost requires all classes to be present in training data
+            if not np.array_equal(train_classes, expected_classes):
+                logger.warning(
+                    f"   ⚠️  Skipping Fold {fold_idx + 1}: train set missing classes "
+                    f"(has {train_classes}, needs {expected_classes})"
+                )
+                skipped_folds += 1
+                continue
+
+            # Create params with early stopping for CV
+            cv_params = params.copy()
+            cv_params["early_stopping_rounds"] = 50
+
+            model = XGBClassifier(**cv_params)
+            model.fit(
+                X_train,
+                y_train,
+                eval_set=[(X_val, y_val)],
+                verbose=False,
+            )
+
+            y_pred = model.predict(X_val)
+            y_proba = model.predict_proba(X_val)
+
+            accuracy = (y_pred == y_val).mean()
+
+            # Specify labels parameter to handle missing classes in validation fold
+            logloss = log_loss(y_val, y_proba, labels=expected_classes)
+
+            cv_accuracy.append(accuracy)
+            cv_logloss.append(logloss)
+            valid_folds += 1
+
+        # Check if we have enough valid folds
+        if valid_folds == 0:
+            logger.error(
+                f"   ❌ No valid CV folds! All {n_splits} folds had incomplete class coverage."
+            )
+            logger.warning(
+                f"   → Training final model without CV validation (high variance risk!)"
+            )
+
+            # Train final model anyway but warn user
+            final_params = params.copy()
+            if "early_stopping_rounds" in final_params:
+                del final_params["early_stopping_rounds"]
+
+            final_model = XGBClassifier(**final_params)
+            final_model.fit(X, y_relabeled, verbose=False)
+
+            # Store mapping info
+            final_model.class_mapping_ = class_mapping
+            final_model.inverse_mapping_ = inverse_mapping
+            final_model.effective_classes_ = len(unique_classes)
+
+            # Return dummy metrics with warning flag
+            metrics = {
+                "accuracy": 0.0,
+                "accuracy_std": 0.0,
+                "log_loss": 999.0,
+                "log_loss_std": 0.0,
+                "num_classes": len(unique_classes),
+                "class_mapping": class_mapping,
+                "cv_warning": "No valid CV folds - temporal class imbalance",
+                "valid_folds": 0,
+                "skipped_folds": skipped_folds,
+            }
+
+            return final_model, metrics
+
+        elif valid_folds < n_splits:
+            logger.warning(
+                f"   ⚠️  Used {valid_folds}/{n_splits} CV folds "
+                f"({skipped_folds} skipped due to missing classes)"
+            )
+
+        # Train final model on full data WITHOUT early stopping
+        final_params = params.copy()
+        if "early_stopping_rounds" in final_params:
+            del final_params["early_stopping_rounds"]
+
+        final_model = XGBClassifier(**final_params)
+        final_model.fit(X, y_relabeled, verbose=False)
+
+        # Store mapping info in the model for prediction time
+        final_model.class_mapping_ = class_mapping
+        final_model.inverse_mapping_ = inverse_mapping
+        final_model.effective_classes_ = len(unique_classes)
+
+        metrics = {
+            "accuracy": np.mean(cv_accuracy),
+            "accuracy_std": np.std(cv_accuracy),
+            "log_loss": np.mean(cv_logloss),
+            "log_loss_std": np.std(cv_logloss),
+            "num_classes": len(unique_classes),
+            "class_mapping": class_mapping,
+            "valid_folds": valid_folds,
+            "skipped_folds": skipped_folds,
+        }
+
+        return final_model, metrics
+
+    def _calibrate_probabilities(self, model, X, y):
+        """
+        Calibrate classifier probabilities using isotonic regression.
+
+        FIXED: Creates calibrators for ORIGINAL classes, not relabeled classes.
+        """
+        y_proba = model.predict_proba(X)
+
+        # Get the number of classes this model actually predicts
+        n_predicted_classes = y_proba.shape[1]
+
+        # Create calibrators for ALL 4 original regime classes
+        # (not just the classes this specific model was trained on)
+        calibrators = []
+
+        for original_class_idx in range(4):  # Always 4 regimes in original taxonomy
+            # Check if this model predicts this class
+            if hasattr(model, "inverse_mapping_"):
+                # Model has collapsed classes - find which predicted class maps to this original class
+                predicted_class_idx = None
+                for pred_idx, orig_idx in model.inverse_mapping_.items():
+                    if orig_idx == original_class_idx:
+                        predicted_class_idx = pred_idx
+                        break
+
+                if predicted_class_idx is None:
+                    # This original class was collapsed away - no calibrator needed
+                    calibrators.append(None)
+                    continue
+
+                # Use the mapped predicted class for calibration
+                class_idx_for_calibration = predicted_class_idx
+                y_binary = (y == original_class_idx).astype(int)
+
+            else:
+                # Model has all 4 classes - direct mapping
+                class_idx_for_calibration = original_class_idx
+                y_binary = (y == original_class_idx).astype(int)
+
+            # Only calibrate if we have both positive and negative examples
+            if y_binary.sum() > 0 and y_binary.sum() < len(y_binary):
+                calibrator = IsotonicRegression(out_of_bounds="clip")
+                calibrator.fit(y_proba[:, class_idx_for_calibration], y_binary)
+                calibrators.append(calibrator)
+            else:
+                # No calibration possible
+                calibrators.append(None)
+
+        return calibrators
+
+    def predict(self, X: pd.DataFrame, cohort: str) -> Dict:
+        """
+        Generate probabilistic forecast for new data.
+
+        FIXED: Handles models trained with collapsed regime classes.
+        """
+        if cohort not in self.models:
+            raise ValueError(
+                f"Cohort {cohort} not trained. Available: {list(self.models.keys())}"
+            )
+
+        X_features = X[self.feature_names]
+
+        # Get predictions from all models
+        point = self.models[cohort]["point"].predict(X_features)[0]
+
+        quantiles = {}
+        for q in self.quantiles:
+            q_label = f"q{int(q * 100)}"
+            quantiles[q_label] = self.models[cohort]["quantiles"][q].predict(
+                X_features
+            )[0]
+
+        # Enforce quantile monotonicity
+        quantiles = self._enforce_quantile_order(quantiles)
+
+        # Get regime predictions with proper handling of collapsed classes
+        regime_model = self.models[cohort]["regime"]
+        regime_probs_raw = regime_model.predict_proba(X_features)[0]
+
+        # Initialize probabilities for all 4 original regime classes
+        regime_probs_full = np.zeros(4)
+
+        # CRITICAL FIX: Check if model was trained with collapsed classes
+        if hasattr(regime_model, "inverse_mapping_"):
+            # Model has fewer than 4 classes - map back to original indices
+            for new_idx, prob in enumerate(regime_probs_raw):
+                original_idx = int(regime_model.inverse_mapping_[new_idx])
+                regime_probs_full[original_idx] = prob
+
+            # Log for diagnostics
+            logger.debug(
+                f"Cohort {cohort}: Mapped {len(regime_probs_raw)} predictions "
+                f"to {len(regime_probs_full)} original classes"
+            )
+        else:
+            # Model has all 4 classes, use directly
+            regime_probs_full = regime_probs_raw
+
+        # Calibrate regime probabilities if calibrators exist
+        if cohort in self.calibrators and "regime" in self.calibrators[cohort]:
+            calibrators = self.calibrators[cohort]["regime"]
+            regime_probs_calibrated = []
+
+            for class_idx in range(len(regime_probs_full)):
+                # Only calibrate if:
+                # 1. We have a calibrator for this class
+                # 2. The probability is non-zero
+                if (
+                    class_idx < len(calibrators)
+                    and calibrators[class_idx] is not None
+                    and regime_probs_full[class_idx] > 0
+                ):
+                    prob_calibrated = calibrators[class_idx].predict(
+                        [regime_probs_full[class_idx]]
+                    )[0]
+                    regime_probs_calibrated.append(prob_calibrated)
+                else:
+                    # No calibrator or zero probability - keep original
+                    regime_probs_calibrated.append(regime_probs_full[class_idx])
+
+            regime_probs = np.array(regime_probs_calibrated)
+
+            # Renormalize to sum to 1
+            if regime_probs.sum() > 0:
+                regime_probs = regime_probs / regime_probs.sum()
+            else:
+                regime_probs = regime_probs_full
+        else:
+            regime_probs = regime_probs_full
+
+        # Confidence prediction
+        confidence = self.models[cohort]["confidence"].predict(X_features)[0]
+        confidence = np.clip(confidence, 0, 1)
+
+        return {
+            "point_estimate": float(point),
+            "quantiles": {k: float(v) for k, v in quantiles.items()},
+            "regime_probabilities": {
+                self.regime_labels[i].lower(): float(regime_probs[i])
+                for i in range(len(self.regime_labels))
+            },
+            "confidence_score": float(confidence),
+            "cohort": cohort,
+        }
+
+    def _enforce_quantile_order(self, quantiles: Dict[str, float]) -> Dict[str, float]:
+        """Ensure q10 <= q25 <= q50 <= q75 <= q90."""
+        sorted_q = sorted(quantiles.items(), key=lambda x: int(x[0][1:]))
+
+        # Forward pass: ensure increasing
+        for i in range(1, len(sorted_q)):
+            prev_val = sorted_q[i - 1][1]
+            curr_val = sorted_q[i][1]
+            if curr_val < prev_val:
+                sorted_q[i] = (sorted_q[i][0], prev_val)
+
+        return dict(sorted_q)
+
+    def _save_cohort_models(self, cohort: str, save_dir: str):
+        """Save models for one cohort to disk."""
+        save_path = Path(save_dir)
+        save_path.mkdir(exist_ok=True)
+
+        cohort_file = save_path / f"probabilistic_forecaster_{cohort}.pkl"
+
+        with open(cohort_file, "wb") as f:
+            pickle.dump(
+                {
+                    "models": self.models[cohort],
+                    "calibrators": self.calibrators.get(cohort, {}),
+                    "feature_names": self.feature_names,
+                    "config": {
+                        "horizon": self.horizon,
+                        "quantiles": self.quantiles,
+                        "regime_boundaries": self.regime_boundaries,
+                        "regime_labels": self.regime_labels,
+                    },
+                },
+                f,
+            )
+
+        logger.info(f"💾 Saved: {cohort_file}")
+
+    def load(self, cohort: str, load_dir: str = "models"):
+        """Load trained models for a specific cohort."""
+        load_path = Path(load_dir) / f"probabilistic_forecaster_{cohort}.pkl"
+
+        with open(load_path, "rb") as f:
+            data = pickle.load(f)
+
+        self.models[cohort] = data["models"]
+        self.calibrators[cohort] = data["calibrators"]
+        self.feature_names = data["feature_names"]
+
+        # Restore config
+        config = data["config"]
+        self.horizon = config["horizon"]
+        self.quantiles = config["quantiles"]
+        self.regime_boundaries = config["regime_boundaries"]
+        self.regime_labels = config["regime_labels"]
+
+        logger.info(f"✅ Loaded cohort: {cohort}")
+
+    def _generate_diagnostics(self, cohort_metrics: Dict, save_dir: str):
+        """Generate diagnostic plots and JSON summaries."""
+        save_path = Path(save_dir)
+
+        # 1. Export metrics as JSON
+        metrics_file = save_path / "probabilistic_model_metrics.json"
+        with open(metrics_file, "w") as f:
+            json.dump(cohort_metrics, f, indent=2)
+        logger.info(f"📊 Metrics saved: {metrics_file}")
+
+        # 2. Plot regime classification performance
         try:
-            prob_true_uncal, prob_pred_uncal = calibration_curve(
-                y_true, y_prob_uncal, n_bins=10, strategy="quantile"
-            )
-            prob_true_cal, prob_pred_cal = calibration_curve(
-                y_true, y_prob_cal, n_bins=10, strategy="quantile"
-            )
+            fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
-            fig, ax = plt.subplots(figsize=(8, 6))
+            cohorts = list(cohort_metrics.keys())
+            accuracies = [cohort_metrics[c]["regime"]["accuracy"] for c in cohorts]
+            log_losses = [cohort_metrics[c]["regime"]["log_loss"] for c in cohorts]
 
-            ax.plot([0, 1], [0, 1], "k--", linewidth=2, label="Perfect Calibration")
-            ax.plot(
-                prob_pred_uncal,
-                prob_true_uncal,
-                "ro-",
-                linewidth=2,
-                markersize=8,
-                label="Uncalibrated XGBoost",
-            )
-            ax.plot(
-                prob_pred_cal,
-                prob_true_cal,
-                "go-",
-                linewidth=2,
-                markersize=8,
-                label="Calibrated",
-            )
+            axes[0].bar(range(len(cohorts)), accuracies)
+            axes[0].set_xticks(range(len(cohorts)))
+            axes[0].set_xticklabels(cohorts, rotation=45, ha="right")
+            axes[0].set_ylabel("Accuracy")
+            axes[0].set_title("Regime Classification Accuracy by Cohort")
+            axes[0].axhline(0.25, color="r", linestyle="--", label="Random (4 classes)")
+            axes[0].legend()
 
-            ax.set_xlabel("Predicted Probability", fontsize=12)
-            ax.set_ylabel("Actual Frequency (Fraction of Positives)", fontsize=12)
-            ax.set_title(
-                f"Probability Calibration - {horizon}d VIX Expansion", fontsize=14
-            )
-            ax.legend(loc="upper left", fontsize=10)
-            ax.grid(alpha=0.3)
-            ax.set_xlim([0, 1])
-            ax.set_ylim([0, 1])
+            axes[1].bar(range(len(cohorts)), log_losses)
+            axes[1].set_xticks(range(len(cohorts)))
+            axes[1].set_xticklabels(cohorts, rotation=45, ha="right")
+            axes[1].set_ylabel("Log Loss")
+            axes[1].set_title("Regime Classification Log Loss by Cohort")
 
-            output_path = output_dir / f"calibration_curve_{horizon}d.png"
-            plt.savefig(output_path, dpi=150, bbox_inches="tight")
+            plt.tight_layout()
+            plot_file = save_path / "regime_performance.png"
+            plt.savefig(plot_file, dpi=150)
             plt.close()
-
-            if verbose:
-                print(f"      📈 Calibration curve saved: {output_path}")
-
+            logger.info(f"📈 Plot saved: {plot_file}")
         except Exception as e:
-            if verbose:
-                print(f"      ⚠️  Could not generate calibration plot: {e}")
+            logger.warning(f"Could not generate plots: {e}")
 
-    def _get_calibration_split(
-        self, X: pd.DataFrame, y: pd.Series, calibration_fraction: float = 0.2
-    ) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
-        n_total = len(X)
-        n_cal = int(n_total * calibration_fraction)
-        n_train = n_total - n_cal
+        # 3. Summary table
+        logger.info("\n" + "=" * 80)
+        logger.info("MODEL PERFORMANCE SUMMARY")
+        logger.info("=" * 80)
+        logger.info(
+            f"{'Cohort':<30} | {'Point RMSE':>10} | {'Regime Acc':>10} | {'Conf RMSE':>10}"
+        )
+        logger.info("-" * 80)
 
-        X_train = X.iloc[:n_train]
-        y_train = y.iloc[:n_train]
-        X_cal = X.iloc[n_train:]
-        y_cal = y.iloc[n_train:]
+        for cohort in sorted(cohorts):
+            m = cohort_metrics[cohort]
+            logger.info(
+                f"{cohort:<30} | "
+                f"{m['point']['rmse']:>9.2f}% | "
+                f"{m['regime']['accuracy']:>9.3f} | "
+                f"{m['confidence']['rmse']:>9.3f}"
+            )
 
-        return X_train, y_train, X_cal, y_cal
-
-    def _save_models(self, verbose: bool):
-        import pickle
-
-        for horizon, model in self.models.items():
-            if isinstance(model, CalibratedClassifierCV):
-                model_path = self.output_dir / f"vix_expansion_{horizon}d.pkl"
-                with open(model_path, "wb") as f:
-                    pickle.dump(model, f)
-
-                if verbose:
-                    print(
-                        f"   💾 Saved calibrated model: vix_expansion_{horizon}d.pkl (use pickle)"
-                    )
-            else:
-                model_path = self.output_dir / f"vix_expansion_{horizon}d.json"
-                model.save_model(model_path)
-
-                if verbose:
-                    print(
-                        f"   💾 Saved XGBoost model: vix_expansion_{horizon}d.json (use xgb.XGBClassifier)"
-                    )
-
-        for horizon, importance_df in self.feature_importance.items():
-            importance_path = self.output_dir / f"feature_importance_{horizon}d.csv"
-            importance_df.to_csv(importance_path, index=False)
-
-        def convert_to_json_serializable(obj):
-            if isinstance(obj, dict):
-                return {k: convert_to_json_serializable(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_to_json_serializable(item) for item in obj]
-            elif isinstance(obj, (np.integer, np.int64, np.int32)):
-                return int(obj)
-            elif isinstance(obj, (np.floating, np.float64, np.float32)):
-                return float(obj)
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            elif pd.isna(obj):
-                return None
-            else:
-                return obj
-
-        metrics_path = self.output_dir / "validation_metrics_v2.json"
-        with open(metrics_path, "w") as f:
-            serializable_results = convert_to_json_serializable(self.validation_results)
-            json.dump(serializable_results, f, indent=2)
-
-        if verbose:
-            print(f"\n✅ Models saved to {self.output_dir}")
-            print(f"   Horizons: {self.trained_horizons}")
+        logger.info("=" * 80)
 
 
-def train_vix_expansion_model(
-    integrated_system,
-    horizons: List[int] = [5],
-    optimize_hyperparams: int = 0,
-    expansion_threshold: float = 0.15,
-    crisis_balanced: bool = True,
-    compute_shap: bool = True,
-    verbose: bool = True,
-) -> VIXExpansionTrainer:
-    if not integrated_system.trained:
-        raise ValueError("Train integrated system first")
+def train_probabilistic_forecaster(
+    df: pd.DataFrame, save_dir: str = "models"
+) -> ProbabilisticVIXForecaster:
+    """
+    Convenience function to train forecaster.
 
-    trainer = VIXExpansionTrainer(expansion_threshold=expansion_threshold)
+    Args:
+        df: DataFrame from feature_engine with calendar_cohort column
+        save_dir: Where to save models
 
-    trainer.train(
-        features=integrated_system.orchestrator.features,
-        vix=integrated_system.orchestrator.vix_ml,
-        spx=integrated_system.orchestrator.spx_ml,
-        horizons=horizons,
-        n_splits=5,
-        optimize_hyperparams=optimize_hyperparams,
-        crisis_balanced=crisis_balanced,
-        compute_shap=compute_shap,
-        verbose=verbose,
-    )
-
-    return trainer
+    Returns:
+        Trained ProbabilisticVIXForecaster instance
+    """
+    forecaster = ProbabilisticVIXForecaster()
+    forecaster.train(df, save_dir=save_dir)
+    return forecaster

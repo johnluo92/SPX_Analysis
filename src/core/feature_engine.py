@@ -1,5 +1,5 @@
 """Enhanced Feature Engine V5 - Streamlined, No Duplicates
-Consolidated feature generation with intelligent caching and deduplication.
+WITH CALENDAR COHORT INTEGRATION
 """
 
 import warnings
@@ -14,11 +14,22 @@ warnings.filterwarnings("ignore")
 from config import REGIME_BOUNDARIES, TRAINING_YEARS
 
 try:
-    from config import ENABLE_TEMPORAL_SAFETY, PUBLICATION_LAGS
+    from config import (
+        CALENDAR_COHORTS,
+        COHORT_PRIORITY,
+        ENABLE_TEMPORAL_SAFETY,
+        FEATURE_QUALITY_CONFIG,
+        PUBLICATION_LAGS,
+        TARGET_CONFIG,
+    )
 except ImportError:
     ENABLE_TEMPORAL_SAFETY = False
     PUBLICATION_LAGS = {}
-    warnings.warn("⚠️ TEMPORAL SAFETY DISABLED - config.PUBLICATION_LAGS not found")
+    CALENDAR_COHORTS = {}
+    COHORT_PRIORITY = []
+    TARGET_CONFIG = {}
+    FEATURE_QUALITY_CONFIG = {}
+    warnings.warn("⚠️ Calendar cohort config not found - cohort features disabled")
 
 
 # ==================== ROBUST HELPER FUNCTIONS ====================
@@ -69,6 +80,10 @@ def calculate_percentile_with_validation(series, window, min_data_pct=0.7):
 
     percentile = series.rolling(window + 1).apply(safe_percentile_rank, raw=False)
     return percentile
+
+
+# ==================== META FEATURE ENGINE ====================
+# [Keep all existing MetaFeatureEngine code unchanged]
 
 
 class MetaFeatureEngine:
@@ -278,7 +293,7 @@ class MetaFeatureEngine:
                     f"{name}_percentile_63d"
                 ].diff(10)
 
-            # Extreme indicators - only low extremes (high extremes removed as per removal_summary)
+            # Extreme indicators - only low extremes
             for window in [63, 252]:
                 pct_col = f"{name}_percentile_{window}d"
                 if pct_col in meta.columns:
@@ -293,6 +308,10 @@ class MetaFeatureEngine:
             ).astype(int)
 
         return meta
+
+
+# ==================== FUTURES FEATURE ENGINE ====================
+# [Keep all existing FuturesFeatureEngine code - unchanged]
 
 
 class FuturesFeatureEngine:
@@ -431,6 +450,10 @@ class FuturesFeatureEngine:
         return features
 
 
+# ==================== TREASURY YIELD FEATURE ENGINE ====================
+# [Keep all existing TreasuryYieldFeatureEngine code - unchanged]
+
+
 class TreasuryYieldFeatureEngine:
     """Treasury yield curve features."""
 
@@ -472,10 +495,6 @@ class TreasuryYieldFeatureEngine:
                 calculate_percentile_with_validation(spread, 252)
             )
 
-        # Inversion indicators - removed per removal_summary (too few unique values)
-        # yield_10y2y_inverted, yield_10y3m_inverted, yield_2y3m_inverted removed
-        # yield_inversion_count removed
-
         if "yield_10y2y" in features.columns:
             features["yield_10y2y_inversion_depth"] = (
                 features["yield_10y2y"].clip(upper=0).abs()
@@ -508,11 +527,6 @@ class TreasuryYieldFeatureEngine:
                 features["yield_curve_level"], 252
             )
 
-        # Curve slope - removed as duplicate of yield_10y3m
-        # yield_curve_slope removed (1.000 corr with yield_10y3m)
-        # yield_curve_slope_zscore removed (0.961 corr with yield_10y3m_percentile_252d)
-        # yield_curve_regime removed (0.964 corr with yield_10y3m)
-
         # Curve curvature
         if "DGS5" in yields.columns:
             features["yield_curve_curvature"] = (
@@ -529,10 +543,6 @@ class TreasuryYieldFeatureEngine:
         """Interest rate volatility features."""
         features = pd.DataFrame(index=yields.index)
 
-        # Only selected vol features to reduce redundancy
-        # dgs1_vol_63d removed (0.960 corr with dgs2_vol_63d and 0.952 with dgs6mo_vol_63d)
-        # dgs2_vol_63d removed (0.960 corr with dgs1_vol_63d)
-
         for col in ["DGS6MO", "DGS10", "DGS30"]:
             if col in yields.columns:
                 daily_change = yields[col].diff()
@@ -540,7 +550,7 @@ class TreasuryYieldFeatureEngine:
                     63
                 ).std() * np.sqrt(252)
 
-        # Aggregate rate vol - removed shock indicators (too few unique values per removal_summary)
+        # Aggregate rate vol
         vol_cols = [col for col in features.columns if "_vol_" in col]
         if vol_cols:
             features["yield_curve_vol_avg"] = features[vol_cols].mean(axis=1)
@@ -549,8 +559,11 @@ class TreasuryYieldFeatureEngine:
         return features
 
 
+# ==================== UNIFIED FEATURE ENGINE WITH CALENDAR COHORTS ====================
+
+
 class UnifiedFeatureEngine:
-    """Enhanced unified feature engine - streamlined, no duplicates."""
+    """Enhanced unified feature engine - WITH CALENDAR COHORT INTEGRATION"""
 
     def __init__(self, data_fetcher):
         self.fetcher = data_fetcher
@@ -558,26 +571,307 @@ class UnifiedFeatureEngine:
         self.futures_engine = FuturesFeatureEngine()
         self.treasury_engine = TreasuryYieldFeatureEngine()
 
-    def apply_quality_control(self, features: pd.DataFrame):
-        """Apply quality control if available."""
-        if not hasattr(self, "quality_controller"):
-            return features
+        # Calendar data for cohort classification
+        self.fomc_calendar = None
+        self.opex_calendar = None
+        self.earnings_calendar = None
+        self.vix_futures_expiry = None
 
-        print("\n" + "=" * 80)
-        print("🛡️ QUALITY CONTROL")
-        print("=" * 80)
+        # Cache for performance
+        self._cohort_cache = {}  # {date: (cohort, weight)}
 
-        clean_features, report = self.quality_controller.validate_features(features)
+    # ==================== CALENDAR DATA LOADING ====================
 
-        import os
+    def _load_calendar_data(self):
+        """Load all calendar sources once at startup."""
+        if self.fomc_calendar is None:
+            try:
+                # Load from data_fetcher
+                self.fomc_calendar = self.fetcher.fetch_fomc_calendar()
+                print(f"✅ FOMC calendar loaded: {len(self.fomc_calendar)} meetings")
+            except Exception as e:
+                print(f"⚠️  FOMC calendar load failed: {e}, using stub")
+                self.fomc_calendar = pd.DataFrame()  # Empty fallback
 
-        os.makedirs("./data_cache", exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.quality_controller.save_report(
-            report, f"./data_cache/quality_report_{timestamp}.json"
-        )
+        # Generate OpEx calendar (always 3rd Friday of month)
+        if self.opex_calendar is None:
+            self.opex_calendar = self._generate_opex_calendar()
+            print(f"✅ OpEx calendar generated: {len(self.opex_calendar)} dates")
 
-        return clean_features
+        # VIX futures expiry (Wednesday 30 days before S&P OpEx)
+        if self.vix_futures_expiry is None:
+            self.vix_futures_expiry = self._generate_vix_futures_expiry()
+            print(
+                f"✅ VIX futures expiry calendar: {len(self.vix_futures_expiry)} dates"
+            )
+
+        # Earnings calendar (stub - implement later or use API)
+        if self.earnings_calendar is None:
+            self.earnings_calendar = pd.DataFrame()
+            print("⚠️  Earnings calendar not implemented (will use default cohort)")
+
+    def _generate_opex_calendar(self, start_year=2009, end_year=2030):
+        """
+        Generate monthly options expiration dates (3rd Friday of each month).
+
+        Returns:
+            DataFrame with columns: [date, expiry_type]
+        """
+        opex_dates = []
+
+        for year in range(start_year, end_year + 1):
+            for month in range(1, 13):
+                # Find 3rd Friday of month
+                # Start from 15th (earliest 3rd Friday), find next Friday
+                first_possible = pd.Timestamp(year, month, 15)
+
+                # Find next Friday (weekday 4)
+                days_ahead = (4 - first_possible.weekday()) % 7
+                if days_ahead == 0 and first_possible.day > 15:
+                    days_ahead = 7  # Move to next week if already past
+
+                third_friday = first_possible + pd.Timedelta(days=days_ahead)
+                opex_dates.append({"date": third_friday, "expiry_type": "monthly_opex"})
+
+        df = pd.DataFrame(opex_dates)
+        df = df.set_index("date").sort_index()
+        return df
+
+    def _generate_vix_futures_expiry(self):
+        """
+        VIX futures expire on Wednesday, 30 days before 3rd Friday.
+
+        Returns:
+            DataFrame with columns: [date, expiry_type]
+        """
+        if self.opex_calendar is None:
+            self._generate_opex_calendar()
+
+        vix_expiry = []
+        for opex_date in self.opex_calendar.index:
+            # 30 days before, find Wednesday
+            approx_date = opex_date - pd.Timedelta(days=30)
+
+            # Find next Wednesday (weekday 2)
+            days_to_wed = (2 - approx_date.weekday()) % 7
+            vix_date = approx_date + pd.Timedelta(days=days_to_wed)
+
+            vix_expiry.append({"date": vix_date, "expiry_type": "vix_futures"})
+
+        df = pd.DataFrame(vix_expiry)
+        df = df.set_index("date").sort_index()
+        return df
+
+    # ==================== COHORT CLASSIFICATION ====================
+
+    def get_calendar_cohort(self, date):
+        """
+        Determine which calendar cohort a date belongs to.
+
+        Args:
+            date: pd.Timestamp or datetime
+
+        Returns:
+            tuple: (cohort_name: str, weight: float)
+
+        Example:
+            >>> get_calendar_cohort(pd.Timestamp('2025-01-15'))
+            ('monthly_opex_minus_1', 1.5)
+        """
+        date = pd.Timestamp(date)
+
+        # Check cache first (performance optimization)
+        if date in self._cohort_cache:
+            return self._cohort_cache[date]
+
+        # Ensure calendars are loaded
+        if self.opex_calendar is None:
+            self._load_calendar_data()
+
+        # Calculate days to various events
+        days_to_opex = self._days_to_monthly_opex(date)
+        days_to_fomc = self._days_to_fomc(date)
+        days_to_vix_expiry = self._days_to_vix_futures_expiry(date)
+        earnings_pct = self._spx_earnings_intensity(date)
+
+        # Match against cohorts in priority order
+        for cohort_name in COHORT_PRIORITY:
+            cohort_def = CALENDAR_COHORTS[cohort_name]
+            condition = cohort_def["condition"]
+
+            if condition == "days_to_monthly_opex":
+                range_min, range_max = cohort_def["range"]
+                if range_min <= days_to_opex <= range_max:
+                    result = (cohort_name, cohort_def["weight"])
+                    self._cohort_cache[date] = result
+                    return result
+
+            elif condition == "days_to_fomc":
+                if days_to_fomc is not None:
+                    range_min, range_max = cohort_def["range"]
+                    if range_min <= days_to_fomc <= range_max:
+                        result = (cohort_name, cohort_def["weight"])
+                        self._cohort_cache[date] = result
+                        return result
+
+            elif condition == "days_to_futures_expiry":
+                if days_to_vix_expiry is not None:
+                    range_min, range_max = cohort_def["range"]
+                    if range_min <= days_to_vix_expiry <= range_max:
+                        result = (cohort_name, cohort_def["weight"])
+                        self._cohort_cache[date] = result
+                        return result
+
+            elif condition == "spx_earnings_pct":
+                if earnings_pct is not None:
+                    range_min, range_max = cohort_def["range"]
+                    if range_min <= earnings_pct <= range_max:
+                        result = (cohort_name, cohort_def["weight"])
+                        self._cohort_cache[date] = result
+                        return result
+
+            elif condition == "default":
+                # Catch-all for mid_cycle
+                result = (cohort_name, cohort_def["weight"])
+                self._cohort_cache[date] = result
+                return result
+
+        # Should never reach here if 'mid_cycle' is last in priority
+        raise ValueError(f"No cohort matched for date {date}")
+
+    def _days_to_monthly_opex(self, date):
+        """
+        Calculate days until next monthly OpEx (3rd Friday).
+
+        Returns:
+            int: Negative if before OpEx, 0 on OpEx, positive after
+            Example: -5 means "5 days until OpEx"
+        """
+        # Find next OpEx date
+        future_opex = self.opex_calendar[self.opex_calendar.index >= date]
+
+        if len(future_opex) == 0:
+            return None  # No future OpEx (end of calendar)
+
+        next_opex = future_opex.index[0]
+        days_diff = (next_opex - date).days
+
+        return -days_diff  # Negative before, positive after
+
+    def _days_to_fomc(self, date):
+        """
+        Calculate days until next FOMC meeting.
+
+        Returns:
+            int: Days to next meeting (negative before, positive after)
+            None: If FOMC calendar unavailable
+        """
+        if self.fomc_calendar is None or len(self.fomc_calendar) == 0:
+            return None
+
+        future_fomc = self.fomc_calendar[self.fomc_calendar.index >= date]
+
+        if len(future_fomc) == 0:
+            return None
+
+        next_fomc = future_fomc.index[0]
+        days_diff = (next_fomc - date).days
+
+        return -days_diff
+
+    def _days_to_vix_futures_expiry(self, date):
+        """Calculate days until next VIX futures expiration."""
+        if self.vix_futures_expiry is None or len(self.vix_futures_expiry) == 0:
+            return None
+
+        future_expiry = self.vix_futures_expiry[self.vix_futures_expiry.index >= date]
+
+        if len(future_expiry) == 0:
+            return None
+
+        next_expiry = future_expiry.index[0]
+        days_diff = (next_expiry - date).days
+
+        return -days_diff
+
+    def _spx_earnings_intensity(self, date):
+        """
+        Calculate % of SPX components reporting earnings this week.
+
+        Returns:
+            float: Percentage [0.0, 1.0] of SPX reporting
+            None: If earnings calendar unavailable (stub implementation)
+        """
+        # STUB IMPLEMENTATION
+        # TODO: Integrate with earnings calendar API or manual CSV
+
+        # For now, use heuristic: Peak earnings months are Jan, Apr, Jul, Oct
+        month = date.month
+        if month in [1, 4, 7, 10]:
+            # Check if in earnings window (typically 2nd-4th week of month)
+            week_of_month = (date.day - 1) // 7 + 1
+            if week_of_month in [2, 3, 4]:
+                return 0.25  # Assume 25% of SPX reporting
+
+        return 0.05  # Low intensity otherwise
+
+    # ==================== FEATURE QUALITY COMPUTATION ====================
+
+    def _compute_feature_quality_vectorized(self, df):
+        """
+        Compute feature quality score for each row.
+        Based on missingness and staleness of features.
+
+        Returns:
+            pd.Series: Quality scores [0, 1] where 1 = perfect
+        """
+        if not FEATURE_QUALITY_CONFIG:
+            return pd.Series(1.0, index=df.index)
+
+        quality_scores = []
+
+        for idx, row in df.iterrows():
+            score_components = []
+
+            # Check critical features (must be present)
+            for feat in FEATURE_QUALITY_CONFIG.get("missingness_penalty", {}).get(
+                "critical_features", []
+            ):
+                if feat in df.columns:
+                    if pd.isna(row[feat]):
+                        score_components.append(0.0)  # Critical missing = fail
+                    else:
+                        score_components.append(1.0)
+
+            # Check important features (0.5 if missing)
+            for feat in FEATURE_QUALITY_CONFIG.get("missingness_penalty", {}).get(
+                "important_features", []
+            ):
+                if feat in df.columns:
+                    if pd.isna(row[feat]):
+                        score_components.append(0.5)
+                    else:
+                        score_components.append(1.0)
+
+            # Check optional features (0.9 if missing)
+            for feat in FEATURE_QUALITY_CONFIG.get("missingness_penalty", {}).get(
+                "optional_features", []
+            ):
+                if feat in df.columns:
+                    if pd.isna(row[feat]):
+                        score_components.append(0.9)
+                    else:
+                        score_components.append(1.0)
+
+            # Average all components
+            if len(score_components) > 0:
+                quality_scores.append(np.mean(score_components))
+            else:
+                quality_scores.append(1.0)  # Default if no tracked features
+
+        return pd.Series(quality_scores, index=df.index)
+
+    # ==================== FEATURE METADATA GENERATION ====================
 
     def _generate_feature_metadata(
         self,
@@ -672,10 +966,79 @@ class UnifiedFeatureEngine:
 
         return metadata
 
+    def _validate_term_structure_timing(
+        self, vix: pd.Series, cboe_data: pd.DataFrame, prediction_date: datetime = None
+    ) -> bool:
+        """
+        Validate VIX term structure calculation doesn't use future data.
+
+        Addresses Gap 2: VIX3M edge case where forward-fill might create T+1 leakage.
+
+        Args:
+            vix: VIX spot series
+            cboe_data: CBOE data with VIX3M
+            prediction_date: Date to validate (if None, uses latest)
+
+        Returns:
+            True if valid, raises warning if potential leakage detected
+        """
+        if cboe_data is None or "VIX3M" not in cboe_data.columns:
+            return True
+
+        if prediction_date is None:
+            prediction_date = vix.index[-1]
+
+        # Check VIX3M availability at prediction date
+        vix3m = cboe_data["VIX3M"]
+
+        # Get publication lag for VIX3M (should be T+0 like VIX)
+        vix3m_lag = PUBLICATION_LAGS.get("VIX3M", 0)
+
+        # Validate VIX3M is not from the future
+        latest_vix3m = vix3m.dropna().index[-1] if len(vix3m.dropna()) > 0 else None
+
+        if latest_vix3m is not None:
+            allowed_date = prediction_date - timedelta(days=vix3m_lag)
+
+            if latest_vix3m > allowed_date:
+                warnings.warn(
+                    f"⚠️ VIX3M term structure may have T+{vix3m_lag} leakage: "
+                    f"Using data from {latest_vix3m.date()} "
+                    f"but prediction date is {prediction_date.date()}"
+                )
+                return False
+
+        return True
+
+    # ==================== QUALITY CONTROL ====================
+
+    def apply_quality_control(self, features: pd.DataFrame):
+        """Apply quality control if available."""
+        if not hasattr(self, "quality_controller"):
+            return features
+
+        print("\n" + "=" * 80)
+        print("🛡️ QUALITY CONTROL")
+        print("=" * 80)
+
+        clean_features, report = self.quality_controller.validate_features(features)
+
+        import os
+
+        os.makedirs("./data_cache", exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.quality_controller.save_report(
+            report, f"./data_cache/quality_report_{timestamp}.json"
+        )
+
+        return clean_features
+
+    # ==================== MAIN BUILD METHOD ====================
+
     def build_complete_features(self, years: int = TRAINING_YEARS) -> dict:
-        """Build complete feature set - WITH TEMPORAL SAFETY."""
+        """Build complete feature set - WITH TEMPORAL SAFETY AND CALENDAR COHORTS."""
         print(
-            f"\n{'=' * 80}\nENHANCED FEATURE ENGINE V5 - WITH TEMPORAL SAFETY\n{'=' * 80}\nWindow: {years}y"
+            f"\n{'=' * 80}\nENHANCED FEATURE ENGINE V5 - WITH CALENDAR COHORTS\n{'=' * 80}\nWindow: {years}y"
         )
 
         if ENABLE_TEMPORAL_SAFETY:
@@ -706,28 +1069,24 @@ class UnifiedFeatureEngine:
         vix = vix["Close"].squeeze()
 
         # CRITICAL: Use 'ffill' ONLY for alignment, NOT for filling missing future data
-        # The temporal lags were already applied in data_fetcher
-        vix = vix.reindex(
-            spx.index, method="ffill", limit=5
-        )  # limit=5 prevents excessive forward-fill
+        vix = vix.reindex(spx.index, method="ffill", limit=5)
         spx_ohlc = spx_df.reindex(spx.index, method="ffill", limit=5)
 
         print(f"   ✅ SPX: {len(spx)} | VIX: {len(vix)}")
 
-        # CBOE Data (temporal safety handled in data_fetcher)
+        # CBOE Data
         print("\n[2/8] CBOE data...")
         cboe_dict = self.fetcher.fetch_all_cboe()
         if cboe_dict:
             cboe_data = pd.DataFrame(index=spx.index)
             for symbol, series in cboe_dict.items():
-                # CRITICAL: Limited forward-fill to prevent propagating future data
                 cboe_data[symbol] = series.reindex(spx.index, method="ffill", limit=5)
             print(f"   ✅ {len(cboe_data.columns)} CBOE series loaded")
         else:
             cboe_data = pd.DataFrame(index=spx.index)
             print("   ⚠️ CBOE data not available")
 
-        # Base Features (uses aligned data, temporal safety preserved)
+        # Base Features
         print("\n[3/8] Base features...")
         base_features = self._build_base_features(spx, vix, spx_ohlc, cboe_data)
         print(f"   ✅ {len(base_features.columns)} base features")
@@ -741,14 +1100,14 @@ class UnifiedFeatureEngine:
         if not cboe_features.empty:
             print(f"   ✅ {len(cboe_features.columns)} CBOE features")
 
-        # Futures Data (temporal safety handled in data_fetcher)
+        # Futures Data
         print("\n[4/8] Futures data...")
         futures_features = self._build_futures_features(
             start_str, end_str, spx.index, spx, cboe_data
         )
         print(f"   ✅ {len(futures_features.columns)} futures features")
 
-        # Macro Data (temporal safety handled in data_fetcher)
+        # Macro Data
         print("\n[5/8] Macro data...")
         macro_df = self._fetch_macro_data(start_str, end_str, spx.index)
         macro_features = (
@@ -758,7 +1117,7 @@ class UnifiedFeatureEngine:
         )
         print(f"   ✅ {len(macro_features.columns)} macro features")
 
-        # Treasury Features (temporal safety handled in data_fetcher)
+        # Treasury Features
         print("\n[6/8] Treasury yield curve...")
         treasury_features = self._build_treasury_features(start_str, end_str, spx.index)
         print(f"   ✅ {len(treasury_features.columns)} treasury features")
@@ -803,28 +1162,55 @@ class UnifiedFeatureEngine:
 
         # Remove any remaining duplicates
         all_features = all_features.loc[:, ~all_features.columns.duplicated()]
+        all_features = self._ensure_numeric_dtypes(all_features)
+        print(f"\nTotal features before cohorts: {len(all_features.columns)}")
 
-        print(f"\nTotal features before QC: {len(all_features.columns)}")
-        print(f"Date range: {all_features.index[0]} to {all_features.index[-1]}")
-        print(f"Total rows: {len(all_features)}")
+        # ==================== ADD CALENDAR COHORTS ====================
+        print("\n📅 ADDING CALENDAR COHORTS")
+        self._load_calendar_data()  # Ensure calendars loaded
+
+        cohort_data = []
+        for date in all_features.index:
+            cohort_name, cohort_weight = self.get_calendar_cohort(date)
+            cohort_data.append(
+                {"calendar_cohort": cohort_name, "cohort_weight": cohort_weight}
+            )
+
+        cohort_df = pd.DataFrame(cohort_data, index=all_features.index)
+        all_features = pd.concat([all_features, cohort_df], axis=1)
+
+        # Log cohort distribution
+        cohort_counts = all_features["calendar_cohort"].value_counts()
+        print("📊 Cohort Distribution:")
+        for cohort, count in cohort_counts.items():
+            pct = count / len(all_features) * 100
+            print(f"   {cohort:30s} | {count:4d} rows ({pct:5.1f}%)")
+
+        # Add feature quality tracking
+        print("\n🔍 COMPUTING FEATURE QUALITY SCORES")
+        all_features["feature_quality"] = self._compute_feature_quality_vectorized(
+            all_features
+        )
+
+        print(
+            f"\n✅ Final feature count: {len(all_features.columns)} (includes 3 metadata cols)"
+        )
+        print(f"   Features: {len(all_features.columns) - 3}")
+        print(f"   Metadata: calendar_cohort, cohort_weight, feature_quality")
 
         # Apply Quality Control
         all_features = self.apply_quality_control(all_features)
 
-        print(f"\n✅ Final feature count: {len(all_features.columns)}")
-
         if ENABLE_TEMPORAL_SAFETY:
             print("🔒 All features respect publication delays")
 
-        print("=" * 80)
-
-        # Generate feature metadata (Gap 1 fix)
+        # Generate feature metadata
         print("\n[9/9] Generating feature metadata...")
         feature_metadata = self._generate_feature_metadata(
             all_features, spx, vix, cboe_data, macro_df
         )
 
-        # Validate VIX term structure timing (Gap 2 fix)
+        # Validate VIX term structure timing
         if ENABLE_TEMPORAL_SAFETY and not cboe_data.empty:
             self._validate_term_structure_timing(vix, cboe_data)
 
@@ -842,9 +1228,6 @@ class UnifiedFeatureEngine:
             f"📊 Metadata coverage: {features_with_timestamps}/{len(feature_metadata)} ({coverage_pct}%)"
         )
 
-        if ENABLE_TEMPORAL_SAFETY:
-            print("🔒 All features respect publication delays")
-
         print("=" * 80)
 
         return {
@@ -852,14 +1235,16 @@ class UnifiedFeatureEngine:
             "spx": spx,
             "vix": vix,
             "cboe_data": cboe_data if cboe_dict else None,
-            "metadata": feature_metadata,  # NEW: Gap 1 fix
-            "temporal_validation": {  # NEW: Gap 1 fix
+            "metadata": feature_metadata,
+            "temporal_validation": {
                 "enabled": ENABLE_TEMPORAL_SAFETY,
                 "feature_count": len(all_features.columns),
                 "date_range": (all_features.index[0], all_features.index[-1]),
                 "metadata_coverage_pct": coverage_pct,
             },
         }
+
+    # ==================== FEATURE BUILDING METHODS (KEEP EXISTING) ====================
 
     def _build_base_features(
         self,
@@ -947,7 +1332,6 @@ class UnifiedFeatureEngine:
             ~regime_change
         ).cumsum().where(regime_change).ffill().fillna(0)
 
-        # VIX Term Structure (VIX vs VIX3M - will be populated if CBOE data available)
         # VIX Term Structure (VIX vs VIX3M)
         if cboe_data is not None and "VIX3M" in cboe_data.columns:
             vix3m = cboe_data["VIX3M"]
@@ -1109,57 +1493,6 @@ class UnifiedFeatureEngine:
 
         return features
 
-    def _validate_term_structure_timing(
-        self, vix: pd.Series, cboe_data: pd.DataFrame, prediction_date: datetime = None
-    ) -> bool:
-        """
-        Validate VIX term structure calculation doesn't use future data.
-
-        Addresses Gap 2: VIX3M edge case where forward-fill might create T+1 leakage.
-
-        Args:
-            vix: VIX spot series
-            cboe_data: CBOE data with VIX3M
-            prediction_date: Date to validate (if None, uses latest)
-
-        Returns:
-            True if valid, raises warning if potential leakage detected
-        """
-        if cboe_data is None or "VIX3M" not in cboe_data.columns:
-            return True
-
-        if prediction_date is None:
-            prediction_date = vix.index[-1]
-
-        # Check VIX3M availability at prediction date
-        vix3m = cboe_data["VIX3M"]
-
-        # Get publication lag for VIX3M (should be T+0 like VIX)
-        if hasattr(self, "fetcher") and hasattr(self.fetcher, "PUBLICATION_LAGS"):
-            vix3m_lag = self.fetcher.PUBLICATION_LAGS.get("VIX3M", 0)
-        else:
-            from config import PUBLICATION_LAGS
-
-            vix3m_lag = PUBLICATION_LAGS.get("VIX3M", 0)
-
-        # Validate VIX3M is not from the future
-        latest_vix3m = vix3m.dropna().index[-1] if len(vix3m.dropna()) > 0 else None
-
-        if latest_vix3m is not None:
-            allowed_date = prediction_date - timedelta(days=vix3m_lag)
-
-            if latest_vix3m > allowed_date:
-                import warnings
-
-                warnings.warn(
-                    f"⚠️ VIX3M term structure may have T+{vix3m_lag} leakage: "
-                    f"Using data from {latest_vix3m.date()} "
-                    f"but prediction date is {prediction_date.date()}"
-                )
-                return False
-
-        return True
-
     def _build_cboe_features(self, cboe: pd.DataFrame, vix: pd.Series) -> pd.DataFrame:
         """Build CBOE-specific features."""
         features = pd.DataFrame(index=vix.index)
@@ -1221,7 +1554,7 @@ class UnifiedFeatureEngine:
             features["VXTH_zscore_63d"] = calculate_robust_zscore(vxth, 63)
             features["vxth_vix_ratio"] = vxth / vix.replace(0, np.nan)
 
-        # ============ NEW: VXTLT Features (Bond Volatility) ============
+        # VXTLT Features (Bond Volatility)
         if "VXTLT" in cboe.columns:
             vxtlt = cboe["VXTLT"]
             features["VXTLT"] = vxtlt
@@ -1263,13 +1596,6 @@ class UnifiedFeatureEngine:
                     vxtlt.rank(pct=True)
                     - features["spx_realized_vol_21d"].rank(pct=True)
                 ).abs()
-        # ============================================================
-
-        # VIX3M for term structure
-        if "VIX3M" in cboe.columns:
-            vix3m = cboe["VIX3M"]
-            # This will populate the vix_term_structure created in base features
-            # Note: This is handled via cboe_data being available to the caller
 
         # CBOE Stress Composite (updated to include VXTLT)
         stress_components = []
@@ -1277,7 +1603,7 @@ class UnifiedFeatureEngine:
             stress_components.append(((features["SKEW"] - 130) / 30).clip(0, 1))
         if "VXTH" in features.columns:
             stress_components.append(((features["VXTH"] - 15) / 20).clip(0, 1))
-        if "VXTLT" in features.columns:  # NEW
+        if "VXTLT" in features.columns:
             stress_components.append(((features["VXTLT"] - 8) / 15).clip(0, 1))
 
         if stress_components:
@@ -1556,7 +1882,51 @@ class UnifiedFeatureEngine:
         features["day_of_week"] = index.dayofweek
         features["day_of_month"] = index.day
 
-        # Removed: quarter, is_opex_week, is_opex_day, days_to_opex, opex_cycle_phase
-        # (per removal_summary.txt - too few unique values or high correlation)
-
         return features
+
+    def _ensure_numeric_dtypes(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Convert all numeric-looking columns to float64.
+
+        This is critical because:
+        1. Pandas concat() can create object dtypes from mixed numeric types
+        2. XGBoost requires numeric dtypes
+        3. Single-row extraction from object-dtype DataFrame returns strings
+
+        Args:
+            df: DataFrame that may have object dtypes
+
+        Returns:
+            DataFrame with numeric columns converted to float64
+        """
+        # Identify columns that should be numeric (exclude known categorical)
+        metadata_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
+        numeric_cols = [col for col in df.columns if col not in metadata_cols]
+
+        print(f"🔧 Converting {len(numeric_cols)} columns to numeric dtypes...")
+
+        conversion_stats = {"converted": 0, "failed": 0, "already_numeric": 0}
+
+        for col in numeric_cols:
+            if df[col].dtype == object:
+                try:
+                    # Try to convert to numeric
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+                    conversion_stats["converted"] += 1
+                except Exception as e:
+                    print(f"   ⚠️  Failed to convert {col}: {e}")
+                    conversion_stats["failed"] += 1
+            else:
+                conversion_stats["already_numeric"] += 1
+
+        # Ensure all numeric columns are float64
+        for col in numeric_cols:
+            if col in df.columns and df[col].dtype in [np.int32, np.int64, np.float32]:
+                df[col] = df[col].astype(np.float64)
+
+        print(f"   ✅ Converted: {conversion_stats['converted']}")
+        print(f"   ℹ️  Already numeric: {conversion_stats['already_numeric']}")
+        if conversion_stats["failed"] > 0:
+            print(f"   ❌ Failed: {conversion_stats['failed']}")
+
+        return df
