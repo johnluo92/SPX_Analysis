@@ -1,0 +1,86 @@
+================================================================================
+DATABASE INVESTIGATION: quantile_coverage Inconsistency
+================================================================================
+
+[1] DATABASE SCHEMA:
+   prediction_id             TEXT            
+   timestamp                 DATETIME        
+   forecast_date             DATE            
+   horizon                   INTEGER         
+   calendar_cohort           TEXT            
+   cohort_weight             REAL            
+   point_estimate            REAL            
+   q10                       REAL            
+   q25                       REAL            
+   q50                       REAL            
+   q75                       REAL            
+   q90                       REAL            
+   prob_low                  REAL            
+   prob_normal               REAL            
+   prob_elevated             REAL            
+   prob_crisis               REAL            
+   confidence_score          REAL            
+   feature_quality           REAL            
+   regime_stability          REAL            
+   num_features_used         INTEGER         
+   missing_features          TEXT            
+   current_vix               REAL            
+   actual_vix_change         REAL            
+   actual_regime             TEXT            
+   point_error               REAL            
+   quantile_coverage         TEXT            
+   features_used             TEXT            
+   model_version             TEXT            
+   created_at                DATETIME        
+
+[2] TOTAL PREDICTIONS WITH ACTUALS: 72
+
+[3] QUANTILE_COVERAGE BREAKDOWN:
+   Has coverage:     24 (33.3%)
+   Missing coverage: 48 (66.7%)
+
+[4] TIME PATTERN ANALYSIS:
+   Earliest forecast: 2025-11-10 13:28:33.037991
+   Latest forecast:   2025-11-10 21:27:03.037189
+
+   Coverage by month:
+   2025-11: 24/72 (33%)
+
+[5] SAMPLE RECORDS (with coverage):
+
+   Date: 2025-10-06T00:00:00
+   Created: 2025-11-10T14:36:08.400035
+   Coverage: {"q10": 0, "q25": 0, "q50": 0, "q75": 0, "q90": 0}...
+
+   Date: 2025-10-07T00:00:00
+   Created: 2025-11-10T14:36:14.114450
+   Coverage: {"q10": 0, "q25": 0, "q50": 0, "q75": 0, "q90": 0}...
+
+   Date: 2025-10-08T00:00:00
+   Created: 2025-11-10T14:36:19.828849
+   Coverage: {"q10": 0, "q25": 0, "q50": 0, "q75": 1, "q90": 1}...
+
+[6] SAMPLE RECORDS (without coverage):
+
+   Date: 2024-01-07T00:00:00
+   Created: 2025-11-10T13:28:33.037991
+   Coverage: None
+   Has quantiles: q10=-6.753812313079834, q50=-3.3170156478881836, q90=5.077936172485352
+
+   Date: 2024-01-08T00:00:00
+   Created: 2025-11-10T13:28:39.775260
+   Coverage: None
+   Has quantiles: q10=-11.183055877685547, q50=-9.595574378967285, q90=3.7525134086608887
+
+   Date: 2024-01-09T00:00:00
+   Created: 2025-11-10T13:28:46.164894
+   Coverage: None
+   Has quantiles: q10=-11.941020965576172, q50=-11.941020965576172, q90=3.7922441959381104
+
+[7] BACKFILL ANALYSIS:
+   Total forecasts: 75
+   With actuals: 72
+   With coverage: 24
+   Backfilled but missing coverage: 48
+
+[8] CHECKING FOR STORAGE PATTERN:

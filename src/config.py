@@ -6,7 +6,7 @@ CACHE_DIR = "./data_cache"
 CBOE_DATA_DIR = "./CBOE_Data_Archive"
 
 ENABLE_TRAINING = True
-TRAINING_YEARS = 15
+TRAINING_YEARS = 5
 RANDOM_STATE = 42
 
 # =============================================================================

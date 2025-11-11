@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """
-Enhanced Walk-Forward Validation with Comprehensive Diagnostics
-
-Improvements:
-- Quantile crossing detection
-- Regime-based breakdown
-- Cohort-specific analysis
-- Time-series of forecast quality
-- Confidence calibration curves
-- Detailed plots
+Fixed Walk-Forward Validation - Handles Missing quantile_coverage Data
 """
 
+import json
 import logging
 import sqlite3
 from pathlib import Path
@@ -41,13 +34,6 @@ class EnhancedWalkForwardValidator:
         """Load all predictions that have actual outcomes."""
         conn = sqlite3.connect(self.db_path)
 
-        # First, check what columns exist
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(forecasts)")
-        columns = [row[1] for row in cursor.fetchall()]
-        logger.debug(f"Available columns: {columns}")
-
-        # Build query based on available columns
         query = """
         SELECT
             forecast_date,
@@ -81,15 +67,69 @@ class EnhancedWalkForwardValidator:
             f"Date range: {df['forecast_date'].min().date()} to {df['forecast_date'].max().date()}"
         )
 
+        # Check for missing quantile_coverage
+        missing_coverage = df["quantile_coverage"].isna().sum()
+        if missing_coverage > 0:
+            logger.warning(
+                f"⚠️  {missing_coverage}/{len(df)} predictions have missing quantile_coverage - "
+                f"computing from quantiles..."
+            )
+
+        return df
+
+    def _compute_coverage_from_quantiles(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Compute quantile coverage from actual vs predicted quantiles."""
+
+        def compute_row_coverage(row):
+            """Compute coverage for a single row."""
+            if pd.isna(row["actual_vix_change"]):
+                return {}
+
+            coverage = {}
+            actual = row["actual_vix_change"]
+
+            # Check if actual is below each quantile
+            for q in [10, 25, 50, 75, 90]:
+                col = f"q{q}"
+                if pd.notna(row[col]):
+                    coverage[f"q{q}"] = 1 if actual <= row[col] else 0
+                else:
+                    coverage[f"q{q}"] = 0
+
+            return coverage
+
+        # Apply to all rows
+        df["coverage"] = df.apply(compute_row_coverage, axis=1)
         return df
 
     def compute_metrics(self, df: pd.DataFrame) -> Dict:
         """Compute comprehensive evaluation metrics."""
 
-        # Parse quantile coverage JSON
-        df["coverage"] = df["quantile_coverage"].apply(
-            lambda x: eval(x) if isinstance(x, str) else x
-        )
+        # Parse quantile coverage JSON - FIXED: Handle None/empty values
+        def parse_coverage(x):
+            if pd.isna(x) or x is None or x == "":
+                return None  # Return None for now, we'll compute it
+            if isinstance(x, str):
+                try:
+                    return json.loads(x.replace("'", '"'))  # Handle single quotes
+                except:
+                    try:
+                        return eval(x)
+                    except:
+                        return None
+            if isinstance(x, dict):
+                return x
+            return None
+
+        df["coverage"] = df["quantile_coverage"].apply(parse_coverage)
+
+        # Compute coverage for rows where it's missing
+        missing_mask = df["coverage"].isna()
+        if missing_mask.any():
+            logger.info(
+                f"Computing coverage for {missing_mask.sum()} rows from quantiles..."
+            )
+            df = self._compute_coverage_from_quantiles(df)
 
         metrics = {
             "overall": self._compute_overall_metrics(df),
@@ -120,8 +160,14 @@ class EnhancedWalkForwardValidator:
         calibration = {}
 
         for q in [10, 25, 50, 75, 90]:
-            # Check if actual <= predicted quantile
-            hits = df["coverage"].apply(lambda x: x.get(f"q{q}", 0)).mean()
+            # FIXED: Handle missing coverage data gracefully
+            hits = (
+                df["coverage"]
+                .apply(
+                    lambda x: x.get(f"q{q}", 0) if (x and isinstance(x, dict)) else 0
+                )
+                .mean()
+            )
             expected = q / 100.0
 
             calibration[f"q{q}"] = {
@@ -168,7 +214,11 @@ class EnhancedWalkForwardValidator:
                 "rmse": float(np.sqrt((cohort_df["point_error"] ** 2).mean())),
                 "forecast_width": float((cohort_df["q90"] - cohort_df["q10"]).mean()),
                 "q50_coverage": float(
-                    cohort_df["coverage"].apply(lambda x: x.get("q50", 0)).mean()
+                    cohort_df["coverage"]
+                    .apply(
+                        lambda x: x.get("q50", 0) if (x and isinstance(x, dict)) else 0
+                    )
+                    .mean()
                 ),
             }
 
@@ -267,8 +317,6 @@ class EnhancedWalkForwardValidator:
         self._plot_time_series(df, output_dir)
 
         # Save metrics to JSON
-        import json
-
         metrics_path = output_dir / "walk_forward_metrics.json"
 
         # Convert non-serializable types
@@ -304,10 +352,10 @@ class EnhancedWalkForwardValidator:
             f"   Bias: {m['bias']:+.2f}% {'(over-predicting)' if m['bias'] > 0 else '(under-predicting)'}"
         )
 
-        print(f"\n📐 Quantile Calibration:")
+        print(f"\n📏 Quantile Calibration:")
         for q in [10, 25, 50, 75, 90]:
             cal = metrics["quantile_calibration"][f"q{q}"]
-            status = "✅" if cal["calibrated"] else "❌"
+            status = "✅" if cal["calibrated"] else "⚠️"
             print(
                 f"   {status} q{q}: {cal['observed']:.1%} (expected {cal['expected']:.1%}, diff: {cal['diff']:+.1%})"
             )
@@ -326,7 +374,7 @@ class EnhancedWalkForwardValidator:
         conf = metrics["confidence_analysis"]
         print(f"\n🎯 Confidence Analysis:")
         print(f"   Correlation (conf vs error): {conf['correlation']:.3f}")
-        print(f"   Confidence useful: {'✅ Yes' if conf['is_useful'] else '❌ No'}")
+        print(f"   Confidence useful: {'✅ Yes' if conf['is_useful'] else '⚠️ No'}")
 
     def _plot_calibration(self, df: pd.DataFrame, output_dir: Path):
         """Calibration plot."""
@@ -335,7 +383,10 @@ class EnhancedWalkForwardValidator:
         quantiles = [10, 25, 50, 75, 90]
         expected = [q / 100 for q in quantiles]
         observed = [
-            df["coverage"].apply(lambda x: x.get(f"q{q}", 0)).mean() for q in quantiles
+            df["coverage"]
+            .apply(lambda x: x.get(f"q{q}", 0) if (x and isinstance(x, dict)) else 0)
+            .mean()
+            for q in quantiles
         ]
 
         # Perfect calibration line

@@ -1,98 +1,130 @@
 {
   "overall": {
-    "n_forecasts": 14,
-    "mae": 12.999543192465229,
-    "rmse": 17.39093628960382,
-    "mape": 74.9912672522968,
-    "median_abs_error": 9.603770507936954,
-    "bias": 12.999543192465229,
-    "forecast_width_mean": 24.674793820296014,
-    "forecast_iqr_mean": 11.521830486399788
+    "n_forecasts": 87,
+    "mae": 7.514142319142043,
+    "rmse": 10.484320289083126,
+    "mape": 46.17623901650648,
+    "median_abs_error": 5.775401553677153,
+    "bias": 7.514142319142043,
+    "forecast_width_mean": 16.366664157859212,
+    "forecast_iqr_mean": 5.784221784714823
   },
   "quantile_calibration": {
     "q10": {
-      "observed": 0.35714285714285715,
+      "observed": 0.14942528735632185,
       "expected": 0.1,
-      "diff": 0.2571428571428571,
-      "calibrated": false
+      "diff": 0.049425287356321845,
+      "calibrated": true
     },
     "q25": {
-      "observed": 0.42857142857142855,
+      "observed": 0.3333333333333333,
       "expected": 0.25,
-      "diff": 0.17857142857142855,
-      "calibrated": false
+      "diff": 0.08333333333333331,
+      "calibrated": true
     },
     "q50": {
-      "observed": 0.5,
+      "observed": 0.41379310344827586,
       "expected": 0.5,
-      "diff": 0.0,
+      "diff": -0.08620689655172414,
       "calibrated": true
     },
     "q75": {
-      "observed": 0.7142857142857143,
+      "observed": 0.5747126436781609,
       "expected": 0.75,
-      "diff": -0.0357142857142857,
-      "calibrated": true
+      "diff": -0.17528735632183912,
+      "calibrated": false
     },
     "q90": {
-      "observed": 0.7857142857142857,
+      "observed": 0.7701149425287356,
       "expected": 0.9,
-      "diff": -0.11428571428571432,
+      "diff": -0.12988505747126444,
       "calibrated": false
     },
     "interval_80": {
-      "coverage": 0.42857142857142855
+      "coverage": 0.6206896551724138
     },
     "interval_50": {
-      "coverage": 0.2857142857142857
+      "coverage": 0.2413793103448276
     }
   },
   "by_cohort": {
     "mid_cycle": {
-      "n": 6,
-      "mae": 20.155926033097828,
-      "rmse": 24.69827435527598,
-      "forecast_width": 26.745153506596882,
-      "q50_coverage": 0.0
+      "n": 44,
+      "mae": 7.272341133092943,
+      "rmse": 11.417134131565643,
+      "forecast_width": 17.61207384683869,
+      "q50_coverage": 0.25
+    },
+    "earnings_heavy": {
+      "n": 13,
+      "mae": 7.635001187802264,
+      "rmse": 9.322935516008608,
+      "forecast_width": 15.476357446267055,
+      "q50_coverage": 0.38461538461538464
+    },
+    "monthly_opex_minus_5": {
+      "n": 9,
+      "mae": 6.226277067672914,
+      "rmse": 6.905523002207879,
+      "forecast_width": 10.310806867149141,
+      "q50_coverage": 0.8888888888888888
+    },
+    "monthly_opex_minus_1": {
+      "n": 11,
+      "mae": 5.395775750625628,
+      "rmse": 6.335853551192896,
+      "forecast_width": 16.34327308698134,
+      "q50_coverage": 0.6363636363636364
+    },
+    "fomc_minus_3": {
+      "n": 10,
+      "mae": 11.910232960190054,
+      "rmse": 13.516694710772905,
+      "forecast_width": 17.520261991024018,
+      "q50_coverage": 0.5
     }
   },
   "by_regime": {
     "Normal": {
-      "n": 9,
-      "mae": 13.254252941596597,
-      "mean_forecast_width": 27.163254456387627
-    },
-    "Elevated": {
-      "n": 1,
-      "mae": 37.97797651770737,
-      "mean_forecast_width": 24.888158798217773
+      "n": 60,
+      "mae": 7.0455946946922445,
+      "mean_forecast_width": 16.318720405797162
     },
     "Low": {
-      "n": 4,
-      "mae": 6.18183792560911,
-      "mean_forecast_width": 19.02241614460945
+      "n": 18,
+      "mae": 4.913131923751905,
+      "mean_forecast_width": 16.639162302017212
+    },
+    "Elevated": {
+      "n": 9,
+      "mae": 15.839813939587625,
+      "mean_forecast_width": 16.141292883290184
     }
   },
   "confidence_analysis": {
     "by_bin": {
       "Low": {
-        "mean_abs_error": 5.9976107872616025,
-        "count": 3
+        "mean_abs_error": 7.8249857600722095,
+        "count": 24
       },
       "Medium": {
-        "mean_abs_error": 8.1103951315579,
-        "count": 6
+        "mean_abs_error": 6.748747756292049,
+        "count": 25
+      },
+      "High": {
+        "mean_abs_error": 5.544919953321248,
+        "count": 9
       },
       "Very High": {
-        "mean_abs_error": 23.06768030867619,
-        "count": 5
+        "mean_abs_error": 8.527853449532145,
+        "count": 29
       }
     },
-    "correlation": 0.5297230442073387,
+    "correlation": 0.06788905203156996,
     "is_useful": false
   },
   "time_series": {
-    "has_trend": false,
-    "recent_mae": 6.734108073472197
+    "has_trend": true,
+    "recent_mae": 5.579388308863059
   }
 }

@@ -4,9 +4,11 @@ Prediction Database for Probabilistic Forecasting System
 Stores all forecasts with full distribution + metadata for backtesting.
 """
 
+import atexit
 import json
 import logging
 import sqlite3
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -17,6 +19,41 @@ import pandas as pd
 from config import PREDICTION_DB_CONFIG
 
 logger = logging.getLogger(__name__)
+
+
+class CommitTracker:
+    """Tracks uncommitted writes and screams if data isn't committed."""
+
+    def __init__(self):
+        self.pending_writes = 0
+        self.last_commit_time = None
+        self.writes_log = []
+
+    def track_write(self, operation: str):
+        """Log a write operation."""
+        self.pending_writes += 1
+        self.writes_log.append(f"{datetime.now():%H:%M:%S} - {operation}")
+
+        # Warn every 10 writes
+        if self.pending_writes % 10 == 0:
+            logger.warning(
+                f"⚠️  {self.pending_writes} uncommitted writes! Call commit() soon!"
+            )
+
+    def verify_clean_exit(self):
+        """Called on exit - SCREAMS if uncommitted data exists."""
+        if self.pending_writes > 0:
+            logger.error("=" * 80)
+            logger.error("🚨 CRITICAL: UNCOMMITTED DATA DETECTED!")
+            logger.error("=" * 80)
+            logger.error(f"   Pending writes: {self.pending_writes}")
+            logger.error(f"   Last 5 operations:")
+            for op in self.writes_log[-5:]:
+                logger.error(f"      • {op}")
+            logger.error("")
+            logger.error("   DATA WAS NOT SAVED!")
+            logger.error("   You must call commit() before exit")
+            logger.error("=" * 80)
 
 
 class PredictionDatabase:
@@ -30,6 +67,7 @@ class PredictionDatabase:
     Example:
         >>> db = PredictionDatabase()
         >>> db.store_prediction(forecast_record)
+        >>> db.commit()  # REQUIRED!
         >>> db.backfill_actuals(vix_data)
         >>> metrics = db.compute_quantile_coverage()
     """
@@ -55,7 +93,12 @@ class PredictionDatabase:
         # CRITICAL: Track in-memory keys during batch operations
         self._pending_keys = set()
 
+        # SAFETY: Track uncommitted writes
+        self._commit_tracker = CommitTracker()
+        atexit.register(self._commit_tracker.verify_clean_exit)
+
         logger.info(f"📂 Prediction database: {self.db_path}")
+        logger.info("⚠️  Safety mode enabled - must call commit() to persist writes")
 
     def _create_schema(self):
         """Create database tables with UNIQUE constraint to prevent duplicates."""
@@ -183,6 +226,11 @@ class PredictionDatabase:
             # Execute insert
             self.conn.execute(insert_sql, values)
 
+            # SAFETY: Track write
+            self._commit_tracker.track_write(
+                f"INSERT forecast_date={record['forecast_date']}"
+            )
+
             logger.debug(f"💾 Stored prediction: {record['prediction_id']}")
             return record["prediction_id"]
 
@@ -205,13 +253,63 @@ class PredictionDatabase:
 
     def commit(self):
         """
-        Commit pending transactions and clear in-memory tracking.
+        Commit pending transactions with verification.
 
         CRITICAL: Call this after batch operations to persist data and reset tracking.
         """
-        self.conn.commit()
-        self._pending_keys.clear()
-        logger.debug("✅ Committed batch and cleared pending keys")
+        if self._commit_tracker.pending_writes == 0:
+            logger.info("ℹ️  No pending writes to commit")
+            return
+
+        writes_to_commit = self._commit_tracker.pending_writes
+
+        try:
+            # Commit
+            self.conn.commit()
+            self._pending_keys.clear()
+
+            # Verify commit succeeded
+            cursor = self.conn.execute("SELECT COUNT(*) FROM forecasts")
+            total = cursor.fetchone()[0]
+
+            logger.info("=" * 80)
+            logger.info("✅ COMMIT SUCCESSFUL")
+            logger.info("=" * 80)
+            logger.info(f"   Writes committed: {writes_to_commit}")
+            logger.info(f"   Total forecasts: {total}")
+            logger.info(f"   Timestamp: {datetime.now():%Y-%m-%d %H:%M:%S}")
+            logger.info("=" * 80)
+
+            # Reset tracker
+            self._commit_tracker.pending_writes = 0
+            self._commit_tracker.writes_log = []
+            self._commit_tracker.last_commit_time = datetime.now()
+
+        except Exception as e:
+            logger.error("=" * 80)
+            logger.error("🚨 COMMIT FAILED!")
+            logger.error("=" * 80)
+            logger.error(f"   Error: {e}")
+            logger.error(f"   Attempted writes: {writes_to_commit}")
+            logger.error("   Rolling back...")
+
+            self.conn.rollback()
+            self._commit_tracker.pending_writes = 0
+            self._commit_tracker.writes_log = []
+
+            logger.error("=" * 80)
+
+            raise RuntimeError(f"Database commit failed: {e}")
+
+    def get_commit_status(self) -> dict:
+        """Get current commit status."""
+        return {
+            "pending_writes": self._commit_tracker.pending_writes,
+            "last_commit": self._commit_tracker.last_commit_time.isoformat()
+            if self._commit_tracker.last_commit_time
+            else None,
+            "recent_operations": self._commit_tracker.writes_log[-10:],
+        }
 
     def get_predictions(
         self,
@@ -374,147 +472,119 @@ class PredictionDatabase:
             logger.error(f"❌ Failed to get database stats: {e}")
             return {"error": str(e)}
 
-    def backfill_actuals(self, vix_data: pd.Series = None):
-        """
-        Fill in actual outcomes for past predictions.
+    def backfill_actuals(self, fetcher=None):
+        """Populate actual outcomes for forecasts whose target dates have passed."""
+        if fetcher is None:
+            from core.data_fetcher import UnifiedDataFetcher
 
-        Args:
-            vix_data: Series of VIX values indexed by date
-                      If None, fetches from Yahoo Finance
-        """
+            fetcher = UnifiedDataFetcher()
+
         logger.info("🔄 Backfilling actual outcomes...")
 
-        # Fetch VIX data if not provided
-        if vix_data is None:
-            import yfinance as yf
+        # Get VIX data
+        vix_data = fetcher.fetch_yahoo("^VIX", start_date="2009-01-01")["Close"]
 
-            vix_df = yf.download("^VIX", progress=False)
-            if isinstance(vix_df, pd.DataFrame):
-                vix_data = vix_df["Close"]
-            else:
-                vix_data = vix_df
+        # Convert index to date strings for matching
+        vix_dates = set(vix_data.index.strftime("%Y-%m-%d"))
 
-            # Ensure it's a Series
-            if isinstance(vix_data, pd.DataFrame):
-                vix_data = vix_data.squeeze()
-
-            logger.debug(
-                f"Fetched VIX data: {len(vix_data)} rows, type={type(vix_data)}"
-            )
-
-        # Get predictions needing actuals
-        query = f"""
-        SELECT prediction_id, forecast_date, horizon, current_vix, point_estimate,
-               q10, q25, q50, q75, q90
-        FROM {PREDICTION_DB_CONFIG["table_name"]}
-        WHERE actual_vix_change IS NULL
-          AND forecast_date <= date('now', '-' || horizon || ' days')
+        # Find predictions needing actuals
+        query = """
+            SELECT prediction_id, forecast_date, horizon, current_vix,
+                   q10, q25, q50, q75, q90
+            FROM forecasts
+            WHERE actual_vix_change IS NULL
         """
+        cursor = self.conn.cursor()
+        cursor.execute(query)
+        rows = cursor.fetchall()
 
-        cursor = self.conn.execute(query)
-        predictions = cursor.fetchall()
-
-        logger.info(f"   Found {len(predictions)} predictions to backfill")
+        logger.info(f"   Found {len(rows)} predictions to backfill")
 
         updated = 0
-        for pred in predictions:
-            forecast_date = pd.Timestamp(pred["forecast_date"])
-            horizon = pred["horizon"]
-            target_date = forecast_date + pd.Timedelta(days=horizon)
+        skipped = 0
+        for row in rows:
+            pred_id, forecast_date, horizon, current_vix, q10, q25, q50, q75, q90 = row
 
-            # Get actual VIX at target date
+            # Calculate target date using BUSINESS DAYS
             try:
-                # Try exact date first
-                if target_date in vix_data.index:
-                    actual_vix = vix_data.loc[target_date]
-                else:
-                    # Try next business day (handle holidays)
-                    actual_vix = vix_data.asof(target_date)
+                target_date_attempt = pd.bdate_range(
+                    start=pd.Timestamp(forecast_date), periods=horizon + 1
+                )[-1]
+            except Exception as e:
+                logger.warning(
+                    f"   Failed to calculate business days for {forecast_date}: {e}"
+                )
+                skipped += 1
+                continue
 
-                # CRITICAL: Convert to Python float immediately
-                if isinstance(actual_vix, pd.Series):
-                    if len(actual_vix) == 1:
-                        actual_vix = float(actual_vix.iloc[0])
-                    else:
-                        logger.warning(
-                            f"   Multiple VIX values for {target_date}, skipping"
-                        )
-                        continue
-                else:
-                    actual_vix = float(actual_vix)
+            # Find nearest actual VIX date (within 3 days forward to handle holidays)
+            found_date = None
+            for offset in range(4):  # Check up to 3 days forward
+                check_date = (target_date_attempt + pd.Timedelta(days=offset)).strftime(
+                    "%Y-%m-%d"
+                )
+                if check_date in vix_dates:
+                    found_date = check_date
+                    break
 
-                # Skip if we couldn't find data
-                if pd.isna(actual_vix):
-                    continue
+            if found_date is None:
+                skipped += 1
+                continue
 
-                current_vix = float(pred["current_vix"])
+            target_date = found_date
 
-                # Compute actual % change
-                actual_change = (actual_vix - current_vix) / current_vix * 100
+            # Get actual VIX value at target date
+            actual_vix = vix_data.loc[pd.Timestamp(target_date)]
+            actual_change = ((actual_vix - current_vix) / current_vix) * 100
 
-                # Determine actual regime
-                from config import TARGET_CONFIG
+            # Classify regime
+            if actual_change < -5:
+                regime = "Low"
+            elif actual_change < 10:
+                regime = "Normal"
+            elif actual_change < 25:
+                regime = "Elevated"
+            else:
+                regime = "Crisis"
 
-                boundaries = TARGET_CONFIG["regimes"]["boundaries"]
-                labels = TARGET_CONFIG["regimes"]["labels"]
+            # Get point estimate
+            cursor.execute(
+                "SELECT point_estimate FROM forecasts WHERE prediction_id = ?",
+                (pred_id,),
+            )
+            point_est = cursor.fetchone()[0]
+            point_error = abs(actual_change - point_est)
 
-                # Use scalar comparisons
-                if actual_vix < boundaries[0]:
-                    actual_regime = labels[0]  # Low
-                elif actual_vix < boundaries[1]:
-                    actual_regime = labels[1]  # Normal
-                elif actual_vix < boundaries[2]:
-                    actual_regime = labels[2]  # Elevated
-                else:
-                    actual_regime = labels[3]  # Crisis
+            # **CRITICAL FIX: Compute quantile coverage**
+            quantile_coverage = {
+                "q10": 1 if actual_change <= q10 else 0,
+                "q25": 1 if actual_change <= q25 else 0,
+                "q50": 1 if actual_change <= q50 else 0,
+                "q75": 1 if actual_change <= q75 else 0,
+                "q90": 1 if actual_change <= q90 else 0,
+            }
+            coverage_json = json.dumps(quantile_coverage)
 
-                # Compute point error
-                point_error = abs(actual_change - pred["point_estimate"])
-
-                # Check quantile coverage
-                coverage = {
-                    "q10": int(actual_change <= float(pred["q10"])),
-                    "q25": int(actual_change <= float(pred["q25"])),
-                    "q50": int(actual_change <= float(pred["q50"])),
-                    "q75": int(actual_change <= float(pred["q75"])),
-                    "q90": int(actual_change <= float(pred["q90"])),
-                }
-
-                # Update database
-                update_sql = f"""
-                UPDATE {PREDICTION_DB_CONFIG["table_name"]}
+            # Update database with ALL fields
+            cursor.execute(
+                """
+                UPDATE forecasts
                 SET actual_vix_change = ?,
                     actual_regime = ?,
                     point_error = ?,
                     quantile_coverage = ?
                 WHERE prediction_id = ?
-                """
-
-                self.conn.execute(
-                    update_sql,
-                    (
-                        actual_change,
-                        actual_regime,
-                        point_error,
-                        json.dumps(coverage),
-                        pred["prediction_id"],
-                    ),
-                )
-
-                updated += 1
-
-            except Exception as e:
-                logger.debug(f"   Failed to backfill {pred['prediction_id']}: {e}")
-                logger.debug(
-                    f"      target_date={target_date}, forecast_date={forecast_date}"
-                )
-                logger.debug(
-                    f"      vix_data type={type(vix_data)}, index type={type(vix_data.index)}"
-                )
-                continue
+                """,
+                (actual_change, regime, point_error, coverage_json, pred_id),
+            )
+            updated += 1
 
         self.conn.commit()
         logger.info(f"✅ Backfilled {updated} predictions")
+        if skipped > 0:
+            logger.info(
+                f"⚠️  Skipped {skipped} predictions (target date not yet available)"
+            )
 
     def compute_quantile_coverage(self, cohort: str = None) -> Dict:
         """
