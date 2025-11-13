@@ -1,0 +1,1249 @@
+{
+  "generated": "2025-11-13T15:49:25.890188",
+  "summary": {
+    "total_modules": 19,
+    "total_lines": 11765,
+    "total_classes": 25,
+    "total_functions": 255
+  },
+  "modules": {
+    "core/forecast_calibrator.py": {
+      "line_count": 420,
+      "docstring": "Forecast Calibrator - Post-Processing for Probabilistic Forecasts\n\nFixes systematic biases in VIX forecasts:\n1. Over-prediction bias (typically +10-15%)\n2. Miscalibrated quantiles (intervals too narrow)\n3. Backwards confidence scores (high conf = high error)\n\nUsage:\n    # One-time setup (after generating 100+ forecasts)\n    calibrator = ForecastCalibrator()\n    calibrator.fit_from_database()\n    calibrator.save()\n\n    # At runtime (in integrated_system_production.py)\n    calibrator = ForecastCalibrator.load()\n    calibrated = calibrator.calibrate(raw_forecast)",
+      "imports": [
+        "core.prediction_database",
+        "pickle",
+        "json",
+        "pathlib",
+        "typing",
+        "prediction_database",
+        "sys",
+        "warnings",
+        "logging",
+        "numpy",
+        "pandas"
+      ],
+      "classes": [
+        {
+          "name": "ForecastCalibrator",
+          "bases": [],
+          "docstring": "Calibrates probabilistic forecasts using historical forecast errors.\n\nThree-step calibration:\n1. Bias Correction: Subtract systematic over/under-prediction\n2. Quantile Adjustment: Widen/narrow prediction intervals\n3. Confidence Recalibration: Fix correlation with forecast error",
+          "methods": [
+            "__init__",
+            "fit_from_database",
+            "_fit_bias_correction",
+            "_fit_quantile_adjustments",
+            "_fit_confidence_mapping",
+            "calibrate",
+            "save",
+            "load",
+            "get_diagnostics"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "fit_from_database",
+        "_fit_bias_correction",
+        "_fit_quantile_adjustments",
+        "_fit_confidence_mapping",
+        "calibrate",
+        "save",
+        "load",
+        "get_diagnostics"
+      ]
+    },
+    "core/feature_engine.py": {
+      "line_count": 1270,
+      "docstring": "Enhanced Feature Engine V5 - Streamlined, No Duplicates, WITH CALENDAR COHORT INTEGRATION",
+      "imports": [
+        "os",
+        "datetime",
+        "typing",
+        "warnings",
+        "numpy",
+        "config",
+        "pandas"
+      ],
+      "classes": [
+        {
+          "name": "MetaFeatureEngine",
+          "bases": [],
+          "docstring": null,
+          "methods": [
+            "extract_regime_indicators",
+            "extract_cross_asset_relationships",
+            "extract_rate_of_change_features",
+            "extract_percentile_rankings"
+          ]
+        },
+        {
+          "name": "FuturesFeatureEngine",
+          "bases": [],
+          "docstring": null,
+          "methods": [
+            "extract_vix_futures_features",
+            "extract_commodity_futures_features",
+            "extract_dollar_futures_features",
+            "extract_futures_cross_relationships"
+          ]
+        },
+        {
+          "name": "TreasuryYieldFeatureEngine",
+          "bases": [],
+          "docstring": null,
+          "methods": [
+            "extract_term_spreads",
+            "extract_curve_shape",
+            "extract_rate_volatility"
+          ]
+        },
+        {
+          "name": "UnifiedFeatureEngine",
+          "bases": [],
+          "docstring": null,
+          "methods": [
+            "__init__",
+            "_load_calendar_data",
+            "_generate_opex_calendar",
+            "_generate_vix_futures_expiry",
+            "get_calendar_cohort",
+            "_days_to_monthly_opex",
+            "_days_to_fomc",
+            "_days_to_vix_futures_expiry",
+            "_spx_earnings_intensity",
+            "_compute_feature_quality_vectorized",
+            "_align_features_for_prediction",
+            "_validate_term_structure_timing",
+            "apply_quality_control",
+            "build_complete_features",
+            "_build_base_features",
+            "_build_cboe_features",
+            "_build_futures_features",
+            "_fetch_macro_data",
+            "_build_macro_features",
+            "_build_treasury_features",
+            "_build_meta_features",
+            "_build_calendar_features",
+            "_ensure_numeric_dtypes"
+          ]
+        }
+      ],
+      "functions": [
+        "calculate_robust_zscore",
+        "calculate_regime_with_validation",
+        "calculate_percentile_with_validation",
+        "safe_percentile_rank",
+        "extract_regime_indicators",
+        "extract_cross_asset_relationships",
+        "extract_rate_of_change_features",
+        "extract_percentile_rankings",
+        "extract_vix_futures_features",
+        "extract_commodity_futures_features",
+        "extract_dollar_futures_features",
+        "extract_futures_cross_relationships",
+        "extract_term_spreads",
+        "extract_curve_shape",
+        "extract_rate_volatility",
+        "__init__",
+        "_load_calendar_data",
+        "_generate_opex_calendar",
+        "_generate_vix_futures_expiry",
+        "get_calendar_cohort",
+        "_days_to_monthly_opex",
+        "_days_to_fomc",
+        "_days_to_vix_futures_expiry",
+        "_spx_earnings_intensity",
+        "_compute_feature_quality_vectorized",
+        "_align_features_for_prediction",
+        "_validate_term_structure_timing",
+        "apply_quality_control",
+        "build_complete_features",
+        "_build_base_features",
+        "_build_cboe_features",
+        "_build_futures_features",
+        "_fetch_macro_data",
+        "_build_macro_features",
+        "_build_treasury_features",
+        "_build_meta_features",
+        "_build_calendar_features",
+        "_ensure_numeric_dtypes"
+      ]
+    },
+    "core/prediction_database.py": {
+      "line_count": 851,
+      "docstring": "Prediction Database for Probabilistic Forecasting System\n\nStores all forecasts with full distribution + metadata for backtesting.",
+      "imports": [
+        "datetime",
+        "core.data_fetcher",
+        "json",
+        "pathlib",
+        "typing",
+        "warnings",
+        "logging",
+        "numpy",
+        "config",
+        "sqlite3",
+        "pandas",
+        "atexit"
+      ],
+      "classes": [
+        {
+          "name": "CommitTracker",
+          "bases": [],
+          "docstring": "Tracks uncommitted writes and screams if data isn't committed.",
+          "methods": [
+            "__init__",
+            "track_write",
+            "verify_clean_exit"
+          ]
+        },
+        {
+          "name": "PredictionDatabase",
+          "bases": [],
+          "docstring": "SQLite database for storing and retrieving probabilistic forecasts.\n\nSchema:\n    - predictions: Main table with forecasts\n    - actuals: Realized VIX values (joined by forecast_date)\n\nExample:\n    >>> db = PredictionDatabase()\n    >>> db.store_prediction(forecast_record)\n    >>> db.commit()  # REQUIRED!\n    >>> db.backfill_actuals(vix_data)\n    >>> metrics = db.compute_quantile_coverage()",
+          "methods": [
+            "__init__",
+            "_create_schema",
+            "store_prediction",
+            "commit",
+            "get_commit_status",
+            "get_predictions",
+            "migrate_schema",
+            "remove_all_duplicates",
+            "get_database_stats",
+            "backfill_actuals",
+            "compute_quantile_coverage",
+            "compute_regime_brier_score",
+            "get_performance_summary",
+            "export_to_csv",
+            "close"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "track_write",
+        "verify_clean_exit",
+        "__init__",
+        "_create_schema",
+        "store_prediction",
+        "commit",
+        "get_commit_status",
+        "get_predictions",
+        "migrate_schema",
+        "remove_all_duplicates",
+        "get_database_stats",
+        "backfill_actuals",
+        "compute_quantile_coverage",
+        "compute_regime_brier_score",
+        "get_performance_summary",
+        "export_to_csv",
+        "close"
+      ]
+    },
+    "core/anomaly_detector.py": {
+      "line_count": 628,
+      "docstring": "Consolidated Anomaly Detection System\n\nRobust anomaly scoring with feature quality validation, coverage penalties,\nand outlier-resistant percentile calculation.",
+      "imports": [
+        "pytz",
+        "datetime",
+        "sklearn.ensemble",
+        "typing",
+        "shap",
+        "sklearn.preprocessing",
+        "warnings",
+        "logging",
+        "numpy",
+        "config",
+        "pandas"
+      ],
+      "classes": [
+        {
+          "name": "MultiDimensionalAnomalyDetector",
+          "bases": [],
+          "docstring": "15 independent Isolation Forests with feature importance and quality validation.",
+          "methods": [
+            "__init__",
+            "_calculate_feature_importance",
+            "_calculate_shap_importance",
+            "_calculate_permutation_importance",
+            "calculate_statistical_thresholds",
+            "train",
+            "detect",
+            "_get_quality_summary",
+            "calculate_historical_persistence_stats",
+            "get_top_anomalies",
+            "get_feature_contributions",
+            "_compute_statistical_thresholds",
+            "classify_anomaly",
+            "logger"
+          ]
+        }
+      ],
+      "functions": [
+        "validate_feature_quality",
+        "calculate_robust_anomaly_score",
+        "calculate_coverage_penalty",
+        "__init__",
+        "_calculate_feature_importance",
+        "_calculate_shap_importance",
+        "_calculate_permutation_importance",
+        "calculate_statistical_thresholds",
+        "train",
+        "detect",
+        "_get_quality_summary",
+        "calculate_historical_persistence_stats",
+        "get_top_anomalies",
+        "get_feature_contributions",
+        "_compute_statistical_thresholds",
+        "classify_anomaly",
+        "logger"
+      ]
+    },
+    "core/backtesting_engine.py": {
+      "line_count": 311,
+      "docstring": "Backtesting Engine for Probabilistic Forecasts\n\nEvaluates forecast quality using proper scoring rules.",
+      "imports": [
+        "core.prediction_database",
+        "seaborn",
+        "json",
+        "pathlib",
+        "logging",
+        "numpy",
+        "pandas",
+        "matplotlib.pyplot"
+      ],
+      "classes": [
+        {
+          "name": "ProbabilisticBacktester",
+          "bases": [],
+          "docstring": "Evaluate probabilistic forecasts stored in database.\n\nMetrics:\n    - Quantile Coverage: Empirical vs nominal rates\n    - Brier Score: Probability calibration\n    - Pinball Loss: Quantile sharpness\n    - CRPS: Continuous Ranked Probability Score",
+          "methods": [
+            "__init__",
+            "run_full_evaluation",
+            "evaluate_quantile_coverage",
+            "evaluate_brier_score",
+            "evaluate_confidence",
+            "evaluate_by_cohort",
+            "plot_diagnostics",
+            "print_summary"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "run_full_evaluation",
+        "evaluate_quantile_coverage",
+        "evaluate_brier_score",
+        "evaluate_confidence",
+        "evaluate_by_cohort",
+        "plot_diagnostics",
+        "print_summary"
+      ]
+    },
+    "core/temporal_validator.py": {
+      "line_count": 911,
+      "docstring": "Temporal Safety Validator - Prevent Look-Ahead Bias\n====================================================\nThree-tier validation system to ensure no data leakage in training/prediction.\nEnhanced with Feature Quality Scoring for confidence models.",
+      "imports": [
+        "datetime",
+        "sklearn.metrics",
+        "sklearn.linear_model",
+        "typing",
+        "pathlib",
+        "json",
+        "warnings",
+        "re",
+        "numpy",
+        "config",
+        "pandas"
+      ],
+      "classes": [
+        {
+          "name": "TemporalSafetyValidator",
+          "bases": [],
+          "docstring": "Comprehensive temporal safety validation with feature quality scoring.",
+          "methods": [
+            "__init__",
+            "audit_feature_code",
+            "validate_split",
+            "validate_cv_split",
+            "verify_publication_lags",
+            "validate_walk_forward_gap",
+            "test_feature_availability_at_prediction_time",
+            "compute_feature_quality",
+            "_compute_staleness_score",
+            "compute_feature_quality_batch",
+            "update_feature_timestamp",
+            "get_feature_age",
+            "check_quality_threshold",
+            "get_quality_report",
+            "_infer_feature_sources",
+            "generate_validation_report"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "audit_feature_code",
+        "validate_split",
+        "validate_cv_split",
+        "verify_publication_lags",
+        "validate_walk_forward_gap",
+        "test_feature_availability_at_prediction_time",
+        "compute_feature_quality",
+        "_compute_staleness_score",
+        "compute_feature_quality_batch",
+        "update_feature_timestamp",
+        "get_feature_age",
+        "check_quality_threshold",
+        "get_quality_report",
+        "_infer_feature_sources",
+        "generate_validation_report",
+        "run_full_validation"
+      ]
+    },
+    "core/xgboost_trainer_v2.py": {
+      "line_count": 605,
+      "docstring": "Probabilistic VIX Forecasting System - Multi-output XGBoost models",
+      "imports": [
+        "xgboost",
+        "sklearn.metrics",
+        "pickle",
+        "sklearn.model_selection",
+        "json",
+        "pathlib",
+        "typing",
+        "warnings",
+        "logging",
+        "numpy",
+        "config",
+        "sklearn.isotonic",
+        "pandas",
+        "matplotlib.pyplot"
+      ],
+      "classes": [
+        {
+          "name": "ProbabilisticVIXForecaster",
+          "bases": [],
+          "docstring": null,
+          "methods": [
+            "__init__",
+            "train",
+            "_get_adaptive_cv_config",
+            "_create_targets",
+            "predict",
+            "_train_cohort_models",
+            "_train_regressor",
+            "_convert_to_json_serializable",
+            "_train_classifier",
+            "_calibrate_probabilities",
+            "_save_cohort_models",
+            "load",
+            "_generate_diagnostics"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "train",
+        "_get_adaptive_cv_config",
+        "_create_targets",
+        "predict",
+        "_train_cohort_models",
+        "_train_regressor",
+        "_convert_to_json_serializable",
+        "_train_classifier",
+        "_calibrate_probabilities",
+        "_save_cohort_models",
+        "load",
+        "_generate_diagnostics",
+        "train_probabilistic_forecaster"
+      ]
+    },
+    "core/data_fetcher.py": {
+      "line_count": 569,
+      "docstring": null,
+      "imports": [
+        "os",
+        "datetime",
+        "calendar",
+        "dotenv",
+        "requests",
+        "json",
+        "pathlib",
+        "typing",
+        "warnings",
+        "logging",
+        "numpy",
+        "yfinance",
+        "pandas"
+      ],
+      "classes": [
+        {
+          "name": "DataFetchLogger",
+          "bases": [],
+          "docstring": null,
+          "methods": [
+            "__init__",
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        {
+          "name": "UnifiedDataFetcher",
+          "bases": [],
+          "docstring": null,
+          "methods": [
+            "__init__",
+            "_get_last_date_from_cache",
+            "_merge_with_cache",
+            "_normalize_data",
+            "_should_update_fred_series",
+            "fetch_fred",
+            "fetch_fred_series",
+            "fetch_all_fred_series",
+            "fetch_yahoo",
+            "fetch_price",
+            "fetch_cboe_series",
+            "fetch_all_cboe",
+            "fetch_fomc_calendar",
+            "update_fomc_calendar_from_csv"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "info",
+        "warning",
+        "error",
+        "__init__",
+        "_get_last_date_from_cache",
+        "_merge_with_cache",
+        "_normalize_data",
+        "_should_update_fred_series",
+        "fetch_fred",
+        "fetch_fred_series",
+        "fetch_all_fred_series",
+        "fetch_yahoo",
+        "fetch_price",
+        "fetch_cboe_series",
+        "fetch_all_cboe",
+        "fetch_fomc_calendar",
+        "update_fomc_calendar_from_csv"
+      ]
+    },
+    "core/xgboost_feature_selector_v2.py": {
+      "line_count": 510,
+      "docstring": "XGBoost Feature Selector V2 - VIX % Change Forecasting (Regression)",
+      "imports": [
+        "xgboost",
+        "sklearn.metrics",
+        "sklearn.model_selection",
+        "typing",
+        "pathlib",
+        "warnings",
+        "numpy",
+        "pandas"
+      ],
+      "classes": [
+        {
+          "name": "IntelligentFeatureSelector",
+          "bases": [],
+          "docstring": "Stability-based feature selection for VIX % change forecasting.",
+          "methods": [
+            "__init__",
+            "run_full_pipeline",
+            "_train_baseline_with_stability",
+            "_rank_features_with_stability",
+            "_remove_multicollinearity",
+            "_recursive_feature_addition",
+            "_preserve_forward_indicators",
+            "_save_results"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "run_full_pipeline",
+        "_train_baseline_with_stability",
+        "_rank_features_with_stability",
+        "_remove_multicollinearity",
+        "_recursive_feature_addition",
+        "_preserve_forward_indicators",
+        "_save_results",
+        "run_intelligent_feature_selection"
+      ]
+    },
+    "core/.ipynb_checkpoints/feature_engine-checkpoint.py": {
+      "line_count": 1186,
+      "docstring": "Enhanced Feature Engine V4 - Meta Features, Futures, and Maximum Feature Richness",
+      "imports": [
+        "datetime",
+        "typing",
+        "data_fetcher_v7",
+        "warnings",
+        "numpy",
+        "config",
+        "pandas"
+      ],
+      "classes": [
+        {
+          "name": "MetaFeatureEngine",
+          "bases": [],
+          "docstring": "Advanced meta-feature extraction from base features.\nFocus: Regime detection, cross-asset dynamics, rate-of-change, percentile rankings.",
+          "methods": [
+            "extract_regime_indicators",
+            "extract_cross_asset_relationships",
+            "extract_rate_of_change_features",
+            "extract_percentile_rankings"
+          ]
+        },
+        {
+          "name": "FuturesFeatureEngine",
+          "bases": [],
+          "docstring": "Specialized feature extraction for futures contracts.\nFocus: VX futures, crude oil, dollar index futures.",
+          "methods": [
+            "extract_vix_futures_features",
+            "extract_commodity_futures_features",
+            "extract_dollar_futures_features",
+            "extract_futures_cross_relationships"
+          ]
+        },
+        {
+          "name": "UnifiedFeatureEngine",
+          "bases": [],
+          "docstring": "Enhanced unified feature engine with meta-features and futures integration.\nMaximizes feature richness for XGBoost and anomaly detection.",
+          "methods": [
+            "__init__",
+            "build_complete_features",
+            "_build_base_features",
+            "_vix_mean_reversion",
+            "_vix_dynamics",
+            "_vix_regimes",
+            "_spx_price_action",
+            "_spx_technical_indicators",
+            "_extract_ohlc_features",
+            "_spx_volatility_regime",
+            "_spx_vix_relationship",
+            "_calendar_features",
+            "_build_cboe_features",
+            "_cboe_features",
+            "_cboe_interactions",
+            "_build_futures_features",
+            "_fetch_macro_data",
+            "_build_macro_features",
+            "_build_meta_features",
+            "_build_fred_features"
+          ]
+        }
+      ],
+      "functions": [
+        "extract_regime_indicators",
+        "extract_cross_asset_relationships",
+        "extract_rate_of_change_features",
+        "extract_percentile_rankings",
+        "extract_vix_futures_features",
+        "extract_commodity_futures_features",
+        "extract_dollar_futures_features",
+        "extract_futures_cross_relationships",
+        "__init__",
+        "build_complete_features",
+        "_build_base_features",
+        "_vix_mean_reversion",
+        "_vix_dynamics",
+        "_vix_regimes",
+        "_spx_price_action",
+        "_spx_technical_indicators",
+        "_extract_ohlc_features",
+        "_spx_volatility_regime",
+        "_spx_vix_relationship",
+        "_calendar_features",
+        "_build_cboe_features",
+        "_cboe_features",
+        "_cboe_interactions",
+        "_build_futures_features",
+        "_fetch_macro_data",
+        "_build_macro_features",
+        "_build_meta_features",
+        "_build_fred_features",
+        "test_enhanced_engine"
+      ]
+    },
+    "diagnostics/feature_quality_diagnostic.py": {
+      "line_count": 275,
+      "docstring": "Feature Quality Diagnostics\n\nRun when feature_quality score looks wrong to identify which\nfeatures are degraded/missing/stale.\n\nUSAGE:\n  python diagnostics/feature_quality_diagnostic.py\n\n  OR with saved features:\n  python diagnostics/feature_quality_diagnostic.py --features-csv data_cache/features.csv",
+      "imports": [
+        "datetime",
+        "argparse",
+        "core.data_fetcher",
+        "sys",
+        "pathlib",
+        "core.feature_engine",
+        "logging",
+        "numpy",
+        "pandas"
+      ],
+      "classes": [],
+      "functions": [
+        "analyze_feature_quality",
+        "load_features_from_system"
+      ]
+    },
+    "diagnostics/database_investigator.py": {
+      "line_count": 136,
+      "docstring": "Database Investigation - Find out why quantile_coverage is inconsistent",
+      "imports": [
+        "datetime",
+        "sqlite3",
+        "pandas"
+      ],
+      "classes": [],
+      "functions": []
+    },
+    "diagnostics/bias_diagnostic.py": {
+      "line_count": 411,
+      "docstring": "BIAS DIAGNOSTIC - Find the source of the +17.59% systematic error\n\nAnalyzes forecast errors across:\n- Time periods (2023 vs 2024 vs 2025)\n- Calendar cohorts\n- VIX regimes (low/high VIX environments)\n- Feature quality scores\n\nOutput: Identifies when and where the bias occurs",
+      "imports": [
+        "datetime",
+        "scipy",
+        "seaborn",
+        "pathlib",
+        "numpy",
+        "sqlite3",
+        "pandas",
+        "matplotlib.pyplot"
+      ],
+      "classes": [],
+      "functions": [
+        "load_predictions",
+        "compute_bias_metrics",
+        "plot_error_timeseries",
+        "plot_bias_by_cohort",
+        "plot_bias_by_vix_regime",
+        "detect_regime_shift",
+        "generate_summary_report",
+        "main"
+      ]
+    },
+    "diagnostics/production_diagnostics.py": {
+      "line_count": 456,
+      "docstring": "Production-Grade Diagnostics for VIX Forecasting System\n\nAdds comprehensive logging, validation, and health checks.",
+      "imports": [
+        "dataclasses",
+        "datetime",
+        "json",
+        "pathlib",
+        "typing",
+        "warnings",
+        "logging",
+        "numpy",
+        "pandas"
+      ],
+      "classes": [
+        {
+          "name": "DataQualityReport",
+          "bases": [],
+          "docstring": "Comprehensive data quality metrics.",
+          "methods": [
+            "to_dict",
+            "is_acceptable",
+            "get_warnings"
+          ]
+        },
+        {
+          "name": "DataQualityMonitor",
+          "bases": [],
+          "docstring": "Monitor data quality and detect anomalies.",
+          "methods": [
+            "__init__",
+            "assess_quality"
+          ]
+        },
+        {
+          "name": "PredictionValidation",
+          "bases": [],
+          "docstring": "Validate prediction outputs for sanity.",
+          "methods": []
+        },
+        {
+          "name": "PredictionValidator",
+          "bases": [],
+          "docstring": "Validate prediction outputs before storage.",
+          "methods": [
+            "__init__",
+            "validate"
+          ]
+        },
+        {
+          "name": "ForecastLogger",
+          "bases": [],
+          "docstring": "Structured logging for forecasts with JSON export.",
+          "methods": [
+            "__init__",
+            "log_forecast",
+            "get_session_summary",
+            "export_summary"
+          ]
+        }
+      ],
+      "functions": [
+        "to_dict",
+        "is_acceptable",
+        "get_warnings",
+        "__init__",
+        "assess_quality",
+        "__init__",
+        "validate",
+        "__init__",
+        "log_forecast",
+        "get_session_summary",
+        "export_summary",
+        "production_forecast_with_diagnostics"
+      ]
+    },
+    "diagnostics/walk_forward_validation.py": {
+      "line_count": 641,
+      "docstring": "Fixed Walk-Forward Validation - Handles Missing quantile_coverage Data",
+      "imports": [
+        "scipy",
+        "seaborn",
+        "argparse",
+        "typing",
+        "json",
+        "pathlib",
+        "logging",
+        "numpy",
+        "sqlite3",
+        "pandas",
+        "matplotlib.pyplot"
+      ],
+      "classes": [
+        {
+          "name": "EnhancedWalkForwardValidator",
+          "bases": [],
+          "docstring": "Production-ready walk-forward validation with detailed diagnostics.",
+          "methods": [
+            "__init__",
+            "load_predictions_with_actuals",
+            "_compute_coverage_from_quantiles",
+            "compute_metrics",
+            "_compute_overall_metrics",
+            "_compute_quantile_calibration",
+            "_compute_by_cohort",
+            "_compute_by_regime",
+            "_analyze_confidence",
+            "_compute_time_series_metrics",
+            "generate_diagnostic_report",
+            "_print_summary",
+            "_plot_calibration",
+            "_plot_forecast_vs_actual",
+            "_plot_confidence_analysis",
+            "_plot_cohort_performance",
+            "_plot_time_series"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "load_predictions_with_actuals",
+        "_compute_coverage_from_quantiles",
+        "compute_row_coverage",
+        "compute_metrics",
+        "parse_coverage",
+        "_compute_overall_metrics",
+        "_compute_quantile_calibration",
+        "_compute_by_cohort",
+        "_compute_by_regime",
+        "_analyze_confidence",
+        "_compute_time_series_metrics",
+        "generate_diagnostic_report",
+        "convert",
+        "_print_summary",
+        "_plot_calibration",
+        "_plot_forecast_vs_actual",
+        "_plot_confidence_analysis",
+        "_plot_cohort_performance",
+        "_plot_time_series"
+      ]
+    },
+    "integrated_system_production.py": {
+      "line_count": 1425,
+      "docstring": "Integrated Market Analysis System V5 - Probabilistic Forecasting\nUpgraded architecture with probabilistic distribution forecasting.\nAnomaly detection preserved but probabilistic forecasting is primary focus.",
+      "imports": [
+        "os",
+        "datetime",
+        "argparse",
+        "core.anomaly_detector",
+        "json",
+        "pathlib",
+        "uuid",
+        "config",
+        "core.temporal_validator",
+        "pickle",
+        "core.feature_engine",
+        "numpy",
+        "diagnostics.walk_forward_validation",
+        "core.forecast_calibrator",
+        "core.prediction_database",
+        "core.data_fetcher",
+        "core.xgboost_trainer_v2",
+        "core.xgboost_feature_selector_v2",
+        "logging",
+        "psutil",
+        "export.unified_exporter",
+        "subprocess",
+        "warnings",
+        "gc",
+        "sqlite3",
+        "pandas"
+      ],
+      "classes": [
+        {
+          "name": "AnomalyOrchestrator",
+          "bases": [],
+          "docstring": "Orchestrates anomaly detection workflow (preserved for backward compatibility).\n1. Manages VIX/SPX history\n2. Maintains regime statistics\n3. Coordinates anomaly detector\n4. Handles state persistence",
+          "methods": [
+            "__init__",
+            "train",
+            "_generate_historical_scores",
+            "detect_current",
+            "get_persistence_stats",
+            "_compute_regime_statistics",
+            "save_state",
+            "load_state",
+            "_dict_to_series",
+            "_dict_to_dataframe"
+          ]
+        },
+        {
+          "name": "IntegratedSystem",
+          "bases": [],
+          "docstring": "Main system integrating probabilistic forecasting with anomaly detection.\n\nComponents:\n  - Feature Engine: Generate 232 features with calendar cohorts\n  - Probabilistic Forecaster: Multi-output distribution model\n  - Prediction Database: Store forecasts for backtesting\n  - Anomaly Detector: Identify market regime anomalies (parallel)\n  - Temporal Validator: Check data quality\n\nExample:\n    >>> system = IntegratedSystem()\n    >>> distribution = system.generate_forecast()\n    >>> print(distribution['point_estimate'])  # 8.5% expected VIX change",
+          "methods": [
+            "__init__",
+            "_load_models",
+            "_log_forecast_summary",
+            "_store_prediction",
+            "_get_model_version",
+            "generate_forecast",
+            "run",
+            "train",
+            "run_feature_selection",
+            "get_market_state",
+            "_get_cached_anomaly_result",
+            "_classify_vix_regime",
+            "_get_spx_feature_state",
+            "_get_top_anomalies_list",
+            "print_anomaly_summary",
+            "_initialize_memory_baseline",
+            "_log_memory_stats",
+            "get_memory_report",
+            "train_probabilistic_models",
+            "generate_forecast_batch",
+            "_get_features"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "train",
+        "_generate_historical_scores",
+        "detect_current",
+        "get_persistence_stats",
+        "_compute_regime_statistics",
+        "save_state",
+        "load_state",
+        "_dict_to_series",
+        "_dict_to_dataframe",
+        "__init__",
+        "_load_models",
+        "_log_forecast_summary",
+        "_store_prediction",
+        "_get_model_version",
+        "generate_forecast",
+        "run",
+        "train",
+        "run_feature_selection",
+        "get_market_state",
+        "_get_cached_anomaly_result",
+        "_classify_vix_regime",
+        "_get_spx_feature_state",
+        "_get_top_anomalies_list",
+        "print_anomaly_summary",
+        "_initialize_memory_baseline",
+        "_log_memory_stats",
+        "get_memory_report",
+        "train_probabilistic_models",
+        "generate_forecast_batch",
+        "_get_features",
+        "main"
+      ]
+    },
+    "train_probabilistic_models.py": {
+      "line_count": 164,
+      "docstring": "Training Script for Probabilistic VIX Forecaster\nTrains all cohort models and saves to disk",
+      "imports": [
+        "core.data_fetcher",
+        "core.xgboost_trainer_v2",
+        "sys",
+        "pathlib",
+        "core.feature_engine",
+        "warnings",
+        "config",
+        "pandas",
+        "logging_config"
+      ],
+      "classes": [],
+      "functions": [
+        "filter_cohorts_by_min_samples",
+        "main"
+      ]
+    },
+    "config.py": {
+      "line_count": 911,
+      "docstring": "Configuration V5 - Probabilistic Distribution Forecasting",
+      "imports": [
+        "pathlib"
+      ],
+      "classes": [],
+      "functions": []
+    },
+    "logging_config.py": {
+      "line_count": 85,
+      "docstring": "Centralized logging configuration for the entire system",
+      "imports": [
+        "sys",
+        "logging",
+        "pathlib"
+      ],
+      "classes": [],
+      "functions": [
+        "setup_logging",
+        "get_logger"
+      ]
+    }
+  },
+  "dependencies": {
+    "core/forecast_calibrator.py": [
+      "core.prediction_database",
+      "pickle",
+      "json",
+      "pathlib",
+      "typing",
+      "prediction_database",
+      "sys",
+      "warnings",
+      "logging",
+      "numpy",
+      "pandas"
+    ],
+    "core/feature_engine.py": [
+      "os",
+      "datetime",
+      "typing",
+      "warnings",
+      "numpy",
+      "config",
+      "pandas"
+    ],
+    "core/prediction_database.py": [
+      "datetime",
+      "core.data_fetcher",
+      "json",
+      "pathlib",
+      "typing",
+      "warnings",
+      "logging",
+      "numpy",
+      "config",
+      "sqlite3",
+      "pandas",
+      "atexit"
+    ],
+    "core/anomaly_detector.py": [
+      "pytz",
+      "datetime",
+      "sklearn.ensemble",
+      "typing",
+      "shap",
+      "sklearn.preprocessing",
+      "warnings",
+      "logging",
+      "numpy",
+      "config",
+      "pandas"
+    ],
+    "core/backtesting_engine.py": [
+      "core.prediction_database",
+      "seaborn",
+      "json",
+      "pathlib",
+      "logging",
+      "numpy",
+      "pandas",
+      "matplotlib.pyplot"
+    ],
+    "core/temporal_validator.py": [
+      "datetime",
+      "sklearn.metrics",
+      "sklearn.linear_model",
+      "typing",
+      "pathlib",
+      "json",
+      "warnings",
+      "re",
+      "numpy",
+      "config",
+      "pandas"
+    ],
+    "core/xgboost_trainer_v2.py": [
+      "xgboost",
+      "sklearn.metrics",
+      "pickle",
+      "sklearn.model_selection",
+      "json",
+      "pathlib",
+      "typing",
+      "warnings",
+      "logging",
+      "numpy",
+      "config",
+      "sklearn.isotonic",
+      "pandas",
+      "matplotlib.pyplot"
+    ],
+    "core/data_fetcher.py": [
+      "os",
+      "datetime",
+      "calendar",
+      "dotenv",
+      "requests",
+      "json",
+      "pathlib",
+      "typing",
+      "warnings",
+      "logging",
+      "numpy",
+      "yfinance",
+      "pandas"
+    ],
+    "core/xgboost_feature_selector_v2.py": [
+      "xgboost",
+      "sklearn.metrics",
+      "sklearn.model_selection",
+      "typing",
+      "pathlib",
+      "warnings",
+      "numpy",
+      "pandas"
+    ],
+    "core/.ipynb_checkpoints/feature_engine-checkpoint.py": [
+      "datetime",
+      "typing",
+      "data_fetcher_v7",
+      "warnings",
+      "numpy",
+      "config",
+      "pandas"
+    ],
+    "diagnostics/feature_quality_diagnostic.py": [
+      "datetime",
+      "argparse",
+      "core.data_fetcher",
+      "sys",
+      "pathlib",
+      "core.feature_engine",
+      "logging",
+      "numpy",
+      "pandas"
+    ],
+    "diagnostics/database_investigator.py": [
+      "datetime",
+      "sqlite3",
+      "pandas"
+    ],
+    "diagnostics/bias_diagnostic.py": [
+      "datetime",
+      "scipy",
+      "seaborn",
+      "pathlib",
+      "numpy",
+      "sqlite3",
+      "pandas",
+      "matplotlib.pyplot"
+    ],
+    "diagnostics/production_diagnostics.py": [
+      "dataclasses",
+      "datetime",
+      "json",
+      "pathlib",
+      "typing",
+      "warnings",
+      "logging",
+      "numpy",
+      "pandas"
+    ],
+    "diagnostics/walk_forward_validation.py": [
+      "scipy",
+      "seaborn",
+      "argparse",
+      "typing",
+      "json",
+      "pathlib",
+      "logging",
+      "numpy",
+      "sqlite3",
+      "pandas",
+      "matplotlib.pyplot"
+    ],
+    "integrated_system_production.py": [
+      "os",
+      "datetime",
+      "argparse",
+      "core.anomaly_detector",
+      "json",
+      "pathlib",
+      "uuid",
+      "config",
+      "core.temporal_validator",
+      "pickle",
+      "core.feature_engine",
+      "numpy",
+      "diagnostics.walk_forward_validation",
+      "core.forecast_calibrator",
+      "core.prediction_database",
+      "core.data_fetcher",
+      "core.xgboost_trainer_v2",
+      "core.xgboost_feature_selector_v2",
+      "logging",
+      "psutil",
+      "export.unified_exporter",
+      "subprocess",
+      "warnings",
+      "gc",
+      "sqlite3",
+      "pandas"
+    ],
+    "train_probabilistic_models.py": [
+      "core.data_fetcher",
+      "core.xgboost_trainer_v2",
+      "sys",
+      "pathlib",
+      "core.feature_engine",
+      "warnings",
+      "config",
+      "pandas",
+      "logging_config"
+    ],
+    "config.py": [
+      "pathlib"
+    ],
+    "logging_config.py": [
+      "sys",
+      "logging",
+      "pathlib"
+    ]
+  }
+}
