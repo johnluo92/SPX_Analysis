@@ -7,9 +7,9 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-warnings.filterwarnings("ignore")
-
 from config import REGIME_BOUNDARIES, TRAINING_YEARS
+
+warnings.filterwarnings("ignore")
 
 try:
     from config import (
@@ -489,24 +489,18 @@ class UnifiedFeatureEngine:
                 self.fomc_calendar = self.fetcher.fetch_fomc_calendar(
                     start_year=start_year, end_year=end_year
                 )
-                print(f"✅ FOMC calendar loaded: {len(self.fomc_calendar)} meetings")
             except Exception as e:
-                print(f"⚠️ FOMC calendar load failed: {e}, using stub")
+                print(f"⚠️ FOMC calendar unavailable, using stub")
                 self.fomc_calendar = pd.DataFrame()
 
         if self.opex_calendar is None:
             self.opex_calendar = self._generate_opex_calendar()
-            print(f"✅ OpEx calendar generated: {len(self.opex_calendar)} dates")
 
         if self.vix_futures_expiry is None:
             self.vix_futures_expiry = self._generate_vix_futures_expiry()
-            print(
-                f"✅ VIX futures expiry calendar: {len(self.vix_futures_expiry)} dates"
-            )
 
         if self.earnings_calendar is None:
             self.earnings_calendar = pd.DataFrame()
-            print("⚠️ Earnings calendar not implemented (will use default cohort)")
 
     def _generate_opex_calendar(self, start_year=None, end_year=None):
         if start_year is None:
@@ -642,75 +636,6 @@ class UnifiedFeatureEngine:
             )
         return pd.Series(quality_scores, index=df.index)
 
-    def _generate_feature_metadata(
-        self,
-        features: pd.DataFrame,
-        spx: pd.Series,
-        vix: pd.Series,
-        cboe_data: pd.DataFrame = None,
-        macro_df: pd.DataFrame = None,
-    ) -> Dict[str, Dict]:
-        metadata = {}
-
-        def get_last_valid_date(series):
-            if series is None or len(series) == 0:
-                return None
-            valid = series.dropna()
-            return valid.index[-1] if len(valid) > 0 else None
-
-        source_patterns = {
-            "vix": ("^VIX", 0),
-            "spx": ("^GSPC", 0),
-            "SKEW": ("SKEW", 0),
-            "VXTLT": ("VXTLT", 0),
-            "VX1": ("VX1-VX2", 0),
-            "VX2": ("VX2-VX1_RATIO", 0),
-            "dgs": ("DGS10", 1),
-            "yield": ("DGS10", 1),
-            "crude": ("CL=F", 0),
-            "cl_": ("CL1-CL2", 0),
-            "dxy": ("DX-Y.NYB", 0),
-            "dollar": ("DTWEXBGS", 1),
-            "CPI": ("CPIAUCSL", 14),
-        }
-
-        for col in features.columns:
-            col_lower = col.lower()
-            source, lag, feature_type, last_date = "derived", 0, "computed", None
-
-            for pattern, (src, pub_lag) in source_patterns.items():
-                if pattern in col_lower:
-                    source, lag = src, pub_lag
-                    feature_type = (
-                        "base"
-                        if pattern in col_lower[: len(pattern) + 5]
-                        else "derived"
-                    )
-                    if pattern == "vix" and vix is not None:
-                        last_date = get_last_valid_date(vix)
-                    elif pattern == "spx" and spx is not None:
-                        last_date = get_last_valid_date(spx)
-                    elif cboe_data is not None and source in cboe_data.columns:
-                        last_date = get_last_valid_date(cboe_data[source])
-                    elif macro_df is not None:
-                        for mcol in macro_df.columns:
-                            if pattern in mcol.lower():
-                                last_date = get_last_valid_date(macro_df[mcol])
-                                break
-                    break
-
-            if last_date is None:
-                last_date = get_last_valid_date(features[col])
-
-            metadata[col] = {
-                "source": source,
-                "last_available_date": last_date,
-                "publication_lag": lag,
-                "feature_type": feature_type,
-            }
-
-        return metadata
-
     def _align_features_for_prediction(
         self,
         base_features: pd.DataFrame,
@@ -720,9 +645,6 @@ class UnifiedFeatureEngine:
         treasury_features: pd.DataFrame,
         market_index: pd.DatetimeIndex,
     ) -> pd.DataFrame:
-        target_date = market_index[-1]
-
-        print(f"\nðŸŽ¯ Aligning features to: {target_date.date()}")
         treasury_filled = treasury_features.reindex(
             market_index, method="ffill", limit=3
         )
@@ -734,9 +656,6 @@ class UnifiedFeatureEngine:
             [base_aligned, cboe_filled, futures_filled, macro_filled, treasury_filled],
             axis=1,
         )
-        print(f"   âœ… Features aligned: {aligned.shape}")
-        print(f"   Latest date: {aligned.index[-1].date()}")
-
         return aligned
 
     def _validate_term_structure_timing(
@@ -761,9 +680,6 @@ class UnifiedFeatureEngine:
     def apply_quality_control(self, features: pd.DataFrame):
         if not hasattr(self, "quality_controller"):
             return features
-        print("\n" + "=" * 80)
-        print("🛡️ QUALITY CONTROL")
-        print("=" * 80)
         clean_features, report = self.quality_controller.validate_features(features)
         import os
 
@@ -777,12 +693,11 @@ class UnifiedFeatureEngine:
     def build_complete_features(
         self, years: int = TRAINING_YEARS, end_date: Optional[str] = None
     ) -> dict:
+        print(f"\n{'=' * 80}")
         print(
-            f"\n{'=' * 80}\nENHANCED FEATURE ENGINE V5 - WITH CALENDAR COHORTS\n{'=' * 80}\nWindow: {years}y"
+            f"🏗️  Building {years}y feature set | Temporal Safety: {'ON' if ENABLE_TEMPORAL_SAFETY else 'OFF'}"
         )
-        print(
-            f"🔒 TEMPORAL SAFETY {'ENABLED' if ENABLE_TEMPORAL_SAFETY else 'DISABLED'}"
-        )
+        print(f"{'=' * 80}")
 
         end_date = pd.Timestamp(end_date) if end_date else datetime.now()
         start_date = end_date - timedelta(days=years * 365 + 450)
@@ -792,7 +707,7 @@ class UnifiedFeatureEngine:
             end_date.strftime("%Y-%m-%d"),
         )
 
-        print("\n[1/8] Core market data (SPX, VIX)...")
+        # Core data
         spx_df = self.fetcher.fetch_yahoo("^GSPC", start_str, end_str)
         vix = self.fetcher.fetch_yahoo("^VIX", start_str, end_str)
         if spx_df is None or vix is None:
@@ -801,71 +716,38 @@ class UnifiedFeatureEngine:
         vix = vix["Close"].squeeze()
         vix = vix.reindex(spx.index, method="ffill", limit=5)
         spx_ohlc = spx_df.reindex(spx.index, method="ffill", limit=5)
-        print(f"   ✅ SPX: {len(spx)} | VIX: {len(vix)}")
 
-        print("\n[2/8] CBOE data...")
+        # CBOE data
         cboe_dict = self.fetcher.fetch_all_cboe()
         if cboe_dict:
             cboe_data = pd.DataFrame(index=spx.index)
             for symbol, series in cboe_dict.items():
                 cboe_data[symbol] = series.reindex(spx.index, method="ffill", limit=5)
-            print(f"   ✅ {len(cboe_data.columns)} CBOE series loaded")
         else:
             cboe_data = pd.DataFrame(index=spx.index)
-            print("   ⚠️ CBOE data not available")
 
-        print("\n[3/8] Base features...")
+        # Feature generation
         base_features = self._build_base_features(spx, vix, spx_ohlc, cboe_data)
-        print(f"   ✅ {len(base_features.columns)} base features")
-
         cboe_features = (
             self._build_cboe_features(cboe_data, vix)
             if not cboe_data.empty
             else pd.DataFrame(index=spx.index)
         )
-        if not cboe_features.empty:
-            print(f"   ✅ {len(cboe_features.columns)} CBOE features")
-
-        print("\n[4/8] Futures data...")
         futures_features = self._build_futures_features(
             start_str, end_str, spx.index, spx, cboe_data
         )
-        print(f"   ✅ {len(futures_features.columns)} futures features")
-
-        print("\n[5/8] Macro data...")
         macro_df = self._fetch_macro_data(start_str, end_str, spx.index)
         macro_features = (
             self._build_macro_features(macro_df)
             if macro_df is not None
             else pd.DataFrame(index=spx.index)
         )
-        print(f"   ✅ {len(macro_features.columns)} macro features")
-
-        print("\n[6/8] Treasury yield curve...")
         treasury_features = self._build_treasury_features(start_str, end_str, spx.index)
-        print(f"   ✅ {len(treasury_features.columns)} treasury features")
-
-        print("\n[7/8] Meta features...")
         combined_base = pd.concat([base_features, cboe_features], axis=1)
         meta_features = self._build_meta_features(combined_base, spx, vix, macro_df)
-        print(f"   ✅ {len(meta_features.columns)} meta features")
-        all_features = self._align_features_for_prediction(
-            base_features,
-            cboe_features,
-            futures_features,
-            macro_features,
-            treasury_features,
-            spx.index,
-        )
-
-        print("\n[8/8] Calendar features...")
         calendar_features = self._build_calendar_features(spx.index)
-        print(f"   ✅ {len(calendar_features.columns)} calendar features")
 
-        print("\n" + "=" * 80)
-        print("📊 CONSOLIDATING FEATURES")
-        print("=" * 80)
-
+        # Consolidate
         all_features = pd.concat(
             [
                 base_features,
@@ -880,9 +762,8 @@ class UnifiedFeatureEngine:
         )
         all_features = all_features.loc[:, ~all_features.columns.duplicated()]
         all_features = self._ensure_numeric_dtypes(all_features)
-        print(f"\nTotal features before cohorts: {len(all_features.columns)}")
 
-        print("\n📅 ADDING CALENDAR COHORTS")
+        # Calendar cohorts
         self._load_calendar_data()
         cohort_data = [
             {
@@ -894,58 +775,31 @@ class UnifiedFeatureEngine:
         cohort_df = pd.DataFrame(cohort_data, index=all_features.index)
         all_features = pd.concat([all_features, cohort_df], axis=1)
 
-        cohort_counts = all_features["calendar_cohort"].value_counts()
-        print("📊 Cohort Distribution:")
-        for cohort, count in cohort_counts.items():
-            print(
-                f"   {cohort:30s} | {count:4d} rows ({count / len(all_features) * 100:5.1f}%)"
-            )
-
-        print("\n🔍 COMPUTING FEATURE QUALITY SCORES")
+        # Quality scores
         all_features["feature_quality"] = self._compute_feature_quality_vectorized(
             all_features
         )
-        print(
-            f"\n✅ Final feature count: {len(all_features.columns)} (includes 3 metadata cols)"
-        )
-        print(f"   Features: {len(all_features.columns) - 3}")
-        print(f"   Metadata: calendar_cohort, cohort_weight, feature_quality")
 
+        # Quality control
         all_features = self.apply_quality_control(all_features)
-        if ENABLE_TEMPORAL_SAFETY:
-            print("🔒 All features respect publication delays")
 
-        print("\n[9/9] Generating feature metadata...")
-        feature_metadata = self._generate_feature_metadata(
-            all_features, spx, vix, cboe_data, macro_df
-        )
+        # Validation
         if ENABLE_TEMPORAL_SAFETY and not cboe_data.empty:
             self._validate_term_structure_timing(vix, cboe_data)
 
-        features_with_timestamps = sum(
-            1
-            for m in feature_metadata.values()
-            if m.get("last_available_date") is not None
-        )
-        coverage_pct = round(100 * features_with_timestamps / len(feature_metadata), 1)
-        print(f"✅ Feature metadata generated for {len(feature_metadata)} features")
         print(
-            f"📊 Metadata coverage: {features_with_timestamps}/{len(feature_metadata)} ({coverage_pct}%)"
+            f"\n✅ Complete: {len(all_features.columns)} features | {len(all_features)} rows"
         )
-        print("=" * 80)
+        print(
+            f"   Date range: {all_features.index[0].date()} → {all_features.index[-1].date()}"
+        )
+        print(f"{'=' * 80}\n")
 
         return {
             "features": all_features,
             "spx": spx,
             "vix": vix,
             "cboe_data": cboe_data if cboe_dict else None,
-            "metadata": feature_metadata,
-            "temporal_validation": {
-                "enabled": ENABLE_TEMPORAL_SAFETY,
-                "feature_count": len(all_features.columns),
-                "date_range": (all_features.index[0], all_features.index[-1]),
-                "metadata_coverage_pct": coverage_pct,
-            },
         }
 
     def _build_base_features(
@@ -1233,10 +1087,8 @@ class UnifiedFeatureEngine:
         vx_data = {}
         if cboe_data is not None and "VX1-VX2" in cboe_data.columns:
             vx_data["VX1-VX2"] = cboe_data["VX1-VX2"]
-            print("   ✅ Using CBOE VX1-VX2 spread")
         if cboe_data is not None and "VX2-VX1_RATIO" in cboe_data.columns:
             vx_data["VX2-VX1_RATIO"] = cboe_data["VX2-VX1_RATIO"]
-            print("   ✅ Using CBOE VX2-VX1 ratio")
         vx_features = self.futures_engine.extract_vix_futures_features(vx_data)
         vx_features = (
             vx_features.reindex(index, method="ffill")
@@ -1247,13 +1099,11 @@ class UnifiedFeatureEngine:
         commodity_data = {}
         if cboe_data is not None and "CL1-CL2" in cboe_data.columns:
             commodity_data["CL1-CL2"] = cboe_data["CL1-CL2"]
-            print("   ✅ Using CBOE CL1-CL2 spread")
         crude = self.fetcher.fetch_yahoo("CL=F", start_str, end_str)
         if crude is not None:
             commodity_data["Crude_Oil"] = (
                 crude["Close"].squeeze().reindex(index, method="ffill")
             )
-            print("   ✅ Got Crude Oil continuous")
         commodity_features = self.futures_engine.extract_commodity_futures_features(
             commodity_data
         )
@@ -1266,13 +1116,11 @@ class UnifiedFeatureEngine:
         dollar_data = {}
         if cboe_data is not None and "DX1-DX2" in cboe_data.columns:
             dollar_data["DX1-DX2"] = cboe_data["DX1-DX2"]
-            print("   ✅ Using CBOE DX1-DX2 spread")
         dxy = self.fetcher.fetch_yahoo("DX-Y.NYB", start_str, end_str)
         if dxy is not None:
             dollar_data["Dollar_Index"] = (
                 dxy["Close"].squeeze().reindex(index, method="ffill")
             )
-            print("   ✅ Got Dollar Index spot")
         dollar_features = self.futures_engine.extract_dollar_futures_features(
             dollar_data
         )
@@ -1295,7 +1143,6 @@ class UnifiedFeatureEngine:
         all_futures = pd.concat(
             [vx_features, commodity_features, dollar_features, cross_features], axis=1
         )
-        print(f"   📊 Total futures features generated: {len(all_futures.columns)}")
         return all_futures
 
     def _fetch_macro_data(
