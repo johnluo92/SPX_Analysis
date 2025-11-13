@@ -452,6 +452,125 @@ class PredictionDatabase:
             logger.error(f"❌ Failed to query predictions: {e}")
             raise
 
+    def migrate_schema(self):
+        """
+        Migrate existing database to remove direction_probability column.
+        Safe to run multiple times.
+        """
+        logger.info("🔧 Checking database schema...")
+
+        try:
+            # Check if direction_probability exists
+            cursor = self.conn.execute("PRAGMA table_info(forecasts)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if "direction_probability" in columns:
+                logger.info(
+                    "⚠️  Found deprecated 'direction_probability' column, migrating..."
+                )
+
+                # Get all data
+                cursor = self.conn.execute("SELECT * FROM forecasts")
+                rows = cursor.fetchall()
+
+                if len(rows) > 0:
+                    logger.info(f"   Backing up {len(rows)} records...")
+
+                    # Get column names (excluding direction_probability)
+                    old_columns = [desc[0] for desc in cursor.description]
+                    new_columns = [
+                        col for col in old_columns if col != "direction_probability"
+                    ]
+
+                    # Drop old table
+                    self.conn.execute("DROP TABLE forecasts")
+
+                    # Recreate with new schema
+                    self._create_schema()
+
+                    # Reinsert data (excluding direction_probability)
+                    placeholders = ", ".join(["?" for _ in new_columns])
+                    insert_sql = f"INSERT INTO forecasts ({', '.join(new_columns)}) VALUES ({placeholders})"
+
+                    for row in rows:
+                        # Convert row to dict
+                        row_dict = dict(zip(old_columns, row))
+                        # Extract values for new columns only
+                        values = [row_dict[col] for col in new_columns]
+                        self.conn.execute(insert_sql, values)
+
+                    self.conn.commit()
+                    logger.info(f"✅ Migration complete: {len(rows)} records preserved")
+                else:
+                    # Empty table, just recreate
+                    self.conn.execute("DROP TABLE forecasts")
+                    self._create_schema()
+                    logger.info("✅ Migration complete: recreated empty table")
+            else:
+                logger.info("✅ Schema is up to date")
+
+        except Exception as e:
+            logger.error(f"❌ Migration failed: {e}")
+            self.conn.rollback()
+            raise
+
+    def remove_all_duplicates(self):
+        """
+        One-time cleanup: Remove all duplicate predictions, keeping the earliest.
+        Run this once to clean existing data.
+        """
+        logger.info("🔍 Scanning for duplicate predictions...")
+
+        # Find duplicates
+        cursor = self.conn.execute("""
+            SELECT forecast_date, horizon, COUNT(*) as count
+            FROM forecasts
+            GROUP BY forecast_date, horizon
+            HAVING count > 1
+        """)
+
+        duplicates = cursor.fetchall()
+
+        if len(duplicates) == 0:
+            logger.info("✅ No duplicates found")
+            return 0
+
+        logger.info(f"⚠️  Found {len(duplicates)} duplicate date-horizon pairs")
+
+        total_removed = 0
+        for dup in duplicates:
+            forecast_date, horizon, count = (
+                dup["forecast_date"],
+                dup["horizon"],
+                dup["count"],
+            )
+
+            # Keep the earliest prediction (by timestamp), delete rest
+            cursor = self.conn.execute(
+                """
+                DELETE FROM forecasts
+                WHERE forecast_date = ? AND horizon = ?
+                AND prediction_id NOT IN (
+                    SELECT prediction_id FROM forecasts
+                    WHERE forecast_date = ? AND horizon = ?
+                    ORDER BY timestamp ASC
+                    LIMIT 1
+                )
+            """,
+                (forecast_date, horizon, forecast_date, horizon),
+            )
+
+            removed = cursor.rowcount
+            total_removed += removed
+            logger.debug(
+                f"   Removed {removed} duplicates for {forecast_date} (horizon={horizon})"
+            )
+
+        self.conn.commit()
+        logger.info(f"✅ Removed {total_removed} duplicate predictions")
+
+        return total_removed
+
     def get_database_stats(self) -> Dict:
         """Get statistics about the database state."""
         try:
@@ -719,6 +838,12 @@ class PredictionDatabase:
             }
 
         return summary
+
+    def export_to_csv(self, filename: str = "predictions_export.csv"):
+        """Export all predictions to CSV for external analysis."""
+        df = self.get_predictions()
+        df.to_csv(filename, index=False)
+        logger.info(f"📄 Exported {len(df)} predictions to {filename}")
 
     def close(self):
         """Close database connection."""

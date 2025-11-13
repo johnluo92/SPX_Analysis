@@ -739,6 +739,41 @@ class UnifiedFeatureEngine:
 
         return aligned
 
+    def _validate_term_structure_timing(
+        self, vix: pd.Series, cboe_data: pd.DataFrame, prediction_date: datetime = None
+    ) -> bool:
+        if cboe_data is None or "VIX3M" not in cboe_data.columns:
+            return True
+        if prediction_date is None:
+            prediction_date = vix.index[-1]
+        vix3m = cboe_data["VIX3M"]
+        vix3m_lag = PUBLICATION_LAGS.get("VIX3M", 0)
+        latest_vix3m = vix3m.dropna().index[-1] if len(vix3m.dropna()) > 0 else None
+        if latest_vix3m is not None:
+            allowed_date = prediction_date - timedelta(days=vix3m_lag)
+            if latest_vix3m > allowed_date:
+                warnings.warn(
+                    f"⚠️ VIX3M term structure may have T+{vix3m_lag} leakage: Using data from {latest_vix3m.date()} but prediction date is {prediction_date.date()}"
+                )
+                return False
+        return True
+
+    def apply_quality_control(self, features: pd.DataFrame):
+        if not hasattr(self, "quality_controller"):
+            return features
+        print("\n" + "=" * 80)
+        print("🛡️ QUALITY CONTROL")
+        print("=" * 80)
+        clean_features, report = self.quality_controller.validate_features(features)
+        import os
+
+        os.makedirs("./data_cache", exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.quality_controller.save_report(
+            report, f"./data_cache/quality_report_{timestamp}.json"
+        )
+        return clean_features
+
     def build_complete_features(
         self, years: int = TRAINING_YEARS, end_date: Optional[str] = None
     ) -> dict:
