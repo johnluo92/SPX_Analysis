@@ -11,7 +11,9 @@ import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
+from dotenv import load_dotenv
 
+load_dotenv()
 warnings.filterwarnings("ignore")
 
 
@@ -139,7 +141,7 @@ class UnifiedDataFetcher:
         cboe_data_dir: str = "./CBOE_Data_Archive",
     ):
         self.fred_base_url = "https://api.stlouisfed.org/fred/series/observations"
-        self.fred_api_key = "133a740c8e0018b5806aca64f64626f0"
+        self.fred_api_key = os.getenv("FRED_API_KEY")
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
         self.cboe_data_dir = Path(cboe_data_dir)
