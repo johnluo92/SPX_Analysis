@@ -16,7 +16,7 @@ from logging_config import get_logger, setup_logging
 
 setup_logging(level="DEBUG", quiet_mode=True)
 
-from config import TRAINING_YEARS
+from config import TRAINING_END_DATE, TRAINING_YEARS
 from core.data_fetcher import UnifiedDataFetcher
 from core.feature_engine import UnifiedFeatureEngine
 from core.xgboost_trainer_v2 import train_probabilistic_forecaster
@@ -89,6 +89,7 @@ def main():
 
         feature_data = feature_engine.build_complete_features(years=TRAINING_YEARS)
         df = feature_data["features"]
+        df = df[df.index <= TRAINING_END_DATE]
 
         logger.info(f"\n✅ Features built successfully")
         logger.info(f"   Shape: {df.shape}")

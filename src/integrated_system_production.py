@@ -395,7 +395,7 @@ class IntegratedSystem:
 
     def _log_forecast_summary(self, distribution):
         """Log human-readable forecast summary."""
-        logger.info("\n📊 FORECAST SUMMARY")
+        logger.info("\nFORECAST SUMMARY")
         logger.info("─" * 60)
 
         # Point estimate
@@ -411,11 +411,13 @@ class IntegratedSystem:
         logger.info(f"   75th percentile: {quantiles['q75']:+.1f}%")
         logger.info(f"   90th percentile: {quantiles['q90']:+.1f}%")
 
-        # Regimes
-        regimes = distribution["regime_probabilities"]
-        logger.info(f"Regime Probabilities:")
-        for regime, prob in regimes.items():
-            logger.info(f"   {regime.capitalize():10s}: {prob * 100:5.1f}%")
+        # ============================================================
+        # CHANGE: Replace regime section with direction
+        # ============================================================
+        prob_up = distribution["direction_probability"]
+        logger.info(f"Direction Forecast:")
+        logger.info(f"   Probability UP:   {prob_up * 100:5.1f}%")
+        logger.info(f"   Probability DOWN: {(1 - prob_up) * 100:5.1f}%")
 
         # Confidence
         conf = distribution["confidence_score"]
@@ -430,60 +432,40 @@ class IntegratedSystem:
             f"   Expected VIX in {TARGET_CONFIG['horizon_days']} days: {expected_vix:.2f}"
         )
         logger.info(
-            f"   90% confidence range: [{current_vix * (1 + quantiles['q10'] / 100):.2f}, {current_vix * (1 + quantiles['q90'] / 100):.2f}]"
+            f"   80% confidence range: [{current_vix * (1 + quantiles['q10'] / 100):.2f}, {current_vix * (1 + quantiles['q90'] / 100):.2f}]"
         )
 
     def _store_prediction(self, distribution, observation):
-        """
-        Store prediction in database for backtesting.
-
-        Args:
-            distribution: Forecast distribution object
-            observation: Original feature row
-
-        Returns:
-            str: prediction_id (UUID)
-        """
+        """Store prediction in database for backtesting."""
         prediction_id = str(uuid.uuid4())
 
-        # Extract features used (for provenance)
         features_used = {
             feat: float(observation[feat]) for feat in self.forecaster.feature_names
         }
 
-        # Build database record
         record = {
             "prediction_id": prediction_id,
             "timestamp": pd.Timestamp.now(),
             "forecast_date": pd.Timestamp(distribution["metadata"]["forecast_date"]),
             "horizon": TARGET_CONFIG["horizon_days"],
-            # Context
             "calendar_cohort": distribution["cohort"],
             "cohort_weight": distribution["metadata"]["cohort_weight"],
-            # Predictions
             "point_estimate": distribution["point_estimate"],
             "q10": distribution["quantiles"]["q10"],
             "q25": distribution["quantiles"]["q25"],
             "q50": distribution["quantiles"]["q50"],
             "q75": distribution["quantiles"]["q75"],
             "q90": distribution["quantiles"]["q90"],
-            "prob_low": distribution["regime_probabilities"]["low"],
-            "prob_normal": distribution["regime_probabilities"]["normal"],
-            "prob_elevated": distribution["regime_probabilities"]["elevated"],
-            "prob_crisis": distribution["regime_probabilities"]["crisis"],
+            "direction_probability": distribution["direction_probability"],
             "confidence_score": distribution["confidence_score"],
-            # Metadata
             "feature_quality": distribution["metadata"]["feature_quality"],
             "num_features_used": distribution["metadata"]["features_used"],
             "current_vix": distribution["metadata"]["current_vix"],
-            # Provenance
             "features_used": json.dumps(features_used),
             "model_version": self._get_model_version(),
         }
 
-        # Store in database
         self.prediction_db.store_prediction(record)
-
         return prediction_id
 
     def _get_model_version(self):
@@ -1168,7 +1150,8 @@ class IntegratedSystem:
         Returns:
             pd.DataFrame: Feature matrix with all 232 features + metadata
         """
-        today = pd.Timestamp.now().normalize()
+        now = pd.Timestamp.now()
+        cache_key = (now.year, now.month, now.day, now.hour)
 
         # Check if cache is valid
         if (
@@ -1181,7 +1164,7 @@ class IntegratedSystem:
 
         # Build fresh features
         logger.info("🔧 Building features...")
-        feature_data = self.feature_engine.build_complete_features(years=15)
+        feature_data = self.feature_engine.build_complete_features(years=TRAINING_YEARS)
         df = feature_data["features"]
 
         # Force numeric dtypes (safety check)
@@ -1202,7 +1185,7 @@ class IntegratedSystem:
 
         # Cache it
         self._feature_cache = df
-        self._feature_cache_date = today
+        self._feature_cache_date = cache_key
 
         logger.info(f"✅ Features cached: {df.shape}, dtypes OK")
         return df
@@ -1214,9 +1197,9 @@ def main():
 
     parser.add_argument(
         "--mode",
-        choices=["forecast", "batch", "anomaly"],  # Only keep working modes
+        choices=["forecast", "complete", "batch", "anomaly"],
         default="forecast",
-        help="Execution mode: single forecast, batch backtest, or anomaly detection",
+        help="Execution mode",
     )
 
     parser.add_argument(
@@ -1244,27 +1227,122 @@ def main():
 
     system = IntegratedSystem()
 
-    if args.mode == "train":
-        logger.info("🎯 MODE: Train probabilistic models")
+    if args.mode == "complete":
+        logger.info("🎯 MODE: Complete Workflow - Everything in one command")
 
         try:
-            metrics = system.train_probabilistic_models(
-                years=args.years, save_dir="models"
+            # This does EVERYTHING: validate 2023-2024, backfill 2025, ready for production
+            from config import CALIBRATION_PERIOD, VALIDATION_PERIOD
+
+            cal_start, cal_end = CALIBRATION_PERIOD
+            val_start, val_end = VALIDATION_PERIOD
+
+            logger.info("=" * 80)
+            logger.info("COMPLETE WORKFLOW")
+            logger.info("=" * 80)
+            logger.info("This will:")
+            logger.info(
+                f"  1. Generate uncalibrated forecasts ({cal_start} to {cal_end})"
+            )
+            logger.info(f"  2. Backfill actuals for calibration period")
+            logger.info(f"  3. Train calibrator on {cal_start[:4]} data")
+            logger.info(f"  4. Regenerate {val_start[:4]} WITH calibration")
+            logger.info(f"  5. Backfill actuals for validation period")
+            logger.info(f"  6. Generate 2025 forecasts (Jan 1 - today)")
+            logger.info(f"  7. Backfill actuals for 2025")
+            logger.info(f"  8. Run validation diagnostics")
+            logger.info("=" * 80)
+
+            # STEP 1: Generate uncalibrated forecasts for CALIBRATION period only
+            logger.info(
+                f"\n[1/8] Generating uncalibrated forecasts ({cal_start} to {cal_end})..."
+            )
+            original_calibrator = system.calibrator
+            system.calibrator = None  # Disable calibration
+            system.generate_forecast_batch(cal_start, cal_end)
+
+            # STEP 2: Backfill actuals for calibration period
+            logger.info(f"\n[2/8] Backfilling actuals for {cal_start[:4]}...")
+            system.prediction_db.backfill_actuals()
+
+            # STEP 3: Train calibrator on calibration period ONLY
+            logger.info(f"\n[3/8] Training calibrator on {cal_start[:4]} data...")
+            from core.forecast_calibrator import ForecastCalibrator
+
+            calibrator = ForecastCalibrator()
+            success = calibrator.fit_from_database(
+                db_path=system.prediction_db.db_path,
+                min_samples=50,
+                start_date=cal_start,
+                end_date=cal_end,
+            )
+            if not success:
+                logger.error("❌ Calibration failed - insufficient data")
+                system.calibrator = original_calibrator
+                return
+            calibrator.save()
+
+            # STEP 4: Delete validation period forecasts (if any exist)
+            logger.info(f"\n[4/8] Clearing old {val_start[:4]} forecasts...")
+            import sqlite3
+
+            conn = sqlite3.connect(system.prediction_db.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM forecasts WHERE forecast_date BETWEEN ? AND ?",
+                (val_start, val_end),
+            )
+            deleted = cursor.rowcount
+            conn.commit()
+            conn.close()
+            logger.info(f"   Deleted {deleted} old forecasts")
+
+            # STEP 5: Generate validation period forecasts WITH calibration
+            logger.info(
+                f"\n[5/8] Generating {val_start[:4]} forecasts WITH calibration..."
+            )
+            system.calibrator = ForecastCalibrator.load()
+            system.generate_forecast_batch(val_start, val_end)
+
+            # STEP 6: Backfill actuals for validation period
+            logger.info(f"\n[6/8] Backfilling actuals for {val_start[:4]}...")
+            system.prediction_db.backfill_actuals()
+
+            # STEP 7: Generate 2025 forecasts WITH calibration
+            logger.info(f"\n[7/8] Generating 2025 forecasts...")
+            today = datetime.now().strftime("%Y-%m-%d")
+            system.generate_forecast_batch("2025-01-01", today)
+
+            # STEP 8: Backfill actuals for 2025 and run validation
+            logger.info(f"\n[8/8] Backfilling 2025 actuals and running validation...")
+            system.prediction_db.backfill_actuals()
+
+            from diagnostics.walk_forward_validation import EnhancedWalkForwardValidator
+
+            validator = EnhancedWalkForwardValidator(
+                db_path=system.prediction_db.db_path
+            )
+            validator.generate_diagnostic_report()
+
+            logger.info("\n" + "=" * 80)
+            logger.info("✅ COMPLETE WORKFLOW FINISHED")
+            logger.info("=" * 80)
+            logger.info("\n📊 Results:")
+            logger.info("  • diagnostics/walk_forward_metrics.json")
+            logger.info("  • diagnostics/*.png")
+            logger.info(f"\n📈 Calibrator trained on: {cal_start} to {cal_end}")
+            logger.info(f"📈 Validation period: {val_start} to {val_end}")
+            logger.info(f"📈 2025 forecasts: up to {today}")
+            logger.info("\n🚀 System ready for production!")
+            logger.info(
+                "  Run daily: python integrated_system_production.py --mode forecast"
             )
 
-            print(f"\n{'=' * 80}")
-            print("✅ TRAINING SUCCESSFUL")
-            print(f"{'=' * 80}")
-            print(f"Cohorts trained: {len(metrics)}")
-            print(f"\nRun forecasting with:")
-            print(f"  python integrated_system_production.py --mode forecast")
-            print(f"{'=' * 80}\n")
-
         except Exception as e:
-            logger.error(f"❌ Training failed: {e}", exc_info=True)
+            logger.error(f"❌ Workflow failed: {e}", exc_info=True)
             return
 
-    if args.mode == "forecast":
+    elif args.mode == "forecast":
         # Generate single probabilistic forecast
         try:
             distribution = system.generate_forecast()
@@ -1296,68 +1374,7 @@ def main():
         print(f"{'=' * 80}")
         print(f"Generated {len(forecasts)} forecasts")
         print(f"Period: {args.start_date} to {args.end_date}")
-        print(f"\nBackfilling actuals...")
-
-        system.prediction_db.backfill_actuals()
-
-        print(f"\nComputing performance metrics...")
-        summary = system.prediction_db.get_performance_summary()
-
-        print(f"\n📊 PERFORMANCE SUMMARY")
-        print("=" * 80)
-
-        if "error" in summary:
-            print(f"⚠️  {summary['error']}")
-            print("\nNo actuals available yet. Predictions need time to mature.")
-            print(f"Forecast horizon: {HORIZON} days")
-            print("\nTo see metrics:")
-            print("  1. Wait for forecasts to mature (5+ days)")
-            print("  2. Run: python integrated_system_production.py --mode batch")
-            print("  3. Then run: python diagnostics/walk_forward_validation.py")
-        else:
-            print(f"Predictions evaluated: {summary.get('n_predictions', 0)}")
-
-            if summary.get("n_predictions", 0) > 0:
-                if "point_estimate" in summary:
-                    print(
-                        f"Point Estimate MAE: {summary['point_estimate']['mae']:.2f}%"
-                    )
-                    print(
-                        f"Point Estimate RMSE: {summary['point_estimate']['rmse']:.2f}%"
-                    )
-
-                if "quantile_coverage" in summary:
-                    print(f"\nQuantile Coverage:")
-                    for q, coverage in summary["quantile_coverage"].items():
-                        expected = (
-                            int(q[1:]) / 100
-                        )  # Extract number from 'q10', 'q25', etc.
-                        diff = coverage - expected
-                        status = "✅" if abs(diff) < 0.10 else "⚠️"
-                        print(
-                            f"  {status} {q}: {coverage:.1%} (expected {expected:.1%}, diff: {diff:+.1%})"
-                        )
-
-                if "regime_brier_score" in summary:
-                    brier = summary["regime_brier_score"]
-                    if not pd.isna(brier):
-                        print(f"\nRegime Classification Brier Score: {brier:.3f}")
-
-                if "confidence_correlation" in summary:
-                    corr = summary["confidence_correlation"]
-                    if not pd.isna(corr):
-                        print(f"Confidence vs Error Correlation: {corr:.3f}")
-                        if corr < -0.1:
-                            print("  ✅ Confidence scores are predictive of accuracy")
-                        else:
-                            print("  ⚠️ Confidence scores may need recalibration")
-
-                if "by_cohort" in summary and summary["by_cohort"]:
-                    print(f"\nPerformance by Cohort:")
-                    for cohort, metrics in summary["by_cohort"].items():
-                        print(
-                            f"  {cohort}: MAE={metrics['mae']:.2f}% (n={metrics['n']})"
-                        )
+        print(f"{'=' * 80}\n")
 
     elif args.mode == "anomaly":
         system.train(

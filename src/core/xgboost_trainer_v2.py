@@ -1,26 +1,22 @@
-"""
-Probabilistic VIX Forecasting System
-Trains multi-output XGBoost models for distribution forecasting
-"""
+"""Probabilistic VIX Forecasting System - Multi-output XGBoost models"""
 
 import json
 import logging
 import pickle
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import xgboost as xgb
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import log_loss, mean_absolute_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
 from xgboost import XGBClassifier, XGBRegressor
 
-from config import CALENDAR_COHORTS, TARGET_CONFIG, XGBOOST_CONFIG
+from config import TARGET_CONFIG, XGBOOST_CONFIG
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO)
@@ -28,287 +24,297 @@ logger = logging.getLogger(__name__)
 
 
 class ProbabilisticVIXForecaster:
-    """
-    Multi-output forecaster producing full VIX distribution.
-
-    Trains 8 models per calendar cohort:
-      - 1 point estimate (mean VIX % change)
-      - 5 quantiles (10th, 25th, 50th, 75th, 90th percentiles)
-      - 1 regime classifier (4 classes: Low/Normal/Elevated/Crisis)
-      - 1 confidence scorer (forecast quality)
-    """
-
     def __init__(self):
         self.horizon = TARGET_CONFIG["horizon_days"]
         self.quantiles = TARGET_CONFIG["quantiles"]["levels"]
         self.regime_boundaries = TARGET_CONFIG["regimes"]["boundaries"]
         self.regime_labels = TARGET_CONFIG["regimes"]["labels"]
-
-        self.models = {}  # {cohort: {model_type: model}}
-        self.calibrators = {}  # {cohort: {model_type: IsotonicRegression}}
+        self.models = {}
+        self.calibrators = {}
         self.feature_names = None
 
-        logger.info("🎯 Probabilistic VIX Forecaster initialized")
-        logger.info(f"   Horizon: {self.horizon} days")
-        logger.info(f"   Quantiles: {self.quantiles}")
-        logger.info(f"   Regimes: {self.regime_labels}")
+    def train(self, df: pd.DataFrame, save_dir: str = "models"):
+        """
+        Train all cohort models and save to disk.
+
+        Args:
+            df: Feature dataframe with calendar_cohort column
+            save_dir: Directory to save trained models
+        """
+        logger.info("=" * 80)
+        logger.info("Training Probabilistic VIX Forecaster")
+        logger.info("=" * 80)
+
+        # Store feature names (exclude target and metadata columns)
+        exclude_cols = [
+            "calendar_cohort",
+            "cohort_weight",
+            "feature_quality",
+            "target_point",
+            "target_regime",
+            "target_confidence",
+        ]
+        exclude_cols += [col for col in df.columns if col.startswith("target_")]
+
+        self.feature_names = [col for col in df.columns if col not in exclude_cols]
+
+        logger.info(f"Feature count: {len(self.feature_names)}")
+        logger.info(f"Training samples: {len(df)}")
+
+        # Create all target variables
+        df_with_targets = self._create_targets(df)
+
+        # Drop rows with missing targets
+        df_clean = df_with_targets.dropna(subset=["target_point"])
+        logger.info(f"Clean samples (after removing NaN targets): {len(df_clean)}")
+
+        # Get unique cohorts
+        cohorts = sorted(df_clean["calendar_cohort"].unique())
+        logger.info(f"\nCohorts to train: {cohorts}")
+
+        # Train each cohort
+        all_metrics = {}
+
+        for cohort in cohorts:
+            logger.info(f"\n{'=' * 80}")
+            logger.info(f"Training cohort: {cohort}")
+            logger.info(f"{'=' * 80}")
+
+            cohort_df = df_clean[df_clean["calendar_cohort"] == cohort].copy()
+            logger.info(f"Cohort samples: {len(cohort_df)}")
+
+            try:
+                metrics = self._train_cohort_models(cohort, cohort_df)
+                all_metrics[cohort] = metrics
+
+                # Save models for this cohort
+                self._save_cohort_models(cohort, save_dir)
+                logger.info(f"✅ Trained: {cohort}")
+
+            except Exception as e:
+                logger.error(f"❌ Failed to train cohort {cohort}: {e}")
+                raise
+
+        # Generate diagnostics
+        logger.info(f"\n{'=' * 80}")
+        logger.info("Generating diagnostics...")
+        self._generate_diagnostics(all_metrics, save_dir)
+
+        logger.info(f"\n📊 Total cohorts loaded: {len(self.models)}")
+        logger.info(f"✅ Training complete!")
+
+        return self
+
+    def _get_adaptive_cv_config(self, n_samples: int) -> Tuple[int, int]:
+        if n_samples < 200:
+            n_splits = 2
+        elif n_samples < 400:
+            n_splits = 3
+        elif n_samples < 800:
+            n_splits = 4
+        else:
+            n_splits = 5
+
+        max_test_size = n_samples // (n_splits + 1)
+        test_size = max(int(max_test_size * 0.8), 30)
+
+        while (n_samples - test_size) < n_splits * test_size and n_splits > 2:
+            n_splits -= 1
+            max_test_size = n_samples // (n_splits + 1)
+            test_size = int(max_test_size * 0.8)
+
+        return n_splits, test_size
 
     def _create_targets(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Generate all target variables from raw VIX data.
-        No data leakage - all targets use future VIX values only.
-        """
         df = df.copy()
 
-        # 1. Point Estimate: Future VIX % change (no leakage)
         future_vix = df["vix"].shift(-self.horizon)
         df["target_point"] = ((future_vix / df["vix"]) - 1) * 100
-
-        # Clip extremes
         point_min, point_max = TARGET_CONFIG["point_estimate"]["range"]
         df["target_point"] = df["target_point"].clip(point_min, point_max)
 
-        logger.info(
-            f"   Point target range: {df['target_point'].min():.1f}% to {df['target_point'].max():.1f}%"
-        )
-
-        # 2. Quantiles: Use same target_point for all quantile models
-        # XGBoost will learn different quantiles via pinball loss (no leakage)
         for q in self.quantiles:
-            col_name = f"target_q{int(q * 100)}"
-            df[col_name] = df["target_point"]  # Same target, different loss function
+            df[f"target_q{int(q * 100)}"] = df["target_point"]
 
-        logger.info(f"   Quantile targets created (XGBoost learns via pinball loss)")
-
-        # 3. Regime: Classify future VIX level (no leakage)
         regime_bins = [-np.inf] + self.regime_boundaries + [np.inf]
         df["target_regime"] = pd.cut(
             future_vix,
             bins=regime_bins,
             labels=list(range(len(self.regime_labels))),
             include_lowest=True,
-        )
-        df["target_regime"] = df["target_regime"].astype(float)
+        ).astype(float)
 
-        regime_counts = df["target_regime"].value_counts().sort_index()
-        logger.info("   Regime distribution:")
-        for regime_id, label in enumerate(self.regime_labels):
-            count = regime_counts.get(regime_id, 0)
-            pct = count / len(df) * 100 if len(df) > 0 else 0
-            logger.info(
-                f"      {label:10s} (class {regime_id}): {count:4d} ({pct:5.1f}%)"
-            )
-
-        # 4. Confidence: Combine feature quality + regime stability
         regime_volatility = df["vix"].rolling(21, min_periods=10).std()
         regime_stability = 1 / (
             1 + regime_volatility / df["vix"].rolling(21, min_periods=10).mean()
         )
         regime_stability = regime_stability.fillna(0.5)
 
-        # Combine: 50% feature quality + 50% regime stability
         df["target_confidence"] = (
             0.5 * df["feature_quality"].fillna(0.5) + 0.5 * regime_stability
         ).clip(0, 1)
 
-        logger.info(
-            f"   Confidence labels: mean={df['target_confidence'].mean():.2f}, "
-            f"std={df['target_confidence'].std():.2f}"
-        )
-
         return df
 
-    def train(self, df: pd.DataFrame, save_dir: str = "models") -> Dict:
+    def predict(self, X: pd.DataFrame, cohort: str) -> Dict:
         """
-        Train separate model sets for each calendar cohort.
+        Generate probabilistic forecast using point + uncertainty + direction models.
+
+        Args:
+            X: Feature dataframe (single row)
+            cohort: Calendar cohort to use
+
+        Returns:
+            Dictionary with point_estimate, quantiles, direction_probability, etc.
         """
-        logger.info("=" * 80)
-        logger.info("PROBABILISTIC VIX FORECASTER - TRAINING")
-        logger.info("=" * 80)
+        if cohort not in self.models:
+            raise ValueError(
+                f"Cohort {cohort} not trained. Available: {list(self.models.keys())}"
+            )
 
-        # Validate required columns
-        required = ["vix", "calendar_cohort", "cohort_weight", "feature_quality"]
-        missing = [col for col in required if col not in df.columns]
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
+        X_features = X[self.feature_names]
 
-        # Create targets
-        df = self._create_targets(df)
+        # Point estimate (this is also q50)
+        point = self.models[cohort]["point"].predict(X_features)[0]
 
-        # Remove rows where targets are NaN (edge effects from shifts)
-        target_cols = ["target_point", "target_regime", "target_confidence"]
-        df_clean = df.dropna(subset=target_cols)
-        logger.info(
-            f"Training samples: {len(df_clean)} (dropped {len(df) - len(df_clean)} edge rows)"
+        # Uncertainty (standard deviation of prediction error)
+        uncertainty = max(
+            self.models[cohort]["uncertainty"].predict(X_features)[0],
+            1.0,  # Minimum uncertainty of 1%
         )
 
-        # Extract feature names (exclude metadata and targets)
-        exclude_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
-        exclude_cols += [col for col in df_clean.columns if col.startswith("target_")]
-        self.feature_names = [
-            col for col in df_clean.columns if col not in exclude_cols
-        ]
+        # Generate quantiles using normal distribution z-scores
+        z_scores = {
+            "q10": -1.28,
+            "q25": -0.67,
+            "q50": 0.00,  # By definition, equals point estimate
+            "q75": 0.67,
+            "q90": 1.28,
+        }
+        quantiles = {q: point + z * uncertainty for q, z in z_scores.items()}
 
-        logger.info(f"Features used: {len(self.feature_names)}")
+        # Direction probability (probability VIX goes up)
+        prob_up = float(
+            self.models[cohort]["direction"].predict_proba(X_features)[0][1]
+        )
 
-        # Train per cohort
-        cohort_metrics = {}
-        cohorts = df_clean["calendar_cohort"].unique()
+        # Confidence score
+        confidence = np.clip(
+            self.models[cohort]["confidence"].predict(X_features)[0], 0, 1
+        )
 
-        for cohort in cohorts:
-            logger.info(f"\n{'─' * 80}")
-            logger.info(f"TRAINING COHORT: {cohort}")
-            logger.info(f"{'─' * 80}")
-
-            cohort_df = df_clean[df_clean["calendar_cohort"] == cohort].copy()
-            logger.info(f"Cohort samples: {len(cohort_df)}")
-
-            if len(cohort_df) < 200:
-                logger.warning(
-                    f"⚠️  Too few samples ({len(cohort_df)}) for {cohort}, skipping"
-                )
-                continue
-
-            # Train all model types for this cohort
-            metrics = self._train_cohort_models(cohort, cohort_df)
-            cohort_metrics[cohort] = metrics
-
-            # Save models immediately after training each cohort
-            self._save_cohort_models(cohort, save_dir)
-
-        # Generate diagnostics
-        self._generate_diagnostics(cohort_metrics, save_dir)
-
-        logger.info("\n" + "=" * 80)
-        logger.info("✅ TRAINING COMPLETE")
-        logger.info("=" * 80)
-
-        return cohort_metrics
+        return {
+            "point_estimate": float(point),
+            "quantiles": {k: float(v) for k, v in quantiles.items()},
+            "direction_probability": prob_up,
+            "confidence_score": float(confidence),
+            "cohort": cohort,
+        }
 
     def _train_cohort_models(self, cohort: str, df: pd.DataFrame) -> Dict:
-        """Train all 8 models for a single cohort."""
+        """
+        Train 3 models for a single cohort: point, uncertainty, direction
+
+        Args:
+            cohort: Cohort name
+            df: Dataframe filtered to this cohort
+
+        Returns:
+            Dictionary of metrics for each model
+        """
         X = df[self.feature_names]
 
-        # Check minimum sample size
-        min_samples = 100  # Absolute minimum
-        if len(df) < min_samples:
-            logger.warning(
-                f"⚠️  Skipping {cohort}: only {len(df)} samples (need >{min_samples})"
-            )
-            raise ValueError(f"Insufficient samples for cohort {cohort}")
+        if len(df) < 100:
+            raise ValueError(f"Insufficient samples for cohort {cohort}: {len(df)}")
 
-        # Initialize model dictionary for this cohort
+        # Initialize storage
         self.models[cohort] = {}
         self.calibrators[cohort] = {}
-
         metrics = {}
 
-        # 1. Point Estimate
-        logger.info("\n[1/4] Training point estimate model...")
+        # -------------------------------------------------------------------------
+        # Model 1: Point Estimate (this becomes the median q50)
+        # -------------------------------------------------------------------------
+        logger.info("  Training point estimate model...")
         y_point = df["target_point"]
         model_point, metric_point = self._train_regressor(
             X, y_point, objective="reg:squarederror", eval_metric="rmse"
         )
         self.models[cohort]["point"] = model_point
         metrics["point"] = metric_point
-        logger.info(f"   ✅ Point RMSE: {metric_point['rmse']:.2f}%")
+        logger.info(f"    RMSE: {metric_point['rmse']:.3f}")
 
-        # 2. Quantiles (5 models)
-        logger.info("\n[2/4] Training quantile models...")
-        self.models[cohort]["quantiles"] = {}
-        metrics["quantiles"] = {}
+        # -------------------------------------------------------------------------
+        # Model 2: Uncertainty (predicts absolute error for confidence intervals)
+        # -------------------------------------------------------------------------
+        logger.info("  Training uncertainty model...")
+        train_predictions = model_point.predict(X)
+        y_uncertainty = np.abs(df["target_point"] - train_predictions)
 
-        for q in self.quantiles:
-            q_label = f"q{int(q * 100)}"
-            y_quantile = df[f"target_{q_label}"]
-
-            model_q, metric_q = self._train_regressor(
-                X,
-                y_quantile,
-                objective="reg:quantileerror",
-                quantile_alpha=q,
-                eval_metric="mae",
-            )
-            self.models[cohort]["quantiles"][q] = model_q
-            metrics["quantiles"][q_label] = metric_q
-            logger.info(f"   ✅ {q_label:3s} MAE: {metric_q['mae']:.2f}%")
-
-        # 3. Regime Classifier
-        # if training is to be skipped because of too few cohorts
-        # if len(df) < 500:
-        #     logger.warning(f"\n[3/4] Skipping regime classifier (insufficient samples)")
-        #     # Use a dummy classifier that always predicts proportional to training distribution
-        #     self.models[cohort]["regime"] = None
-        #     metrics["regime"] = {"accuracy": 0.0, "log_loss": 999.0, "skipped": True}
-        # else:
-        #     logger.info("\n[3/4] Training regime classifier...")
-
-        logger.info("\n[3/4] Training regime classifier...")
-        y_regime = df["target_regime"]
-        model_regime, metric_regime = self._train_classifier(
-            X, y_regime, num_classes=len(self.regime_labels)
+        model_uncertainty, metric_uncertainty = self._train_regressor(
+            X, y_uncertainty, objective="reg:squarederror", eval_metric="rmse"
         )
-        self.models[cohort]["regime"] = model_regime
-        self.calibrators[cohort]["regime"] = self._calibrate_probabilities(
-            model_regime, X, y_regime
-        )
-        metrics["regime"] = metric_regime
-        logger.info(f"   ✅ Regime Accuracy: {metric_regime['accuracy']:.3f}")
-        logger.info(f"   ✅ Log Loss: {metric_regime['log_loss']:.3f}")
+        self.models[cohort]["uncertainty"] = model_uncertainty
+        metrics["uncertainty"] = metric_uncertainty
+        logger.info(f"    RMSE: {metric_uncertainty['rmse']:.3f}")
 
-        # 4. Confidence Scorer
-        logger.info("\n[4/4] Training confidence model...")
+        # -------------------------------------------------------------------------
+        # Model 3: Direction (binary: up or down)
+        # -------------------------------------------------------------------------
+        logger.info("  Training direction classifier...")
+        y_direction = (df["target_point"] > 0).astype(int)
+
+        model_direction, metric_direction = self._train_classifier(
+            X, y_direction, num_classes=2
+        )
+        self.models[cohort]["direction"] = model_direction
+        metrics["direction"] = metric_direction
+        logger.info(f"    Accuracy: {metric_direction.get('accuracy', 0):.3f}")
+
+        # Calibrate direction probabilities
+        logger.info("  Calibrating direction probabilities...")
+        calibrators = self._calibrate_probabilities(model_direction, X, y_direction)
+        self.calibrators[cohort]["direction"] = calibrators
+
+        # -------------------------------------------------------------------------
+        # Model 4: Confidence Score (kept for compatibility)
+        # -------------------------------------------------------------------------
+        logger.info("  Training confidence model...")
         y_confidence = df["target_confidence"]
         model_conf, metric_conf = self._train_regressor(
             X, y_confidence, objective="reg:squarederror", eval_metric="rmse"
         )
         self.models[cohort]["confidence"] = model_conf
         metrics["confidence"] = metric_conf
-        logger.info(f"   ✅ Confidence RMSE: {metric_conf['rmse']:.3f}")
+        logger.info(f"    RMSE: {metric_conf['rmse']:.3f}")
 
         return metrics
 
     def _train_regressor(self, X, y, objective, eval_metric, quantile_alpha=None):
-        """Train single XGBoost regressor with adaptive CV."""
         params = XGBOOST_CONFIG["shared_params"].copy()
         params["objective"] = objective
 
         if quantile_alpha:
             params["quantile_alpha"] = quantile_alpha
 
-        # Adaptive CV splits based on sample size
-        n_samples = len(X)
-        if n_samples < 200:
-            n_splits = 2
-            test_size = int(n_samples * 0.25)
-        elif n_samples < 500:
-            n_splits = 3
-            test_size = int(n_samples * 0.20)
-        else:
-            n_splits = 5
-            test_size = int(n_samples * 0.20)
+        n_splits, test_size = self._get_adaptive_cv_config(len(X))
 
-        logger.info(f"   Using {n_splits} CV splits (n={n_samples})")
-
-        # Time series cross-validation
-        tscv = TimeSeriesSplit(n_splits=n_splits, test_size=test_size)
+        tscv = TimeSeriesSplit(
+            n_splits=n_splits,
+            test_size=test_size,
+            gap=XGBOOST_CONFIG["cv_config"]["gap"],
+        )
 
         cv_scores = []
         for train_idx, val_idx in tscv.split(X):
             X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
             y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
-            # Create params with early stopping for CV
             cv_params = params.copy()
             cv_params["early_stopping_rounds"] = 50
 
             model = XGBRegressor(**cv_params)
-            model.fit(
-                X_train,
-                y_train,
-                eval_set=[(X_val, y_val)],
-                verbose=False,
-            )
+            model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
 
             y_pred = model.predict(X_val)
 
@@ -319,10 +325,7 @@ class ProbabilisticVIXForecaster:
 
             cv_scores.append(score)
 
-        # Train final model on full data WITHOUT early stopping
-        # (no validation set available when using all data)
         final_params = params.copy()
-        # Remove early_stopping_rounds for final training
         if "early_stopping_rounds" in final_params:
             del final_params["early_stopping_rounds"]
 
@@ -332,76 +335,58 @@ class ProbabilisticVIXForecaster:
         metrics = {
             eval_metric: np.mean(cv_scores),
             f"{eval_metric}_std": np.std(cv_scores),
+            "n_splits": n_splits,
+            "test_size": test_size,
         }
 
         return final_model, metrics
 
+    def _convert_to_json_serializable(self, obj):
+        """Recursively convert numpy types to Python native types for JSON serialization."""
+        if isinstance(obj, dict):
+            return {
+                self._convert_to_json_serializable(
+                    k
+                ): self._convert_to_json_serializable(v)
+                for k, v in obj.items()
+            }
+        elif isinstance(obj, list):
+            return [self._convert_to_json_serializable(item) for item in obj]
+        elif isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return obj
+
     def _train_classifier(self, X, y, num_classes):
-        """Train XGBoost classifier with adaptive CV and regime collapsing for small samples."""
-
-        # Check class distribution
         class_counts = pd.Series(y).value_counts().sort_index()
-        logger.info(f"   Class distribution: {dict(class_counts)}")
-
-        # For small cohorts, collapse rare regimes
         n_samples = len(X)
-        if n_samples < 500:
-            # Collapse Crisis (3) into Elevated (2)
-            y_collapsed = y.copy()
-            y_collapsed[y == 3] = 2
 
-            # If still too few samples in class 2, collapse into Normal (1)
-            if (y_collapsed == 2).sum() < 20:
-                y_collapsed[y_collapsed == 2] = 1
-                effective_classes = 2
-                logger.warning(
-                    f"   ⚠️  Collapsed to 2 classes (Low/Normal) due to sample size"
-                )
-            else:
-                effective_classes = 3
-                logger.warning(f"   ⚠️  Collapsed Crisis→Elevated (now 3 classes)")
-
-            y = y_collapsed
-            num_classes = effective_classes
-
-        # CRITICAL FIX: Relabel classes to ensure sequential 0,1,2... with no gaps
+        # For binary classification, just use the classes as-is
         unique_classes = np.sort(y.unique())
-        class_mapping = {old: new for new, old in enumerate(unique_classes)}
+        class_mapping = {int(old): int(new) for new, old in enumerate(unique_classes)}
         y_relabeled = y.map(class_mapping)
-
-        # Verify relabeling worked correctly
-        relabeled_unique = np.sort(y_relabeled.unique())
         expected_classes = np.arange(len(unique_classes))
-        assert np.array_equal(relabeled_unique, expected_classes), (
-            f"Relabeling failed: got {relabeled_unique}, expected {expected_classes}"
-        )
-
-        # Store inverse mapping for predictions
-        inverse_mapping = {new: old for old, new in class_mapping.items()}
-
-        logger.info(f"   Relabeled classes: {class_mapping}")
-        logger.info(f"   Unique relabeled values: {relabeled_unique}")
+        inverse_mapping = {int(new): int(old) for old, new in class_mapping.items()}
 
         params = XGBOOST_CONFIG["shared_params"].copy()
-        params["objective"] = "multi:softprob"
-        params["num_class"] = len(unique_classes)
 
-        # Adaptive CV splits based on sample size
-        if n_samples < 200:
-            n_splits = 2
-            test_size = int(n_samples * 0.25)
-        elif n_samples < 500:
-            n_splits = 3
-            test_size = int(n_samples * 0.20)
+        # For binary classification
+        if len(unique_classes) == 2:
+            params["objective"] = "binary:logistic"
         else:
-            n_splits = 5
-            test_size = int(n_samples * 0.20)
+            params["objective"] = "multi:softprob"
+            params["num_class"] = len(unique_classes)
 
-        logger.info(
-            f"   Using {n_splits} CV splits (n={n_samples}, {len(unique_classes)} classes)"
+        n_splits, test_size = self._get_adaptive_cv_config(n_samples)
+        tscv = TimeSeriesSplit(
+            n_splits=n_splits,
+            test_size=test_size,
+            gap=XGBOOST_CONFIG["cv_config"]["gap"],
         )
-
-        tscv = TimeSeriesSplit(n_splits=n_splits, test_size=test_size)
 
         cv_accuracy = []
         cv_logloss = []
@@ -412,93 +397,28 @@ class ProbabilisticVIXForecaster:
             X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
             y_train, y_val = y_relabeled.iloc[train_idx], y_relabeled.iloc[val_idx]
 
-            # Check class distribution in this fold
             train_classes = np.sort(y_train.unique())
-            val_classes = np.sort(y_val.unique())
 
-            logger.debug(
-                f"   Fold {fold_idx + 1}: train_classes={train_classes}, "
-                f"val_classes={val_classes}"
-            )
-
-            # CRITICAL FIX: Skip folds where training set doesn't have all classes
-            # XGBoost requires all classes to be present in training data
             if not np.array_equal(train_classes, expected_classes):
-                logger.warning(
-                    f"   ⚠️  Skipping Fold {fold_idx + 1}: train set missing classes "
-                    f"(has {train_classes}, needs {expected_classes})"
-                )
                 skipped_folds += 1
                 continue
 
-            # Create params with early stopping for CV
             cv_params = params.copy()
             cv_params["early_stopping_rounds"] = 50
 
             model = XGBClassifier(**cv_params)
-            model.fit(
-                X_train,
-                y_train,
-                eval_set=[(X_val, y_val)],
-                verbose=False,
-            )
+            model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
 
             y_pred = model.predict(X_val)
             y_proba = model.predict_proba(X_val)
 
             accuracy = (y_pred == y_val).mean()
-
-            # Specify labels parameter to handle missing classes in validation fold
             logloss = log_loss(y_val, y_proba, labels=expected_classes)
 
             cv_accuracy.append(accuracy)
             cv_logloss.append(logloss)
             valid_folds += 1
 
-        # Check if we have enough valid folds
-        if valid_folds == 0:
-            logger.error(
-                f"   ❌ No valid CV folds! All {n_splits} folds had incomplete class coverage."
-            )
-            logger.warning(
-                f"   → Training final model without CV validation (high variance risk!)"
-            )
-
-            # Train final model anyway but warn user
-            final_params = params.copy()
-            if "early_stopping_rounds" in final_params:
-                del final_params["early_stopping_rounds"]
-
-            final_model = XGBClassifier(**final_params)
-            final_model.fit(X, y_relabeled, verbose=False)
-
-            # Store mapping info
-            final_model.class_mapping_ = class_mapping
-            final_model.inverse_mapping_ = inverse_mapping
-            final_model.effective_classes_ = len(unique_classes)
-
-            # Return dummy metrics with warning flag
-            metrics = {
-                "accuracy": 0.0,
-                "accuracy_std": 0.0,
-                "log_loss": 999.0,
-                "log_loss_std": 0.0,
-                "num_classes": len(unique_classes),
-                "class_mapping": class_mapping,
-                "cv_warning": "No valid CV folds - temporal class imbalance",
-                "valid_folds": 0,
-                "skipped_folds": skipped_folds,
-            }
-
-            return final_model, metrics
-
-        elif valid_folds < n_splits:
-            logger.warning(
-                f"   ⚠️  Used {valid_folds}/{n_splits} CV folds "
-                f"({skipped_folds} skipped due to missing classes)"
-            )
-
-        # Train final model on full data WITHOUT early stopping
         final_params = params.copy()
         if "early_stopping_rounds" in final_params:
             del final_params["early_stopping_rounds"]
@@ -506,185 +426,57 @@ class ProbabilisticVIXForecaster:
         final_model = XGBClassifier(**final_params)
         final_model.fit(X, y_relabeled, verbose=False)
 
-        # Store mapping info in the model for prediction time
         final_model.class_mapping_ = class_mapping
         final_model.inverse_mapping_ = inverse_mapping
         final_model.effective_classes_ = len(unique_classes)
 
-        metrics = {
-            "accuracy": np.mean(cv_accuracy),
-            "accuracy_std": np.std(cv_accuracy),
-            "log_loss": np.mean(cv_logloss),
-            "log_loss_std": np.std(cv_logloss),
-            "num_classes": len(unique_classes),
-            "class_mapping": class_mapping,
-            "valid_folds": valid_folds,
-            "skipped_folds": skipped_folds,
-        }
+        if valid_folds == 0:
+            metrics = {
+                "accuracy": 0.0,
+                "accuracy_std": 0.0,
+                "log_loss": 999.0,
+                "log_loss_std": 0.0,
+                "num_classes": len(unique_classes),
+                "class_mapping": class_mapping,
+                "valid_folds": 0,
+                "skipped_folds": skipped_folds,
+            }
+        else:
+            metrics = {
+                "accuracy": np.mean(cv_accuracy),
+                "accuracy_std": np.std(cv_accuracy),
+                "log_loss": np.mean(cv_logloss),
+                "log_loss_std": np.std(cv_logloss),
+                "num_classes": len(unique_classes),
+                "class_mapping": class_mapping,
+                "valid_folds": valid_folds,
+                "skipped_folds": skipped_folds,
+                "n_splits": n_splits,
+                "test_size": test_size,
+            }
 
         return final_model, metrics
 
     def _calibrate_probabilities(self, model, X, y):
-        """
-        Calibrate classifier probabilities using isotonic regression.
-
-        FIXED: Creates calibrators for ORIGINAL classes, not relabeled classes.
-        """
+        """Calibrate binary direction classifier probabilities."""
         y_proba = model.predict_proba(X)
 
-        # Get the number of classes this model actually predicts
-        n_predicted_classes = y_proba.shape[1]
-
-        # Create calibrators for ALL 4 original regime classes
-        # (not just the classes this specific model was trained on)
+        # Only 2 classes now (down=0, up=1)
         calibrators = []
 
-        for original_class_idx in range(4):  # Always 4 regimes in original taxonomy
-            # Check if this model predicts this class
-            if hasattr(model, "inverse_mapping_"):
-                # Model has collapsed classes - find which predicted class maps to this original class
-                predicted_class_idx = None
-                for pred_idx, orig_idx in model.inverse_mapping_.items():
-                    if orig_idx == original_class_idx:
-                        predicted_class_idx = pred_idx
-                        break
+        for class_idx in range(2):
+            y_binary = (y == class_idx).astype(int)
 
-                if predicted_class_idx is None:
-                    # This original class was collapsed away - no calibrator needed
-                    calibrators.append(None)
-                    continue
-
-                # Use the mapped predicted class for calibration
-                class_idx_for_calibration = predicted_class_idx
-                y_binary = (y == original_class_idx).astype(int)
-
-            else:
-                # Model has all 4 classes - direct mapping
-                class_idx_for_calibration = original_class_idx
-                y_binary = (y == original_class_idx).astype(int)
-
-            # Only calibrate if we have both positive and negative examples
             if y_binary.sum() > 0 and y_binary.sum() < len(y_binary):
                 calibrator = IsotonicRegression(out_of_bounds="clip")
-                calibrator.fit(y_proba[:, class_idx_for_calibration], y_binary)
+                calibrator.fit(y_proba[:, class_idx], y_binary)
                 calibrators.append(calibrator)
             else:
-                # No calibration possible
                 calibrators.append(None)
 
         return calibrators
 
-    def predict(self, X: pd.DataFrame, cohort: str) -> Dict:
-        """
-        Generate probabilistic forecast for new data.
-
-        FIXED: Handles models trained with collapsed regime classes.
-        """
-        if cohort not in self.models:
-            raise ValueError(
-                f"Cohort {cohort} not trained. Available: {list(self.models.keys())}"
-            )
-
-        X_features = X[self.feature_names]
-
-        # Get predictions from all models
-        point = self.models[cohort]["point"].predict(X_features)[0]
-
-        quantiles = {}
-        for q in self.quantiles:
-            q_label = f"q{int(q * 100)}"
-            quantiles[q_label] = self.models[cohort]["quantiles"][q].predict(
-                X_features
-            )[0]
-
-        # Enforce quantile monotonicity
-        quantiles = self._enforce_quantile_order(quantiles)
-
-        # Get regime predictions with proper handling of collapsed classes
-        regime_model = self.models[cohort]["regime"]
-        regime_probs_raw = regime_model.predict_proba(X_features)[0]
-
-        # Initialize probabilities for all 4 original regime classes
-        regime_probs_full = np.zeros(4)
-
-        # CRITICAL FIX: Check if model was trained with collapsed classes
-        if hasattr(regime_model, "inverse_mapping_"):
-            # Model has fewer than 4 classes - map back to original indices
-            for new_idx, prob in enumerate(regime_probs_raw):
-                original_idx = int(regime_model.inverse_mapping_[new_idx])
-                regime_probs_full[original_idx] = prob
-
-            # Log for diagnostics
-            logger.debug(
-                f"Cohort {cohort}: Mapped {len(regime_probs_raw)} predictions "
-                f"to {len(regime_probs_full)} original classes"
-            )
-        else:
-            # Model has all 4 classes, use directly
-            regime_probs_full = regime_probs_raw
-
-        # Calibrate regime probabilities if calibrators exist
-        if cohort in self.calibrators and "regime" in self.calibrators[cohort]:
-            calibrators = self.calibrators[cohort]["regime"]
-            regime_probs_calibrated = []
-
-            for class_idx in range(len(regime_probs_full)):
-                # Only calibrate if:
-                # 1. We have a calibrator for this class
-                # 2. The probability is non-zero
-                if (
-                    class_idx < len(calibrators)
-                    and calibrators[class_idx] is not None
-                    and regime_probs_full[class_idx] > 0
-                ):
-                    prob_calibrated = calibrators[class_idx].predict(
-                        [regime_probs_full[class_idx]]
-                    )[0]
-                    regime_probs_calibrated.append(prob_calibrated)
-                else:
-                    # No calibrator or zero probability - keep original
-                    regime_probs_calibrated.append(regime_probs_full[class_idx])
-
-            regime_probs = np.array(regime_probs_calibrated)
-
-            # Renormalize to sum to 1
-            if regime_probs.sum() > 0:
-                regime_probs = regime_probs / regime_probs.sum()
-            else:
-                regime_probs = regime_probs_full
-        else:
-            regime_probs = regime_probs_full
-
-        # Confidence prediction
-        confidence = self.models[cohort]["confidence"].predict(X_features)[0]
-        confidence = np.clip(confidence, 0, 1)
-
-        return {
-            "point_estimate": float(point),
-            "quantiles": {k: float(v) for k, v in quantiles.items()},
-            "regime_probabilities": {
-                self.regime_labels[i].lower(): float(regime_probs[i])
-                for i in range(len(self.regime_labels))
-            },
-            "confidence_score": float(confidence),
-            "cohort": cohort,
-        }
-
-    def _enforce_quantile_order(self, quantiles: Dict[str, float]) -> Dict[str, float]:
-        """Ensure q10 <= q25 <= q50 <= q75 <= q90."""
-        sorted_q = sorted(quantiles.items(), key=lambda x: int(x[0][1:]))
-
-        # Forward pass: ensure increasing
-        for i in range(1, len(sorted_q)):
-            prev_val = sorted_q[i - 1][1]
-            curr_val = sorted_q[i][1]
-            if curr_val < prev_val:
-                sorted_q[i] = (sorted_q[i][0], prev_val)
-
-        return dict(sorted_q)
-
     def _save_cohort_models(self, cohort: str, save_dir: str):
-        """Save models for one cohort to disk."""
         save_path = Path(save_dir)
         save_path.mkdir(exist_ok=True)
 
@@ -706,10 +498,7 @@ class ProbabilisticVIXForecaster:
                 f,
             )
 
-        logger.info(f"💾 Saved: {cohort_file}")
-
     def load(self, cohort: str, load_dir: str = "models"):
-        """Load trained models for a specific cohort."""
         load_path = Path(load_dir) / f"probabilistic_forecaster_{cohort}.pkl"
 
         with open(load_path, "rb") as f:
@@ -719,85 +508,94 @@ class ProbabilisticVIXForecaster:
         self.calibrators[cohort] = data["calibrators"]
         self.feature_names = data["feature_names"]
 
-        # Restore config
         config = data["config"]
         self.horizon = config["horizon"]
         self.quantiles = config["quantiles"]
         self.regime_boundaries = config["regime_boundaries"]
         self.regime_labels = config["regime_labels"]
 
-        logger.info(f"✅ Loaded cohort: {cohort}")
-
     def _generate_diagnostics(self, cohort_metrics: Dict, save_dir: str):
-        """Generate diagnostic plots and JSON summaries."""
+        """Generate diagnostic plots and save metrics."""
         save_path = Path(save_dir)
 
-        # 1. Export metrics as JSON
+        # Save metrics as JSON
         metrics_file = save_path / "probabilistic_model_metrics.json"
         with open(metrics_file, "w") as f:
-            json.dump(cohort_metrics, f, indent=2)
-        logger.info(f"📊 Metrics saved: {metrics_file}")
+            json_safe_metrics = self._convert_to_json_serializable(cohort_metrics)
+            json.dump(json_safe_metrics, f, indent=2)
 
-        # 2. Plot regime classification performance
+        logger.info(f"  Saved metrics: {metrics_file}")
+
+        # Generate plots
         try:
-            fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+            fig.suptitle("Model Performance by Cohort", fontsize=16, fontweight="bold")
 
             cohorts = list(cohort_metrics.keys())
-            accuracies = [cohort_metrics[c]["regime"]["accuracy"] for c in cohorts]
-            log_losses = [cohort_metrics[c]["regime"]["log_loss"] for c in cohorts]
 
-            axes[0].bar(range(len(cohorts)), accuracies)
-            axes[0].set_xticks(range(len(cohorts)))
-            axes[0].set_xticklabels(cohorts, rotation=45, ha="right")
-            axes[0].set_ylabel("Accuracy")
-            axes[0].set_title("Regime Classification Accuracy by Cohort")
-            axes[0].axhline(0.25, color="r", linestyle="--", label="Random (4 classes)")
-            axes[0].legend()
+            # Plot 1: Point Estimate RMSE
+            point_rmse = [cohort_metrics[c]["point"]["rmse"] for c in cohorts]
+            axes[0, 0].bar(range(len(cohorts)), point_rmse, color="steelblue")
+            axes[0, 0].set_xticks(range(len(cohorts)))
+            axes[0, 0].set_xticklabels(cohorts, rotation=45, ha="right")
+            axes[0, 0].set_ylabel("RMSE (%)")
+            axes[0, 0].set_title("Point Estimate RMSE")
+            axes[0, 0].grid(True, alpha=0.3)
 
-            axes[1].bar(range(len(cohorts)), log_losses)
-            axes[1].set_xticks(range(len(cohorts)))
-            axes[1].set_xticklabels(cohorts, rotation=45, ha="right")
-            axes[1].set_ylabel("Log Loss")
-            axes[1].set_title("Regime Classification Log Loss by Cohort")
+            # Plot 2: Uncertainty RMSE
+            uncertainty_rmse = [
+                cohort_metrics[c]["uncertainty"]["rmse"] for c in cohorts
+            ]
+            axes[0, 1].bar(range(len(cohorts)), uncertainty_rmse, color="coral")
+            axes[0, 1].set_xticks(range(len(cohorts)))
+            axes[0, 1].set_xticklabels(cohorts, rotation=45, ha="right")
+            axes[0, 1].set_ylabel("RMSE (%)")
+            axes[0, 1].set_title("Uncertainty Model RMSE")
+            axes[0, 1].grid(True, alpha=0.3)
+
+            # Plot 3: Direction Accuracy
+            dir_accuracy = [cohort_metrics[c]["direction"]["accuracy"] for c in cohorts]
+            axes[1, 0].bar(range(len(cohorts)), dir_accuracy, color="forestgreen")
+            axes[1, 0].axhline(
+                0.5, color="red", linestyle="--", label="Random", linewidth=2
+            )
+            axes[1, 0].set_xticks(range(len(cohorts)))
+            axes[1, 0].set_xticklabels(cohorts, rotation=45, ha="right")
+            axes[1, 0].set_ylabel("Accuracy")
+            axes[1, 0].set_title("Direction Classification Accuracy")
+            axes[1, 0].set_ylim([0, 1])
+            axes[1, 0].legend()
+            axes[1, 0].grid(True, alpha=0.3)
+
+            # Plot 4: Confidence RMSE
+            conf_rmse = [cohort_metrics[c]["confidence"]["rmse"] for c in cohorts]
+            axes[1, 1].bar(range(len(cohorts)), conf_rmse, color="purple")
+            axes[1, 1].set_xticks(range(len(cohorts)))
+            axes[1, 1].set_xticklabels(cohorts, rotation=45, ha="right")
+            axes[1, 1].set_ylabel("RMSE")
+            axes[1, 1].set_title("Confidence Score RMSE")
+            axes[1, 1].grid(True, alpha=0.3)
 
             plt.tight_layout()
-            plot_file = save_path / "regime_performance.png"
-            plt.savefig(plot_file, dpi=150)
+            plot_file = save_path / "model_performance.png"
+            plt.savefig(plot_file, dpi=150, bbox_inches="tight")
             plt.close()
-            logger.info(f"📈 Plot saved: {plot_file}")
+
+            logger.info(f"  Saved plots: {plot_file}")
+
         except Exception as e:
-            logger.warning(f"Could not generate plots: {e}")
-
-        # 3. Summary table
-        logger.info("\n" + "=" * 80)
-        logger.info("MODEL PERFORMANCE SUMMARY")
-        logger.info("=" * 80)
-        logger.info(
-            f"{'Cohort':<30} | {'Point RMSE':>10} | {'Regime Acc':>10} | {'Conf RMSE':>10}"
-        )
-        logger.info("-" * 80)
-
-        for cohort in sorted(cohorts):
-            m = cohort_metrics[cohort]
-            logger.info(
-                f"{cohort:<30} | "
-                f"{m['point']['rmse']:>9.2f}% | "
-                f"{m['regime']['accuracy']:>9.3f} | "
-                f"{m['confidence']['rmse']:>9.3f}"
-            )
-
-        logger.info("=" * 80)
+            logger.warning(f"  Could not generate plots: {e}")
 
 
 def train_probabilistic_forecaster(
     df: pd.DataFrame, save_dir: str = "models"
 ) -> ProbabilisticVIXForecaster:
     """
-    Convenience function to train forecaster.
+    Convenience function to train and return a ProbabilisticVIXForecaster.
 
     Args:
-        df: DataFrame from feature_engine with calendar_cohort column
-        save_dir: Where to save models
+        df: Feature dataframe with calendar_cohort column
+        save_dir: Directory to save trained models
 
     Returns:
         Trained ProbabilisticVIXForecaster instance

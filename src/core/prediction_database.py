@@ -88,6 +88,7 @@ class PredictionDatabase:
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row  # Dict-like access
 
+        # Create/migrate schema (handles old schemas automatically)
         self._create_schema()
 
         # CRITICAL: Track in-memory keys during batch operations
@@ -102,6 +103,39 @@ class PredictionDatabase:
 
     def _create_schema(self):
         """Create database tables with UNIQUE constraint to prevent duplicates."""
+
+        # Check if table exists and has wrong schema
+        cursor = self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='forecasts'"
+        )
+        table_exists = cursor.fetchone() is not None
+
+        if table_exists:
+            # Check if direction_probability column exists (wrong schema)
+            cursor = self.conn.execute("PRAGMA table_info(forecasts)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if "direction_probability" in columns:
+                logger.warning(
+                    "⚠️  Detected old schema with direction_probability, recreating table..."
+                )
+
+                # Backup data if any exists
+                cursor = self.conn.execute("SELECT COUNT(*) FROM forecasts")
+                count = cursor.fetchone()[0]
+
+                if count > 0:
+                    logger.info(f"   Backing up {count} existing records...")
+                    self.conn.execute("""
+                        CREATE TABLE forecasts_backup AS
+                        SELECT * FROM forecasts
+                    """)
+
+                # Drop old table
+                self.conn.execute("DROP TABLE forecasts")
+                logger.info("   Dropped old table")
+
+        # Create table with correct schema (no direction_probability)
         create_sql = """
         CREATE TABLE IF NOT EXISTS forecasts (
             prediction_id TEXT PRIMARY KEY,
@@ -115,8 +149,15 @@ class PredictionDatabase:
 
             -- Predictions
             point_estimate REAL NOT NULL,
-            q10 REAL, q25 REAL, q50 REAL, q75 REAL, q90 REAL,
-            prob_low REAL, prob_normal REAL, prob_elevated REAL, prob_crisis REAL,
+            q10 REAL,
+            q25 REAL,
+            q50 REAL,
+            q75 REAL,
+            q90 REAL,
+            prob_low REAL,
+            prob_normal REAL,
+            prob_elevated REAL,
+            prob_crisis REAL,
             confidence_score REAL,
 
             -- Metadata
@@ -139,6 +180,35 @@ class PredictionDatabase:
         """
 
         self.conn.execute(create_sql)
+
+        # Restore data if backup exists
+        cursor = self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='forecasts_backup'"
+        )
+        if cursor.fetchone() is not None:
+            logger.info("   Restoring backed up data...")
+
+            # Get all columns except direction_probability
+            cursor = self.conn.execute("PRAGMA table_info(forecasts)")
+            new_columns = [row[1] for row in cursor.fetchall()]
+
+            # Insert data back (SQLite will ignore missing columns)
+            try:
+                self.conn.execute(f"""
+                    INSERT OR IGNORE INTO forecasts ({", ".join(new_columns)})
+                    SELECT {", ".join(new_columns)}
+                    FROM forecasts_backup
+                """)
+
+                cursor = self.conn.execute("SELECT COUNT(*) FROM forecasts")
+                restored = cursor.fetchone()[0]
+                logger.info(f"   Restored {restored} records")
+
+            except sqlite3.OperationalError as e:
+                logger.warning(f"   Could not restore all data: {e}")
+
+            # Drop backup table
+            self.conn.execute("DROP TABLE forecasts_backup")
 
         # Create indexes for fast queries
         indexes = [
@@ -176,6 +246,13 @@ class PredictionDatabase:
         # Ensure created_at is set
         if "created_at" not in record:
             record["created_at"] = datetime.now().isoformat()
+
+        # CRITICAL FIX: Remove deprecated fields that don't exist in schema
+        deprecated_fields = ["direction_probability"]
+        for field in deprecated_fields:
+            if field in record:
+                logger.debug(f"   Removing deprecated field: {field}")
+                record.pop(field)
 
         # CRITICAL FIX: Add to pending keys FIRST (atomic operation)
         key = (record["forecast_date"], record["horizon"])
@@ -246,6 +323,7 @@ class PredictionDatabase:
             logger.error(
                 f"   Record: {record.get('forecast_date')}, horizon={record.get('horizon')}"
             )
+            logger.error(f"   Available keys: {list(record.keys())}")
             self.conn.rollback()
             # Clean up pending key on error
             self._pending_keys.discard(key)
@@ -372,6 +450,68 @@ class PredictionDatabase:
 
         except Exception as e:
             logger.error(f"❌ Failed to query predictions: {e}")
+            raise
+
+    def migrate_schema(self):
+        """
+        Migrate existing database to remove direction_probability column.
+        Safe to run multiple times.
+        """
+        logger.info("🔧 Checking database schema...")
+
+        try:
+            # Check if direction_probability exists
+            cursor = self.conn.execute("PRAGMA table_info(forecasts)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if "direction_probability" in columns:
+                logger.info(
+                    "⚠️  Found deprecated 'direction_probability' column, migrating..."
+                )
+
+                # Get all data
+                cursor = self.conn.execute("SELECT * FROM forecasts")
+                rows = cursor.fetchall()
+
+                if len(rows) > 0:
+                    logger.info(f"   Backing up {len(rows)} records...")
+
+                    # Get column names (excluding direction_probability)
+                    old_columns = [desc[0] for desc in cursor.description]
+                    new_columns = [
+                        col for col in old_columns if col != "direction_probability"
+                    ]
+
+                    # Drop old table
+                    self.conn.execute("DROP TABLE forecasts")
+
+                    # Recreate with new schema
+                    self._create_schema()
+
+                    # Reinsert data (excluding direction_probability)
+                    placeholders = ", ".join(["?" for _ in new_columns])
+                    insert_sql = f"INSERT INTO forecasts ({', '.join(new_columns)}) VALUES ({placeholders})"
+
+                    for row in rows:
+                        # Convert row to dict
+                        row_dict = dict(zip(old_columns, row))
+                        # Extract values for new columns only
+                        values = [row_dict[col] for col in new_columns]
+                        self.conn.execute(insert_sql, values)
+
+                    self.conn.commit()
+                    logger.info(f"✅ Migration complete: {len(rows)} records preserved")
+                else:
+                    # Empty table, just recreate
+                    self.conn.execute("DROP TABLE forecasts")
+                    self._create_schema()
+                    logger.info("✅ Migration complete: recreated empty table")
+            else:
+                logger.info("✅ Schema is up to date")
+
+        except Exception as e:
+            logger.error(f"❌ Migration failed: {e}")
+            self.conn.rollback()
             raise
 
     def remove_all_duplicates(self):

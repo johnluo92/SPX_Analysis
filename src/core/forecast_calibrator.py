@@ -54,7 +54,11 @@ class ForecastCalibrator:
         self.metrics = {}
 
     def fit_from_database(
-        self, db_path: str = "data_cache/predictions.db", min_samples: int = 50
+        self,
+        db_path: str = "data_cache/predictions.db",
+        min_samples: int = 50,
+        start_date: str = None,
+        end_date: str = None,
     ) -> bool:
         """
         Learn calibration parameters from prediction database.
@@ -62,6 +66,8 @@ class ForecastCalibrator:
         Args:
             db_path: Path to predictions database
             min_samples: Minimum forecasts needed to fit
+            start_date: Only use forecasts >= this date (YYYY-MM-DD)
+            end_date: Only use forecasts <= this date (YYYY-MM-DD)
 
         Returns:
             bool: True if calibration was fitted successfully
@@ -78,7 +84,9 @@ class ForecastCalibrator:
 
         # Load predictions with actuals
         db = PredictionDatabase(db_path)
-        df = db.get_predictions(with_actuals=True)
+        df = db.get_predictions(
+            with_actuals=True, start_date=start_date, end_date=end_date
+        )
 
         if len(df) < min_samples:
             logger.warning(
@@ -173,25 +181,21 @@ class ForecastCalibrator:
         """Learn relationship between confidence and forecast error."""
         logger.info(f"\n[3/3] Confidence Recalibration")
 
-        # Compute correlation
         corr = df[["confidence_score", "point_error"]].corr().iloc[0, 1]
-
         logger.info(f"   Raw correlation: {corr:+.3f}")
 
         if corr > 0.1:
-            # Confidence positively correlated with error (backwards!)
             logger.warning(f"   ⚠️  Confidence is BACKWARDS - will invert")
             self.confidence_mapping = {"method": "invert"}
 
         elif abs(corr) < 0.1:
-            # Weak correlation - recalibrate using error bins
             logger.warning(f"   ⚠️  Confidence weakly predictive - will recalibrate")
 
             # Bin by confidence, compute mean error per bin
-            df["conf_bin"] = pd.qcut(
-                df["confidence_score"], q=5, labels=[0, 1, 2, 3, 4], duplicates="drop"
+            df["conf_bin"], bin_edges = pd.qcut(
+                df["confidence_score"], q=5, retbins=True, duplicates="drop"
             )
-            error_by_bin = df.groupby("conf_bin")["point_error"].mean()
+            error_by_bin = df.groupby("conf_bin", observed=True)["point_error"].mean()
 
             # Normalize to [0, 1] range (invert: high error = low confidence)
             max_error = error_by_bin.max()
@@ -199,14 +203,11 @@ class ForecastCalibrator:
 
             self.confidence_mapping = {
                 "method": "binned",
-                "bin_edges": df["confidence_score"]
-                .quantile([0.2, 0.4, 0.6, 0.8])
-                .tolist(),
+                "bin_edges": bin_edges[1:-1].tolist(),  # Interior edges only
                 "calibrated_values": confidence_calibrated.tolist(),
             }
 
         else:
-            # Good correlation - no adjustment needed
             logger.info(f"   ✅ Confidence well-calibrated (no adjustment)")
             self.confidence_mapping = {"method": "none"}
 
@@ -219,7 +220,7 @@ class ForecastCalibrator:
                 - point_estimate
                 - quantiles: {q10, q25, q50, q75, q90}
                 - confidence_score
-                - regime_probabilities
+                - direction_probability  # CHANGED from regime_probabilities
 
         Returns:
             Calibrated forecast dict (same structure)
@@ -285,8 +286,8 @@ class ForecastCalibrator:
             calibrated["confidence_score"], 0.5, 0.99
         )
 
-        # Copy unchanged fields
-        calibrated["regime_probabilities"] = forecast["regime_probabilities"].copy()
+        # Copy unchanged fields - CHANGED: direction_probability instead of regime_probabilities
+        calibrated["direction_probability"] = forecast["direction_probability"]
         calibrated["cohort"] = forecast["cohort"]
 
         return calibrated

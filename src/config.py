@@ -1,17 +1,16 @@
-"""Enhanced Configuration V5 - Probabilistic Distribution Forecasting"""
+"""Configuration V5 - Probabilistic Distribution Forecasting"""
 
 from pathlib import Path
 
 CACHE_DIR = "./data_cache"
 CBOE_DATA_DIR = "./CBOE_Data_Archive"
-
 ENABLE_TRAINING = True
-TRAINING_YEARS = 5
+TRAINING_YEARS = 3
 RANDOM_STATE = 42
-
-# =============================================================================
-# TEMPORAL SAFETY - PUBLICATION LAGS
-# =============================================================================
+TRAINING_END_DATE = "2024-12-31"
+CALIBRATION_PERIOD = ("2023-01-01", "2023-12-31")
+VALIDATION_PERIOD = ("2024-01-01", "2024-12-31")
+PRODUCTION_START_DATE = "2025-01-01"
 
 PUBLICATION_LAGS = {
     "^GSPC": 0,
@@ -46,74 +45,59 @@ PUBLICATION_LAGS = {
 
 ENABLE_TEMPORAL_SAFETY = True
 
-# =============================================================================
-# PROBABILISTIC FORECASTING TARGETS
-# =============================================================================
-
 TARGET_CONFIG = {
-    # Point Estimate: VIX % change prediction
     "point_estimate": {
-        "range": (-50, 200),  # Min: -50% (compression), Max: +200% (black swan)
+        "range": (-50, 200),
         "loss": "reg:squarederror",
         "loss_weight": 1.0,
-        "clip_extremes": True,  # Cap predictions at range boundaries
+        "clip_extremes": True,
     },
-    # Quantile Predictions: Capture uncertainty and tail risk
     "quantiles": {
         "levels": [0.10, 0.25, 0.50, 0.75, 0.90],
-        "loss": "reg:quantileerror",  # Pinball loss
+        "loss": "reg:quantileerror",
         "loss_weight": 1.0,
-        "enforce_monotonicity": True,  # q10 < q25 < q50 < q75 < q90
+        "enforce_monotonicity": True,
     },
-    # Regime Classification: Which volatility regime at horizon?
     "regimes": {
-        "boundaries": [16.77, 24.40, 39.67],  # Historical VIX quartiles
+        "boundaries": [16.77, 24.40, 39.67],
         "labels": ["Low", "Normal", "Elevated", "Crisis"],
         "loss": "multi:softprob",
         "loss_weight": 0.5,
         "num_classes": 4,
     },
-    # Confidence Scoring: How reliable is this forecast?
     "confidence": {
         "components": {
-            "feature_quality": 0.5,  # Data freshness/completeness
-            "regime_stability": 0.3,  # Market in transition?
-            "historical_error": 0.2,  # Performance in similar conditions
+            "feature_quality": 0.5,
+            "regime_stability": 0.3,
+            "historical_error": 0.2,
         },
         "loss": "reg:squarederror",
         "loss_weight": 0.3,
-        "calibration_method": "isotonic",  # Post-hoc probability calibration
+        "calibration_method": "isotonic",
     },
-    # Forecasting Horizon
     "horizon_days": 5,
     "horizon_label": "5d",
 }
 
-# =============================================================================
-# CALENDAR COHORTS - Context-Aware Training
-# =============================================================================
-
 CALENDAR_COHORTS = {
-    # Monthly Options Expiration (3rd Friday)
     "monthly_opex_minus_5": {
         "condition": "days_to_monthly_opex",
         "range": (-7, -3),
-        "weight": 1.2,  # Slightly higher uncertainty pre-OpEx
+        "weight": 1.2,
         "description": "Week before monthly options expiration",
     },
     "monthly_opex_minus_1": {
         "condition": "days_to_monthly_opex",
         "range": (-2, 0),
-        "weight": 1.5,  # High gamma exposure
+        "weight": 1.5,
         "description": "Immediate pre-expiration (Wed-Fri)",
     },
     "monthly_opex_plus_1": {
         "condition": "days_to_monthly_opex",
         "range": (1, 3),
-        "weight": 1.1,  # Post-expiration rebalancing
+        "weight": 1.1,
         "description": "Days after monthly expiration",
     },
-    # FOMC Meeting Cycles
     "fomc_minus_3": {
         "condition": "days_to_fomc",
         "range": (-5, -1),
@@ -123,24 +107,21 @@ CALENDAR_COHORTS = {
     "fomc_week": {
         "condition": "days_to_fomc",
         "range": (0, 2),
-        "weight": 1.4,  # Highest uncertainty
+        "weight": 1.4,
         "description": "FOMC decision day + 2 days after",
     },
-    # Earnings Season Intensity
     "earnings_heavy": {
         "condition": "spx_earnings_pct",
-        "range": (0.15, 1.0),  # >15% of SPX reporting this week
+        "range": (0.15, 1.0),
         "weight": 1.1,
         "description": "Peak earnings season (Jan, Apr, Jul, Oct)",
     },
-    # Quarterly Futures Rollover (H, M, U, Z months)
     "futures_rollover": {
         "condition": "days_to_futures_expiry",
         "range": (-5, 0),
         "weight": 1.15,
         "description": "VIX futures expiration week",
     },
-    # Default: No special calendar effects
     "mid_cycle": {
         "condition": "default",
         "range": None,
@@ -149,7 +130,6 @@ CALENDAR_COHORTS = {
     },
 }
 
-# Priority Order (checked top-to-bottom)
 COHORT_PRIORITY = [
     "fomc_week",
     "fomc_minus_3",
@@ -161,15 +141,9 @@ COHORT_PRIORITY = [
     "mid_cycle",
 ]
 
-# =============================================================================
-# XGBOOST MULTI-OUTPUT CONFIGURATION
-# =============================================================================
-
 XGBOOST_CONFIG = {
-    # Model Architecture
-    "strategy": "separate_models",  # Train separate model per output type
-    "cohort_aware": True,  # Train per calendar cohort
-    # Shared Hyperparameters (apply to all models)
+    "strategy": "separate_models",
+    "cohort_aware": True,
     "shared_params": {
         "max_depth": 6,
         "learning_rate": 0.05,
@@ -178,13 +152,12 @@ XGBOOST_CONFIG = {
         "colsample_bytree": 0.8,
         "colsample_bylevel": 0.8,
         "min_child_weight": 3,
-        "reg_alpha": 0.1,  # L1 regularization
-        "reg_lambda": 1.0,  # L2 regularization
-        "gamma": 0.1,  # Minimum loss reduction for split
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+        "gamma": 0.1,
         "seed": 42,
         "n_jobs": -1,
     },
-    # Model-Specific Objectives
     "objectives": {
         "point": {
             "objective": "reg:squarederror",
@@ -233,33 +206,25 @@ XGBOOST_CONFIG = {
             "early_stopping_rounds": 50,
         },
     },
-    # Cross-Validation Strategy
     "cv_config": {
-        "method": "time_series_split",  # Respects temporal ordering
+        "method": "time_series_split",
         "n_splits": 5,
         "test_size": 0.2,
-        "gap": 5,  # Gap between train/test to prevent leakage
+        "gap": 5,
     },
 }
-
-# =============================================================================
-# PREDICTION DATABASE SCHEMA
-# =============================================================================
 
 PREDICTION_DB_CONFIG = {
     "db_path": "data_cache/predictions.db",
     "table_name": "forecasts",
     "min_samples_for_calibration": 50,
     "schema": {
-        # Identifiers
         "prediction_id": "TEXT PRIMARY KEY",
         "timestamp": "DATETIME",
         "forecast_date": "DATE",
         "horizon": "INTEGER",
-        # Context
         "calendar_cohort": "TEXT",
         "cohort_weight": "REAL",
-        # Predictions
         "point_estimate": "REAL",
         "q10": "REAL",
         "q25": "REAL",
@@ -271,18 +236,15 @@ PREDICTION_DB_CONFIG = {
         "prob_elevated": "REAL",
         "prob_crisis": "REAL",
         "confidence_score": "REAL",
-        # Metadata
         "feature_quality": "REAL",
         "regime_stability": "REAL",
         "num_features_used": "INTEGER",
         "missing_features": "TEXT",
-        "current_vix": "REAL",  # ← ADD THIS LINE
-        # Actuals (filled post-hoc for backtesting)
+        "current_vix": "REAL",
         "actual_vix_change": "REAL",
         "actual_regime": "TEXT",
         "point_error": "REAL",
         "quantile_coverage": "TEXT",
-        # Provenance
         "features_used": "TEXT",
         "model_version": "TEXT",
         "created_at": "DATETIME",
@@ -294,11 +256,9 @@ PREDICTION_DB_CONFIG = {
     ],
 }
 
-# Backtesting Queries
 BACKTEST_QUERIES = {
     "quantile_coverage": """
-        SELECT
-            calendar_cohort,
+        SELECT calendar_cohort,
             AVG(CASE WHEN actual_vix_change <= q10 THEN 1 ELSE 0 END) as coverage_10,
             AVG(CASE WHEN actual_vix_change <= q25 THEN 1 ELSE 0 END) as coverage_25,
             AVG(CASE WHEN actual_vix_change <= q50 THEN 1 ELSE 0 END) as coverage_50,
@@ -310,31 +270,24 @@ BACKTEST_QUERIES = {
         GROUP BY calendar_cohort
     """,
     "regime_brier_score": """
-        SELECT
-            calendar_cohort,
-            AVG(
-                POWER(prob_low - (actual_regime = 'Low'), 2) +
+        SELECT calendar_cohort,
+            AVG(POWER(prob_low - (actual_regime = 'Low'), 2) +
                 POWER(prob_normal - (actual_regime = 'Normal'), 2) +
                 POWER(prob_elevated - (actual_regime = 'Elevated'), 2) +
-                POWER(prob_crisis - (actual_regime = 'Crisis'), 2)
-            ) as brier_score
+                POWER(prob_crisis - (actual_regime = 'Crisis'), 2)) as brier_score
         FROM forecasts
         WHERE actual_regime IS NOT NULL
         GROUP BY calendar_cohort
     """,
 }
 
-# =============================================================================
-# FEATURE QUALITY THRESHOLDS
-# =============================================================================
-
 FEATURE_QUALITY_CONFIG = {
     "staleness_penalty": {
-        "none": 1.0,  # Updated today
-        "minor": 0.95,  # 1-3 days stale
-        "moderate": 0.80,  # 4-7 days stale
-        "severe": 0.50,  # 8-14 days stale
-        "critical": 0.20,  # >14 days stale
+        "none": 1.0,
+        "minor": 0.95,
+        "moderate": 0.80,
+        "severe": 0.50,
+        "critical": 0.20,
     },
     "missingness_penalty": {
         "critical_features": [
@@ -355,21 +308,12 @@ FEATURE_QUALITY_CONFIG = {
     },
 }
 
-# =============================================================================
-# LEGACY REGIME BOUNDARIES (for backward compatibility)
-# =============================================================================
-
 REGIME_BOUNDARIES = [0, 16.77, 24.40, 39.67, 100]
 REGIME_NAMES = {0: "Low Vol", 1: "Normal", 2: "Elevated", 3: "Crisis"}
-
 SKEW_ELEVATED_THRESHOLD = 145
 CRISIS_VIX_THRESHOLD = 39.67
 SPX_FORWARD_WINDOWS = [5, 13, 21]
 SPX_RANGE_THRESHOLDS = [0.02, 0.03, 0.05]
-
-# =============================================================================
-# MODEL PARAMETERS (Legacy - Still Used by Other Components)
-# =============================================================================
 
 DURATION_PREDICTOR_PARAMS = {
     "n_estimators": 200,
@@ -441,10 +385,6 @@ ANOMALY_THRESHOLDS = {
     "feature_availability_min": 0.7,
     "ensemble_weight_min": 0.3,
 }
-
-# =============================================================================
-# FEATURE DEFINITIONS
-# =============================================================================
 
 VIX_BASE_FEATURES = {
     "mean_reversion": [
@@ -702,10 +642,6 @@ MACRO_FEATURES = {
 
 CALENDAR_FEATURES = ["month", "day_of_week", "day_of_month"]
 
-# =============================================================================
-# FEATURE GROUPS
-# =============================================================================
-
 ANOMALY_FEATURE_GROUPS = {
     "vix_mean_reversion": VIX_BASE_FEATURES["mean_reversion"] + ["vix"],
     "vix_momentum": VIX_BASE_FEATURES["dynamics"] + ["vix_velocity_3d", "vix_jerk_5d"],
@@ -897,10 +833,6 @@ RANGE_PREDICTION_FEATURE_GROUPS = {
     "meta_regimes": META_FEATURES["regime_indicators"][:7],
     "calendar": CALENDAR_FEATURES,
 }
-
-# =============================================================================
-# HYPERPARAMETER OPTIMIZATION
-# =============================================================================
 
 OPTUNA_CONFIG = {
     "n_trials": 50,
