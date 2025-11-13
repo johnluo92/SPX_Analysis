@@ -57,14 +57,6 @@ logger = logging.getLogger(__name__)
 
 
 class AnomalyOrchestrator:
-    """
-    Orchestrates anomaly detection workflow (preserved for backward compatibility).
-    1. Manages VIX/SPX history
-    2. Maintains regime statistics
-    3. Coordinates anomaly detector
-    4. Handles state persistence
-    """
-
     def __init__(self):
         self.fetcher = UnifiedDataFetcher()
         self.anomaly_detector = None
@@ -84,8 +76,6 @@ class AnomalyOrchestrator:
         vix_history_all: pd.Series = None,
         verbose: bool = True,
     ):
-        """Train anomaly detection system on historical features."""
-
         if verbose:
             print("\n[Anomaly Orchestrator] Training...")
 
@@ -148,7 +138,6 @@ class AnomalyOrchestrator:
         )
 
     def _compute_regime_statistics(self, vix_series: pd.Series) -> dict:
-        """Compute comprehensive regime statistics from VIX history."""
         stats = {
             "observation_period": {
                 "start_date": str(vix_series.index[0]),
@@ -308,29 +297,7 @@ class AnomalyOrchestrator:
 
 
 class IntegratedSystem:
-    """
-    Main system integrating probabilistic forecasting with anomaly detection.
-
-    Components:
-      - Feature Engine: Generate 232 features with calendar cohorts
-      - Probabilistic Forecaster: Multi-output distribution model
-      - Prediction Database: Store forecasts for backtesting
-      - Anomaly Detector: Identify market regime anomalies (parallel)
-      - Temporal Validator: Check data quality
-
-    Example:
-        >>> system = IntegratedSystem()
-        >>> distribution = system.generate_forecast()
-        >>> print(distribution['point_estimate'])  # 8.5% expected VIX change
-    """
-
     def __init__(self, models_dir="models"):
-        """
-        Initialize integrated system.
-
-        Args:
-            models_dir: Directory containing trained models
-        """
         logger.info("=" * 80)
         logger.info("INTEGRATED PROBABILISTIC FORECASTING SYSTEM V5")
         logger.info("=" * 80)
@@ -410,20 +377,12 @@ class IntegratedSystem:
         logger.info(f"   Median (50th):   {quantiles['q50']:+.1f}%")
         logger.info(f"   75th percentile: {quantiles['q75']:+.1f}%")
         logger.info(f"   90th percentile: {quantiles['q90']:+.1f}%")
-
-        # ============================================================
-        # CHANGE: Replace regime section with direction
-        # ============================================================
         prob_up = distribution["direction_probability"]
         logger.info(f"Direction Forecast:")
         logger.info(f"   Probability UP:   {prob_up * 100:5.1f}%")
         logger.info(f"   Probability DOWN: {(1 - prob_up) * 100:5.1f}%")
-
-        # Confidence
         conf = distribution["confidence_score"]
         logger.info(f"Confidence Score:   {conf:.2f}")
-
-        # Interpretation
         current_vix = distribution["metadata"]["current_vix"]
         expected_vix = current_vix * (1 + point / 100)
         logger.info(f"\nInterpretation:")
@@ -436,7 +395,6 @@ class IntegratedSystem:
         )
 
     def _store_prediction(self, distribution, observation):
-        """Store prediction in database for backtesting."""
         prediction_id = str(uuid.uuid4())
 
         features_used = {
@@ -469,7 +427,6 @@ class IntegratedSystem:
         return prediction_id
 
     def _get_model_version(self):
-        """Get current model version (git hash or timestamp)."""
         try:
             git_hash = (
                 subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
@@ -481,26 +438,11 @@ class IntegratedSystem:
             return f"v{pd.Timestamp.now().strftime('%Y%m%d')}"
 
     def generate_forecast(self, date=None, store_prediction=True):
-        """
-        Generate probabilistic VIX forecast for given date.
-
-        **OPTIMIZED VERSION** - Uses cached features to avoid rebuilding every time.
-
-        Args:
-            date: Target observation date (None = most recent)
-            store_prediction: If True, save forecast to database
-
-        Returns:
-            dict: Forecast distribution with quantiles, regime probs, metadata
-        """
         logger.info("\n" + "=" * 80)
         logger.info("GENERATING PROBABILISTIC FORECAST")
         logger.info("=" * 80)
-
-        # 1. Get features (uses cache if available)
         df = self._get_features()
 
-        # 2. Select observation date
         if date is None:
             date = df.index[-1]
             logger.info(f"📅 Using latest date: {date.strftime('%Y-%m-%d')}")
@@ -512,8 +454,6 @@ class IntegratedSystem:
             raise ValueError(f"Date {date} not in feature data")
 
         observation = df.loc[date]
-
-        # 3. Check data quality
         logger.info("🔍 Checking data quality...")
         feature_dict = observation.to_dict()
         quality_score = self.validator.compute_feature_quality(feature_dict, date)
@@ -529,12 +469,10 @@ class IntegratedSystem:
                 logger.error(f"   • {issue}")
             raise ValueError(f"Cannot forecast: {quality_msg}")
 
-        # 4. Get calendar cohort
         cohort = observation.get("calendar_cohort", "mid_cycle")
         cohort_weight = observation.get("cohort_weight", 1.0)
         logger.info(f"📅 Calendar Cohort: {cohort} (weight: {cohort_weight:.2f})")
 
-        # 5. Check if cohort model exists
         if cohort not in self.forecaster.models:
             logger.warning(f"⚠️  Cohort {cohort} not trained, falling back to mid_cycle")
             cohort = "mid_cycle"
@@ -542,7 +480,6 @@ class IntegratedSystem:
             if cohort not in self.forecaster.models:
                 raise ValueError("No trained models available. Run training first.")
 
-        # 6. Prepare features for prediction
         logger.info("🎯 Preparing features for prediction...")
 
         feature_values = observation[self.forecaster.feature_names]
@@ -555,7 +492,6 @@ class IntegratedSystem:
         )
         X_df = X_df.fillna(0.0)
 
-        # Validation
         non_numeric = X_df.select_dtypes(include=["object"]).columns.tolist()
         if non_numeric:
             logger.error(f"❌ Non-numeric columns detected: {non_numeric}")
@@ -567,7 +503,6 @@ class IntegratedSystem:
             f"✅ Features prepared: shape={X_df.shape}, dtype={X_df.dtypes.unique()[0]}"
         )
 
-        # 7. Generate distribution
         logger.info("🎯 Generating probabilistic forecast...")
 
         try:
@@ -576,18 +511,15 @@ class IntegratedSystem:
             logger.error(f"❌ Prediction failed: {e}")
             raise
 
-        # 7.5 Apply calibration if available
         if self.calibrator:
             distribution = self.calibrator.calibrate(distribution)
             logger.info("🎯 Applied forecast calibration")
 
-        # Adjust confidence by cohort weight
         distribution["confidence_score"] *= 2 - cohort_weight
         distribution["confidence_score"] = np.clip(
             distribution["confidence_score"], 0, 1
         )
 
-        # 8. Add metadata
         forecast_date = date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
         distribution["metadata"] = {
             "observation_date": date.strftime("%Y-%m-%d"),
@@ -599,16 +531,13 @@ class IntegratedSystem:
             "features_used": len(self.forecaster.feature_names),
         }
 
-        # 9. Log forecast summary
         self._log_forecast_summary(distribution)
 
-        # 10. Store in database
         if store_prediction:
             prediction_id = self._store_prediction(distribution, observation)
             distribution["prediction_id"] = prediction_id
             logger.info(f"💾 Stored prediction: {prediction_id}")
 
-        # 11. Update state
         self.last_forecast = distribution
         self.forecast_history.append({"date": date, "distribution": distribution})
 
@@ -619,11 +548,6 @@ class IntegratedSystem:
         return distribution
 
     def run(self, date=None):
-        """
-        Legacy method - redirects to generate_forecast().
-
-        Kept for backward compatibility with existing scripts.
-        """
         logger.warning("⚠️ run() is deprecated, use generate_forecast()")
         return self.generate_forecast(date)
 
@@ -634,7 +558,6 @@ class IntegratedSystem:
         verbose: bool = False,
         enable_anomaly: bool = False,
     ):
-        """Train the complete system (backward compatible with anomaly system)."""
         print(
             f"\n{'=' * 80}\nINTEGRATED SYSTEM V5 - PROBABILISTIC FORECASTING\n{'=' * 80}"
         )
@@ -725,7 +648,6 @@ class IntegratedSystem:
         return selection_results
 
     def get_market_state(self) -> dict:
-        """Generate comprehensive market state snapshot (legacy anomaly method)."""
         if not self.trained:
             raise ValueError("Must train system first")
 
@@ -795,7 +717,6 @@ class IntegratedSystem:
         }
 
     def _get_cached_anomaly_result(self) -> dict:
-        """Get anomaly result with caching."""
         now = datetime.now()
         if self._cached_anomaly_result is None or (
             self._cache_timestamp and (now - self._cache_timestamp).seconds > 60
@@ -825,7 +746,6 @@ class IntegratedSystem:
         }
 
     def _get_spx_feature_state(self) -> dict:
-        """Extract SPX feature state."""
         f = self.orchestrator.features.iloc[-1]
         return {
             "price_action": {
@@ -841,7 +761,6 @@ class IntegratedSystem:
         }
 
     def _get_top_anomalies_list(self, anomaly_results: dict) -> list:
-        """Get top anomalies sorted by score."""
         domain_scores = [
             {"name": name, "score": data["score"]}
             for name, data in anomaly_results.get("domain_anomalies", {}).items()
@@ -849,7 +768,6 @@ class IntegratedSystem:
         return sorted(domain_scores, key=lambda x: x["score"], reverse=True)[:5]
 
     def print_anomaly_summary(self):
-        """Print comprehensive anomaly analysis summary."""
         if not self.trained:
             raise ValueError("Run train() first")
 
@@ -889,87 +807,9 @@ class IntegratedSystem:
 
         print(f"\n{'=' * 80}")
 
-    def _initialize_memory_baseline(self):
-        if not self.memory_monitoring_enabled:
-            return
-        try:
-            gc.collect()
-            mem_info = self.process.memory_info()
-            self.baseline_memory_mb = mem_info.rss / (1024 * 1024)
-            self.memory_history.append(
-                {
-                    "timestamp": datetime.now().isoformat(),
-                    "memory_mb": self.baseline_memory_mb,
-                    "type": "baseline",
-                }
-            )
-        except Exception as e:
-            warnings.warn(f"Memory baseline failed: {e}")
-            self.memory_monitoring_enabled = False
-
-    def _log_memory_stats(self, context: str = "refresh") -> dict:
-        if not self.memory_monitoring_enabled:
-            return {}
-        try:
-            mem_info = self.process.memory_info()
-            current_mb = mem_info.rss / (1024 * 1024)
-            if self.baseline_memory_mb is None:
-                self._initialize_memory_baseline()
-                return {}
-            growth = current_mb - self.baseline_memory_mb
-            self.memory_history.append(
-                {
-                    "timestamp": datetime.now().isoformat(),
-                    "memory_mb": current_mb,
-                    "type": context,
-                }
-            )
-            if len(self.memory_history) > 1000:
-                self.memory_history = self.memory_history[-1000:]
-            return {"current_mb": current_mb, "growth_mb": growth}
-        except Exception as e:
-            return {}
-
-    def get_memory_report(self) -> dict:
-        if not self.memory_monitoring_enabled:
-            return {"error": "psutil not installed"}
-        try:
-            mem_info = self.process.memory_info()
-            current_mb = mem_info.rss / (1024 * 1024)
-            growth_mb = (
-                current_mb - self.baseline_memory_mb if self.baseline_memory_mb else 0.0
-            )
-            status = (
-                "CRITICAL"
-                if growth_mb > 200
-                else ("WARNING" if growth_mb > 50 else "NORMAL")
-            )
-            return {
-                "current_mb": float(current_mb),
-                "baseline_mb": float(self.baseline_memory_mb)
-                if self.baseline_memory_mb
-                else None,
-                "growth_mb": float(growth_mb),
-                "status": status,
-            }
-        except Exception as e:
-            return {"error": str(e)}
-
     def train_probabilistic_models(
         self, years: int = TRAINING_YEARS, save_dir: str = "models"
     ):
-        """
-        Train probabilistic forecasting models.
-
-        This is separate from the legacy (not legacy, just temporarily not being focused on for development) anomaly training.
-
-        Args:
-            years: Training window in years
-            save_dir: Where to save trained models
-
-        Returns:
-            Dict of training metrics per cohort
-        """
         logger.info("=" * 80)
         logger.info("TRAINING PROBABILISTIC FORECASTING MODELS")
         logger.info("=" * 80)
@@ -1008,19 +848,6 @@ class IntegratedSystem:
     def generate_forecast_batch(
         self, start_date: str, end_date: str, frequency: str = "daily"
     ):
-        """
-        Generate forecasts for date range and store in database.
-
-        **OPTIMIZED VERSION** - Builds features ONCE, reuses for all forecasts.
-
-        Args:
-            start_date: Start date (YYYY-MM-DD)
-            end_date: End date (YYYY-MM-DD)
-            frequency: 'daily' or 'weekly'
-
-        Returns:
-            list: Forecast distributions for each date
-        """
         logger.info(f"\n{'=' * 80}")
         logger.info(f"BATCH FORECASTING: {start_date} to {end_date}")
         logger.info(f"{'=' * 80}")
@@ -1136,20 +963,6 @@ class IntegratedSystem:
         return forecasts
 
     def _get_features(self, force_refresh=False) -> pd.DataFrame:
-        """
-        Get features with intelligent caching.
-
-        Caching rules:
-          - Features are built once per calendar day
-          - Cache persists across multiple forecasts
-          - force_refresh=True bypasses cache (for batch backtesting)
-
-        Args:
-            force_refresh: Force rebuild regardless of cache state
-
-        Returns:
-            pd.DataFrame: Feature matrix with all 232 features + metadata
-        """
         now = pd.Timestamp.now()
         cache_key = (now.year, now.month, now.day, now.hour)
 
@@ -1192,7 +1005,6 @@ class IntegratedSystem:
 
 
 def main():
-    """Main execution function with CLI argument support."""
     parser = argparse.ArgumentParser(description="Integrated Market Analysis System V5")
 
     parser.add_argument(

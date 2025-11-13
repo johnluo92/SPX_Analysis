@@ -352,21 +352,6 @@ class ForecastCalibrator:
 
         return calibrator
 
-    def get_diagnostics(self) -> Dict:
-        """Get calibration diagnostics for reporting."""
-        if not self.fitted:
-            return {"error": "Calibrator not fitted"}
-
-        return {
-            "fitted": self.fitted,
-            "training_samples": self.n_training_samples,
-            "date_range": self.training_date_range,
-            "bias_correction": self.bias_correction,
-            "quantile_adjustments": self.quantile_adjustments,
-            "confidence_method": self.confidence_mapping["method"],
-            "metrics": self.metrics,
-        }
-
 
 # Standalone script for fitting calibrator
 if __name__ == "__main__":

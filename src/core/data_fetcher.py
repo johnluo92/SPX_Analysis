@@ -320,15 +320,6 @@ class UnifiedDataFetcher:
             self.logger.warning(f"FRED:{series_id}: Fetch failed - {str(e)[:100]}")
             return None
 
-    def fetch_fred_series(
-        self,
-        series_id: str,
-        start_date: str = None,
-        end_date: str = None,
-        incremental: bool = True,
-    ) -> Optional[pd.Series]:
-        return self.fetch_fred(series_id, start_date, end_date, incremental)
-
     def fetch_all_fred_series(
         self, start_date: str = None, end_date: str = None, incremental: bool = True
     ) -> Dict[str, pd.Series]:
@@ -529,41 +520,4 @@ class UnifiedDataFetcher:
             return df
         except Exception as e:
             self.logger.error(f"FOMC: Failed to load calendar - {str(e)[:100]}")
-            return None
-
-    def update_fomc_calendar_from_csv(self, csv_path: str) -> Optional[pd.DataFrame]:
-        try:
-            import_df = pd.read_csv(csv_path, parse_dates=["date"])
-            if (
-                "date" not in import_df.columns
-                or "meeting_type" not in import_df.columns
-            ):
-                self.logger.error(
-                    "FOMC: Invalid import CSV. Required columns: date, meeting_type"
-                )
-                return None
-
-            existing_df = self.fetch_fomc_calendar(1990, 2100)
-            if existing_df is None:
-                self.logger.error("FOMC: Cannot update - existing calendar not found")
-                return None
-
-            existing_df = existing_df.reset_index()
-            existing_df.rename(columns={existing_df.columns[0]: "date"}, inplace=True)
-            combined = pd.concat([existing_df, import_df])
-            combined = combined.drop_duplicates(subset=["date"], keep="last")
-            combined = combined.sort_values("date")
-
-            cache_path = self.cache_dir / "fomc_calendar.csv"
-            combined.to_csv(cache_path, index=False)
-
-            added_count = len(combined) - len(existing_df)
-            self.logger.info(f"FOMC: Calendar updated: {len(combined)} total meetings")
-            if added_count > 0:
-                self.logger.info(f"FOMC: Added {added_count} new meetings")
-
-            combined = combined.set_index("date")
-            return self._normalize_data(combined, "FOMC:calendar")
-        except Exception as e:
-            self.logger.error(f"FOMC: Update failed - {str(e)[:100]}")
             return None
