@@ -111,10 +111,17 @@ def prepare_training_data():
     complete_df["vix"] = vix
     complete_df["spx"] = spx
 
-    # Add calendar cohort assignment
-    logger.info("  Assigning calendar cohorts...")
+    # Use feature_engineer's cohort assignment (same logic as production)
+    logger.info("  Assigning calendar cohorts using feature_engine logic...")
+
+    # Ensure calendar data is loaded in feature_engineer
+    if (
+        not hasattr(feature_engineer, "opex_calendar")
+        or feature_engineer.opex_calendar is None
+    ):
+        feature_engineer._load_calendar_data()
     complete_df["calendar_cohort"] = complete_df.index.to_series().apply(
-        lambda d: _get_calendar_cohort(d)
+        lambda d: _get_calendar_cohort(d, feature_engineer)
     )
 
     # [4/4] Final validation
@@ -149,22 +156,13 @@ def prepare_training_data():
     return complete_df
 
 
-def _get_calendar_cohort(date: pd.Timestamp) -> str:
-    """
-    Assign calendar cohort based on date.
-
-    Uses configuration from CALENDAR_COHORTS in config.py
-    """
-    month = date.month
-
-    # Map from config structure to cohort names
-    # CALENDAR_COHORTS = {"q1": [1,2,3], "q2": [4,5,6], ...}
-    for cohort_name, months in CALENDAR_COHORTS.items():
-        if month in months:
-            return cohort_name
-
-    # Fallback (shouldn't happen)
-    return "q1"
+def _get_calendar_cohort(date: pd.Timestamp, feature_engineer) -> str:
+    try:
+        cohort, weight = feature_engineer.get_calendar_cohort(date)
+        return cohort
+    except Exception as e:
+        logger.warning(f"Cohort assignment failed for {date}: {e}, using mid_cycle")
+        return "mid_cycle"
 
 
 def validate_configuration() -> Tuple[bool, str]:

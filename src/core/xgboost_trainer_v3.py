@@ -173,9 +173,16 @@ class ProbabilisticVIXForecaster:
         """Train quantile models and direction classifier for a single cohort."""
         X = df[self.feature_names]
 
-        if len(df) < 100:
-            raise ValueError(f"Insufficient samples for cohort {cohort}: {len(df)}")
+        if len(df) < 30:
+            logger.warning(
+                f"Skipping cohort {cohort}: only {len(df)} samples (need 30+)"
+            )
+            return {}
 
+        if len(df) < 50:
+            logger.warning(
+                f"⚠️ Small cohort {cohort}: {len(df)} samples (accuracy may be limited)"
+            )
         self.models[cohort] = {}
         self.calibrators[cohort] = {}
         metrics = {}
@@ -391,22 +398,40 @@ class ProbabilisticVIXForecaster:
 
     def _get_adaptive_cv_config(self, n_samples: int) -> Tuple[int, int]:
         """Determine appropriate CV splits based on sample size."""
-        if n_samples < 200:
+
+        # For very small samples, use minimal CV
+        if n_samples < 50:
             n_splits = 2
-        elif n_samples < 400:
+            test_size = max(10, n_samples // 4)  # At least 10, max 25% of data
+        elif n_samples < 100:
+            n_splits = 2
+            test_size = max(15, n_samples // 4)
+        elif n_samples < 200:
             n_splits = 3
-        elif n_samples < 800:
+            test_size = max(20, n_samples // 5)
+        elif n_samples < 400:
             n_splits = 4
+            test_size = max(30, n_samples // 6)
+        elif n_samples < 800:
+            n_splits = 5
+            test_size = max(40, n_samples // 7)
         else:
             n_splits = 5
+            test_size = max(50, n_samples // 8)
 
-        max_test_size = n_samples // (n_splits + 1)
-        test_size = max(int(max_test_size * 0.8), 30)
+        # Ensure TimeSeriesSplit won't fail
+        # Formula: n_samples must be >= (n_splits + 1) * test_size
+        min_samples_needed = (n_splits + 1) * test_size
 
-        while (n_samples - test_size) < n_splits * test_size and n_splits > 2:
+        while min_samples_needed > n_samples and n_splits > 1:
             n_splits -= 1
-            max_test_size = n_samples // (n_splits + 1)
-            test_size = int(max_test_size * 0.8)
+            test_size = max(10, n_samples // (n_splits + 2))
+            min_samples_needed = (n_splits + 1) * test_size
+
+        # Final safety check - if still too large, just use holdout validation
+        if min_samples_needed > n_samples:
+            n_splits = 1
+            test_size = max(10, n_samples // 3)
 
         return n_splits, test_size
 
@@ -433,8 +458,12 @@ class ProbabilisticVIXForecaster:
                 f"Cohort {cohort} not trained. Available: {list(self.models.keys())}"
             )
 
-        X_features = X[self.feature_names]
+        # ✅ Add cohort_weight if missing (it's in self.feature_names from training)
+        if "cohort_weight" not in X.columns and "cohort_weight" in self.feature_names:
+            X = X.copy()
+            X["cohort_weight"] = 1.0
 
+        X_features = X[self.feature_names]
         # Get quantile predictions in log space
         quantiles_log = {}
         for q in self.quantiles:
