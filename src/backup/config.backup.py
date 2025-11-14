@@ -1,20 +1,6 @@
-"""Configuration V5 - Refactored for True Quantile Regression
-
-KEY CHANGES FROM V2:
-1. Removed TARGET_CONFIG["point_estimate"] - median (q50) is primary forecast
-2. Updated TARGET_CONFIG for log-transformed realized volatility
-3. Added volatility_bounds (domain knowledge: VIX rarely <10 or >90)
-4. Removed XGBOOST_CONFIG["objectives"]["point"] and ["uncertainty"]
-5. True quantile regression objectives for q10, q25, q50, q75, q90
-
-ALL OTHER SECTIONS PRESERVED EXACTLY AS-IS
-"""
+"""Configuration V5 - Probabilistic Distribution Forecasting"""
 
 from pathlib import Path
-
-# ============================================================================
-# BASIC CONFIGURATION
-# ============================================================================
 
 CACHE_DIR = "./data_cache"
 CBOE_DATA_DIR = "./CBOE_Data_Archive"
@@ -25,10 +11,6 @@ TRAINING_END_DATE = "2024-12-31"
 CALIBRATION_PERIOD = ("2023-01-01", "2023-12-31")
 VALIDATION_PERIOD = ("2024-01-01", "2024-12-31")
 PRODUCTION_START_DATE = "2025-01-01"
-
-# ============================================================================
-# PUBLICATION LAGS - For Temporal Safety
-# ============================================================================
 
 PUBLICATION_LAGS = {
     "^GSPC": 0,
@@ -63,40 +45,26 @@ PUBLICATION_LAGS = {
 
 ENABLE_TEMPORAL_SAFETY = True
 
-# ============================================================================
-# TARGET CONFIGURATION - REFACTORED FOR LOG-TRANSFORMED REALIZED VOLATILITY
-# ============================================================================
-
 TARGET_CONFIG = {
-    # REMOVED: "point_estimate" section - use quantiles["q50"] (median) instead
-    # Median has superior statistical properties and eliminates overestimation bias
-    "horizon_days": 5,
-    "horizon_label": "5d",
-    "target_type": "log_realized_volatility",  # NEW: Log-transformed RV
-    # NEW: Domain knowledge - VIX physical bounds
-    "volatility_bounds": {
-        "floor": 10.0,  # VIX rarely drops below 10
-        "ceiling": 90.0,  # VIX rarely exceeds 90
-        "description": "Physical constraints from VIX history (1990-2025)",
+    "point_estimate": {
+        "range": (-50, 200),
+        "loss": "reg:squarederror",
+        "loss_weight": 1.0,
+        "clip_extremes": True,
     },
-    # TRUE quantile regression - separate model per quantile
     "quantiles": {
         "levels": [0.10, 0.25, 0.50, 0.75, 0.90],
-        "loss": "reg:quantileerror",  # XGBoost native quantile loss
+        "loss": "reg:quantileerror",
         "loss_weight": 1.0,
-        "enforce_monotonicity": True,  # Post-prediction check
-        "description": "Median (q50) serves as primary forecast",
+        "enforce_monotonicity": True,
     },
-    # VIX regimes (descriptive only - not used in training)
     "regimes": {
         "boundaries": [16.77, 24.40, 39.67],
         "labels": ["Low", "Normal", "Elevated", "Crisis"],
         "loss": "multi:softprob",
         "loss_weight": 0.5,
         "num_classes": 4,
-        "description": "Reference only - not used in refactored quantile models",
     },
-    # Confidence scoring (maintained for compatibility)
     "confidence": {
         "components": {
             "feature_quality": 0.5,
@@ -107,11 +75,9 @@ TARGET_CONFIG = {
         "loss_weight": 0.3,
         "calibration_method": "isotonic",
     },
+    "horizon_days": 5,
+    "horizon_label": "5d",
 }
-
-# ============================================================================
-# CALENDAR COHORTS - Event-Driven Volatility Dynamics
-# ============================================================================
 
 CALENDAR_COHORTS = {
     "monthly_opex_minus_5": {
@@ -175,14 +141,9 @@ COHORT_PRIORITY = [
     "mid_cycle",
 ]
 
-# ============================================================================
-# XGBOOST CONFIGURATION - REFACTORED FOR TRUE QUANTILE REGRESSION
-# ============================================================================
-
 XGBOOST_CONFIG = {
-    "strategy": "quantile_regression",  # Changed from "separate_models"
+    "strategy": "separate_models",
     "cohort_aware": True,
-    # Shared hyperparameters across all models
     "shared_params": {
         "max_depth": 6,
         "learning_rate": 0.05,
@@ -197,71 +158,54 @@ XGBOOST_CONFIG = {
         "seed": 42,
         "n_jobs": -1,
     },
-    # Model objectives - REFACTORED
     "objectives": {
-        # REMOVED: "point" - redundant with q50
-        # REMOVED: "uncertainty" - quantile spread naturally captures this
-        # TRUE quantile regression - 5 independent models
+        "point": {
+            "objective": "reg:squarederror",
+            "eval_metric": ["rmse", "mae"],
+            "early_stopping_rounds": 50,
+        },
         "quantile_10": {
             "objective": "reg:quantileerror",
             "quantile_alpha": 0.10,
             "eval_metric": "mae",
             "early_stopping_rounds": 50,
-            "description": "10th percentile - conservative downside scenario",
         },
         "quantile_25": {
             "objective": "reg:quantileerror",
             "quantile_alpha": 0.25,
             "eval_metric": "mae",
             "early_stopping_rounds": 50,
-            "description": "25th percentile - lower quartile",
         },
         "quantile_50": {
             "objective": "reg:quantileerror",
             "quantile_alpha": 0.50,
             "eval_metric": "mae",
             "early_stopping_rounds": 50,
-            "description": "MEDIAN (50th percentile) - PRIMARY FORECAST (replaces point estimate)",
         },
         "quantile_75": {
             "objective": "reg:quantileerror",
             "quantile_alpha": 0.75,
             "eval_metric": "mae",
             "early_stopping_rounds": 50,
-            "description": "75th percentile - upper quartile",
         },
         "quantile_90": {
             "objective": "reg:quantileerror",
             "quantile_alpha": 0.90,
             "eval_metric": "mae",
             "early_stopping_rounds": 50,
-            "description": "90th percentile - aggressive upside scenario",
         },
-        # Direction classifier - maintained and enhanced
-        "direction": {
-            "objective": "binary:logistic",
-            "eval_metric": "logloss",
-            "early_stopping_rounds": 50,
-            "num_classes": 2,
-            "description": "Binary: VIX up (1) vs down (0)",
-        },
-        # Regime classifier - kept for reference (not primary focus)
         "regime": {
             "objective": "multi:softprob",
             "num_class": 4,
             "eval_metric": "mlogloss",
             "early_stopping_rounds": 50,
-            "description": "4-class regime (kept for compatibility)",
         },
-        # Confidence model - kept for compatibility
         "confidence": {
             "objective": "reg:squarederror",
             "eval_metric": "rmse",
             "early_stopping_rounds": 50,
-            "description": "Forecast confidence [0, 1]",
         },
     },
-    # CV configuration
     "cv_config": {
         "method": "time_series_split",
         "n_splits": 5,
@@ -269,10 +213,6 @@ XGBOOST_CONFIG = {
         "gap": 5,
     },
 }
-
-# ============================================================================
-# PREDICTION DATABASE CONFIGURATION
-# ============================================================================
 
 PREDICTION_DB_CONFIG = {
     "db_path": "data_cache/predictions.db",
@@ -285,10 +225,7 @@ PREDICTION_DB_CONFIG = {
         "horizon": "INTEGER",
         "calendar_cohort": "TEXT",
         "cohort_weight": "REAL",
-        # NOTE: "point_estimate" column kept for backward compatibility
-        # New systems should use "median_forecast" (which equals q50)
-        "point_estimate": "REAL",  # Deprecated - use median_forecast
-        "median_forecast": "REAL",  # NEW: Primary forecast from q50
+        "point_estimate": "REAL",
         "q10": "REAL",
         "q25": "REAL",
         "q50": "REAL",
@@ -298,7 +235,6 @@ PREDICTION_DB_CONFIG = {
         "prob_normal": "REAL",
         "prob_elevated": "REAL",
         "prob_crisis": "REAL",
-        "direction_probability": "REAL",  # Probability VIX goes up
         "confidence_score": "REAL",
         "feature_quality": "REAL",
         "regime_stability": "REAL",
@@ -307,8 +243,7 @@ PREDICTION_DB_CONFIG = {
         "current_vix": "REAL",
         "actual_vix_change": "REAL",
         "actual_regime": "TEXT",
-        "point_error": "REAL",  # Deprecated - use median_error
-        "median_error": "REAL",  # NEW: |actual - median_forecast|
+        "point_error": "REAL",
         "quantile_coverage": "TEXT",
         "features_used": "TEXT",
         "model_version": "TEXT",
@@ -320,10 +255,6 @@ PREDICTION_DB_CONFIG = {
         "CREATE INDEX idx_forecast_date ON forecasts(forecast_date)",
     ],
 }
-
-# ============================================================================
-# BACKTEST QUERIES
-# ============================================================================
 
 BACKTEST_QUERIES = {
     "quantile_coverage": """
@@ -349,10 +280,6 @@ BACKTEST_QUERIES = {
         GROUP BY calendar_cohort
     """,
 }
-
-# ============================================================================
-# FEATURE QUALITY CONFIGURATION
-# ============================================================================
 
 FEATURE_QUALITY_CONFIG = {
     "staleness_penalty": {
@@ -381,20 +308,12 @@ FEATURE_QUALITY_CONFIG = {
     },
 }
 
-# ============================================================================
-# REGIME DEFINITIONS
-# ============================================================================
-
 REGIME_BOUNDARIES = [0, 16.77, 24.40, 39.67, 100]
 REGIME_NAMES = {0: "Low Vol", 1: "Normal", 2: "Elevated", 3: "Crisis"}
 SKEW_ELEVATED_THRESHOLD = 145
 CRISIS_VIX_THRESHOLD = 39.67
 SPX_FORWARD_WINDOWS = [5, 13, 21]
 SPX_RANGE_THRESHOLDS = [0.02, 0.03, 0.05]
-
-# ============================================================================
-# MODEL PARAMETERS (Legacy - Some Models No Longer Used in Refactored System)
-# ============================================================================
 
 DURATION_PREDICTOR_PARAMS = {
     "n_estimators": 200,
@@ -466,10 +385,6 @@ ANOMALY_THRESHOLDS = {
     "feature_availability_min": 0.7,
     "ensemble_weight_min": 0.3,
 }
-
-# ===========================================================================
-# FEATURE GROUPS - Base Features
-# ============================================================================
 
 VIX_BASE_FEATURES = {
     "mean_reversion": [
@@ -727,10 +642,6 @@ MACRO_FEATURES = {
 
 CALENDAR_FEATURES = ["month", "day_of_week", "day_of_month"]
 
-# ============================================================================
-# FEATURE GROUPS - Anomaly Detection
-# ============================================================================
-
 ANOMALY_FEATURE_GROUPS = {
     "vix_mean_reversion": VIX_BASE_FEATURES["mean_reversion"] + ["vix"],
     "vix_momentum": VIX_BASE_FEATURES["dynamics"] + ["vix_velocity_3d", "vix_jerk_5d"],
@@ -786,13 +697,6 @@ ANOMALY_FEATURE_GROUPS = {
             "spx_gap",
         ]
     ),
-}
-
-# ============================================================================
-# FEATURE GROUPS - Anomaly Prediction
-# ============================================================================
-
-ANOMALY_PREDICTION_FEATURE_GROUPS = {
     "spx_ohlc_microstructure": SPX_BASE_FEATURES["ohlc_microstructure"],
     "spx_volatility_regime": (
         SPX_BASE_FEATURES["volatility"]
@@ -880,10 +784,6 @@ ANOMALY_PREDICTION_FEATURE_GROUPS = {
     "percentile_extremes": META_FEATURES["percentile_rankings"],
 }
 
-# ============================================================================
-# FEATURE GROUPS - Regime Classification
-# ============================================================================
-
 REGIME_CLASSIFICATION_FEATURE_GROUPS = {
     "all_vix": (
         VIX_BASE_FEATURES["mean_reversion"]
@@ -922,10 +822,6 @@ REGIME_CLASSIFICATION_FEATURE_GROUPS = {
     "calendar": CALENDAR_FEATURES,
 }
 
-# ============================================================================
-# FEATURE GROUPS - Range Prediction
-# ============================================================================
-
 RANGE_PREDICTION_FEATURE_GROUPS = {
     "vix_dynamics": VIX_BASE_FEATURES["dynamics"] + ["vix"],
     "spx_price_vol": SPX_BASE_FEATURES["price_action"]
@@ -937,10 +833,6 @@ RANGE_PREDICTION_FEATURE_GROUPS = {
     "meta_regimes": META_FEATURES["regime_indicators"][:7],
     "calendar": CALENDAR_FEATURES,
 }
-
-# ============================================================================
-# OPTUNA HYPERPARAMETER OPTIMIZATION
-# ============================================================================
 
 OPTUNA_CONFIG = {
     "n_trials": 50,
@@ -971,10 +863,6 @@ REGIME_AWARE_SEARCH_SPACES = {
     },
 }
 
-# ============================================================================
-# CRISIS PERIODS - For Evaluation
-# ============================================================================
-
 CRISIS_PERIODS = {
     "2008_gfc": ("2008-09-01", "2009-03-31"),
     "2011_debt": ("2011-07-25", "2011-10-04"),
@@ -983,10 +871,6 @@ CRISIS_PERIODS = {
     "2020_covid": ("2020-02-19", "2020-04-30"),
     "2022_ukraine": ("2022-02-14", "2022-03-31"),
 }
-
-# ============================================================================
-# HYPERPARAMETER SEARCH SPACES
-# ============================================================================
 
 HYPERPARAMETER_SEARCH_SPACE = {
     "vix_expansion": {
