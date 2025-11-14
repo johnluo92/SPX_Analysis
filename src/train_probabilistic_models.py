@@ -485,12 +485,18 @@ def main():
                     logger.info(
                         f"   Median forecast: {predictions['median_forecast']:+.2f}%"
                     )
+
+                    # ✅ FIX: Access quantiles as flat keys, not nested dict
+                    quantile_keys = ["q10", "q25", "q50", "q75", "q90"]
+                    logger.info(f"   Quantiles: {quantile_keys}")
                     logger.info(
-                        f"   Quantiles: {list(predictions['quantiles'].keys())}"
+                        f"   Q10: {predictions['q10']:+.2f}%, "
+                        f"Q50: {predictions['q50']:+.2f}%, "
+                        f"Q90: {predictions['q90']:+.2f}%"
                     )
-                    logger.info(
-                        f"   Direction prob: {predictions['direction_probability']:.2f}"
-                    )
+                    logger.info(f"   Direction prob (up): {predictions['prob_up']:.2f}")
+                    logger.info(f"   Confidence: {predictions['confidence_score']:.2f}")
+
                 else:
                     logger.error("❌ Test prediction failed")
                     sys.exit(1)

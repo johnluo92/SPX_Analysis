@@ -178,25 +178,6 @@ class IntegratedForecastingSystem:
         forecast_date: Optional[pd.Timestamp] = None,
         store_prediction: bool = True,
     ) -> Optional[Dict]:
-        """
-        Generate probabilistic forecast using V3 quantile regression.
-
-        FORECAST PIPELINE (6 steps):
-        1. Prepare observation date and feature matrix
-        2. Validate temporal hygiene (no data leakage)
-        3. Determine cohort and feature quality
-        4. Generate quantile predictions from trained models
-        5. Apply calibration (if available)
-        6. Store to database
-
-        Args:
-            forecast_date: Date to forecast for (default: today)
-            store_prediction: Whether to store in database
-
-        Returns:
-            Dict containing forecast distribution or None if failed
-        """
-
         logger.info("\n" + "=" * 80)
         logger.info("PROBABILISTIC FORECAST GENERATION (V3)")
         logger.info("=" * 80)
@@ -234,6 +215,7 @@ class IntegratedForecastingSystem:
         cohort = observation["calendar_cohort"]
         cohort_weight = observation["cohort_weight"]
         quality_score = observation["feature_quality"]
+        current_vix = float(observation["vix"])
 
         logger.info(f"\n📊 Cohort: {cohort} (weight: {cohort_weight:.3f})")
         logger.info(f"✨ Feature quality: {quality_score:.1%}")
@@ -247,15 +229,31 @@ class IntegratedForecastingSystem:
         logger.info("\n🎯 Generating probabilistic forecast...")
 
         try:
-            distribution = self.forecaster.predict(X_df, cohort)
+            distribution = self.forecaster.predict(X_df, cohort, current_vix)
+            # DEBUG: Log what we got back
+            logger.info(f"🔍 Received keys: {list(distribution.keys())}")
         except Exception as e:
-            logger.error(f"❌ Prediction failed: {e}")
+            logger.error(f"❌ Prediction failed: {e}", exc_info=True)
             return None
 
         # Step 5: Apply calibration if available
         if self.calibrator:
-            distribution = self.calibrator.calibrate(distribution)
-            logger.info("📊 Applied forecast calibration")
+            calib_result = self.calibrator.calibrate(
+                raw_forecast=distribution["median_forecast"],
+                current_vix=current_vix,
+                cohort=cohort,
+            )
+            # Update distribution with calibrated values
+            adjustment = calib_result["adjustment"]
+            distribution["median_forecast"] = calib_result["calibrated_forecast"]
+            distribution["q50"] = calib_result["calibrated_forecast"]
+            distribution["point_estimate"] = calib_result["calibrated_forecast"]
+            # Apply same adjustment to other quantiles
+            distribution["q10"] += adjustment
+            distribution["q25"] += adjustment
+            distribution["q75"] += adjustment
+            distribution["q90"] += adjustment
+            logger.info(f"📊 Applied calibration: {adjustment:+.2f}% adjustment")
 
         # Adjust confidence by cohort weight
         distribution["confidence_score"] *= 2 - cohort_weight
@@ -406,7 +404,13 @@ class IntegratedForecastingSystem:
         logger.info("BACKFILLING ACTUALS")
         logger.info("=" * 80)
 
-        self.prediction_db.backfill_actuals()
+        # FIX: Get VIX series from data fetcher
+        # Build a minimal feature set just to get VIX data
+        feature_data = self.feature_engine.build_complete_features(years=TRAINING_YEARS)
+        vix_series = feature_data["vix"]
+
+        # Pass vix_series to backfill_actuals
+        self.prediction_db.backfill_actuals(vix_series)
 
         logger.info("=" * 80 + "\n")
 
@@ -415,14 +419,6 @@ class IntegratedForecastingSystem:
         start_date: str,
         end_date: str,
     ):
-        """
-        Generate forecasts for a date range (for backtesting/calibration).
-
-        Args:
-            start_date: Start date (YYYY-MM-DD)
-            end_date: End date (YYYY-MM-DD)
-        """
-
         logger.info("\n" + "=" * 80)
         logger.info("BATCH FORECAST GENERATION")
         logger.info("=" * 80)
@@ -750,17 +746,6 @@ class IntegratedForecastingSystem:
 
 
 def main():
-    """
-    Main execution function with CLI argument support.
-
-    OPERATIONAL MODES:
-    - forecast: Generate single prediction for today
-    - complete: Full calibration/validation workflow
-    - batch: Generate predictions for date range
-    - backfill: Backfill actual outcomes
-    - anomaly: Run anomaly detection (legacy)
-    """
-
     parser = argparse.ArgumentParser(
         description="Integrated VIX Forecasting System V3.1"
     )
@@ -868,14 +853,17 @@ def main():
 
             # STEP 2: Backfill actuals for calibration period
             logger.info(f"\n[2/8] Backfilling actuals for {cal_start[:4]}...")
-            system.prediction_db.backfill_actuals()
+            feature_data = system.feature_engine.build_complete_features(
+                years=TRAINING_YEARS
+            )
+            vix_series = feature_data["vix"]
+            system.prediction_db.backfill_actuals(vix_series)
 
             # STEP 3: Train calibrator on calibration period ONLY
             logger.info(f"\n[3/8] Training calibrator on {cal_start[:4]} data...")
             calibrator = ForecastCalibrator()
             success = calibrator.fit_from_database(
-                db=system.prediction_db,
-                min_samples=50,
+                database=system.prediction_db,  # ✅ FIX: Changed to 'database'
                 start_date=cal_start,
                 end_date=cal_end,
             )
@@ -883,8 +871,7 @@ def main():
                 logger.error("❌ Calibration failed - insufficient data")
                 system.calibrator = original_calibrator
                 return
-            calibrator.save()
-
+            calibrator.save_calibrator()
             # STEP 4: Delete validation period forecasts (if any exist)
             logger.info(f"\n[4/8] Clearing old {val_start[:4]} forecasts...")
             conn = sqlite3.connect(system.prediction_db.db_path)
@@ -907,7 +894,7 @@ def main():
 
             # STEP 6: Backfill actuals for validation period
             logger.info(f"\n[6/8] Backfilling actuals for {val_start[:4]}...")
-            system.prediction_db.backfill_actuals()
+            system.prediction_db.backfill_actuals(vix_series)
 
             # STEP 7: Generate production year forecasts WITH calibration
             logger.info(f"\n[7/8] Generating {PRODUCTION_START_DATE[:4]} forecasts...")
@@ -915,10 +902,8 @@ def main():
             system.generate_forecast_batch(PRODUCTION_START_DATE, today)
 
             # STEP 8: Backfill actuals and run validation
-            logger.info(
-                f"\n[8/8] Backfilling {PRODUCTION_START_DATE[:4]} actuals and running validation..."
-            )
-            system.prediction_db.backfill_actuals()
+            logger.info(f"\n[8/8] Backfilling {PRODUCTION_START_DATE[:4]} actuals...")
+            system.prediction_db.backfill_actuals(vix_series)
 
             # Run walk-forward validation if available
             try:
@@ -970,8 +955,11 @@ def main():
         sys.exit(0)
 
     elif args.mode == "backfill":
-        # Backfill actuals
-        system.backfill_actuals()
+        feature_data = system.feature_engine.build_complete_features(
+            years=TRAINING_YEARS
+        )
+        vix_series = feature_data["vix"]
+        system.backfill_actuals()  # This now handles vix_series internally
         sys.exit(0)
 
     elif args.mode == "anomaly":

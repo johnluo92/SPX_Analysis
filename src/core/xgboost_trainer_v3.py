@@ -428,17 +428,6 @@ class ProbabilisticVIXForecaster:
         return calibrators
 
     def predict(self, X: pd.DataFrame, cohort: str, current_vix: float) -> Dict:
-        """
-        Generate probabilistic forecast with quantiles and direction.
-
-        Args:
-            X: Feature dataframe (single row)
-            cohort: Calendar cohort to use
-            current_vix: Current VIX level for domain-aware bounds
-
-        Returns:
-            Dictionary with quantiles, direction_probability, confidence_score
-        """
         if cohort not in self.models:
             raise ValueError(
                 f"Cohort {cohort} not trained. Available: {list(self.models.keys())}"
@@ -473,6 +462,7 @@ class ProbabilisticVIXForecaster:
         prob_up = float(
             self.models[cohort]["direction"].predict_proba(X_features)[0][1]
         )
+        prob_down = 1.0 - prob_up
 
         # Confidence score
         confidence = np.clip(
@@ -482,13 +472,25 @@ class ProbabilisticVIXForecaster:
         # Use median (q50) as primary forecast (no separate point estimate)
         median_forecast = quantiles_pct["q50"]
 
+        # ✅ FIX: Return FLAT structure with individual quantile keys
         return {
-            "median_forecast": float(median_forecast),  # Primary forecast
-            "quantiles": {k: float(v) for k, v in quantiles_pct.items()},
-            "direction_probability": prob_up,
+            # Primary forecast
+            "median_forecast": float(median_forecast),
+            "point_estimate": float(median_forecast),  # Backward compatibility
+            # ✅ Individual quantile keys (FLAT, not nested in 'quantiles' dict)
+            "q10": float(quantiles_pct["q10"]),
+            "q25": float(quantiles_pct["q25"]),
+            "q50": float(quantiles_pct["q50"]),
+            "q75": float(quantiles_pct["q75"]),
+            "q90": float(quantiles_pct["q90"]),
+            # Direction probabilities
+            "prob_up": float(prob_up),
+            "prob_down": float(prob_down),
+            # Confidence
             "confidence_score": float(confidence),
-            "cohort": cohort,
+            # Metadata (for reference, not used in main flow)
             "metadata": {
+                "cohort": cohort,
                 "current_vix": current_vix,
                 "realized_vol_bounds": {
                     "floor": self.vix_floor,

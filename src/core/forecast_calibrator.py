@@ -46,7 +46,12 @@ class ForecastCalibrator:
             f"  Regime-specific: {regime_specific}"
         )
 
-    def fit_from_database(self, database) -> bool:
+    def fit_from_database(
+        self,
+        database,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> bool:
         """
         Fit calibration models from historical predictions in database.
 
@@ -59,6 +64,8 @@ class ForecastCalibrator:
 
         Args:
             database: PredictionDatabase instance
+            start_date: Optional start date filter (YYYY-MM-DD)
+            end_date: Optional end date filter (YYYY-MM-DD)
 
         Returns:
             True if calibration successful, False otherwise
@@ -74,7 +81,17 @@ class ForecastCalibrator:
 
         logger.info("\n[1/5] Loading historical predictions...")
 
+        # Get predictions with optional date filtering
         df = database.get_predictions(with_actuals=True)
+
+        # Apply date filters if provided
+        if start_date:
+            df = df[df["forecast_date"] >= pd.Timestamp(start_date)]
+            logger.info(f"  Filtered to dates >= {start_date}")
+
+        if end_date:
+            df = df[df["forecast_date"] <= pd.Timestamp(end_date)]
+            logger.info(f"  Filtered to dates <= {end_date}")
 
         if len(df) == 0:
             logger.error("❌ No predictions with actuals available")
