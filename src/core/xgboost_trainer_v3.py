@@ -453,18 +453,64 @@ class ProbabilisticVIXForecaster:
         return calibrators
 
     def predict(self, X: pd.DataFrame, cohort: str, current_vix: float) -> Dict:
+        """Generate probabilistic forecast with dtype safety validation."""
         if cohort not in self.models:
             raise ValueError(
                 f"Cohort {cohort} not trained. Available: {list(self.models.keys())}"
             )
 
-        # ✅ Add cohort_weight if missing (it's in self.feature_names from training)
+        # Add cohort_weight if missing (it's in self.feature_names from training)
         if "cohort_weight" not in X.columns and "cohort_weight" in self.feature_names:
             X = X.copy()
             X["cohort_weight"] = 1.0
 
+        # Select features (in order expected by models)
         X_features = X[self.feature_names]
+
+        # ============================================================
+        # CRITICAL DTYPE VALIDATION (catches dtype bugs before XGBoost)
+        # ============================================================
+        object_cols = X_features.select_dtypes(include=["object"]).columns.tolist()
+
+        if object_cols:
+            logger.error(
+                f"❌ XGBoost received object dtypes: {len(object_cols)} columns"
+            )
+            logger.error(f"   First 10: {object_cols[:10]}")
+
+            # Check if it's a pandas metadata bug (values are numeric but dtype is object)
+            if len(object_cols) > 0:
+                sample_col = object_cols[0]
+                sample_val = X_features[sample_col].iloc[0]
+                sample_type = type(sample_val).__name__
+                logger.error(
+                    f"   Sample: {sample_col} = {sample_val} (type: {sample_type})"
+                )
+
+                # If values are actually numeric, this is pandas metadata bug
+                if isinstance(sample_val, (int, float, np.integer, np.floating)):
+                    logger.error("   ⚠️  This is a pandas dtype metadata bug!")
+                    logger.error(
+                        "   ⚠️  Values are numeric but DataFrame dtype is 'object'"
+                    )
+                    logger.error(
+                        "   ⚠️  Apply nuclear fix in _get_features() and generate_forecast()"
+                    )
+
+            raise ValueError(
+                f"Input DataFrame has {len(object_cols)} object columns. "
+                "Apply nuclear dtype fix in integrated_system_production.py"
+            )
+
+        # Verify all columns are numeric types
+        non_numeric = X_features.select_dtypes(exclude=[np.number]).columns.tolist()
+        if non_numeric:
+            logger.error(f"❌ Non-numeric columns detected: {non_numeric}")
+            raise ValueError(f"Input has non-numeric columns: {non_numeric}")
+
+        # ============================================================
         # Get quantile predictions in log space
+        # ============================================================
         quantiles_log = {}
         for q in self.quantiles:
             q_name = f"q{int(q * 100)}"
@@ -475,19 +521,17 @@ class ProbabilisticVIXForecaster:
         quantiles_rv = {k: np.exp(v) for k, v in quantiles_log.items()}
 
         # Apply domain knowledge bounds
-        # Realized vol rarely below 10 or above 90
         quantiles_rv_bounded = {
             k: np.clip(v, self.vix_floor, self.vix_ceiling)
             for k, v in quantiles_rv.items()
         }
 
         # Convert to VIX % change relative to current level
-        # (maintaining original output format for compatibility)
         quantiles_pct = {
             k: ((v / current_vix) - 1) * 100 for k, v in quantiles_rv_bounded.items()
         }
 
-        # Direction probability (probability VIX goes up)
+        # Direction probability
         prob_up = float(
             self.models[cohort]["direction"].predict_proba(X_features)[0][1]
         )
@@ -498,26 +542,20 @@ class ProbabilisticVIXForecaster:
             self.models[cohort]["confidence"].predict(X_features)[0], 0, 1
         )
 
-        # Use median (q50) as primary forecast (no separate point estimate)
+        # Use median (q50) as primary forecast
         median_forecast = quantiles_pct["q50"]
 
-        # ✅ FIX: Return FLAT structure with individual quantile keys
         return {
-            # Primary forecast
             "median_forecast": float(median_forecast),
-            "point_estimate": float(median_forecast),  # Backward compatibility
-            # ✅ Individual quantile keys (FLAT, not nested in 'quantiles' dict)
+            "point_estimate": float(median_forecast),
             "q10": float(quantiles_pct["q10"]),
             "q25": float(quantiles_pct["q25"]),
             "q50": float(quantiles_pct["q50"]),
             "q75": float(quantiles_pct["q75"]),
             "q90": float(quantiles_pct["q90"]),
-            # Direction probabilities
             "prob_up": float(prob_up),
             "prob_down": float(prob_down),
-            # Confidence
             "confidence_score": float(confidence),
-            # Metadata (for reference, not used in main flow)
             "metadata": {
                 "cohort": cohort,
                 "current_vix": current_vix,

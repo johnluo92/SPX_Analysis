@@ -571,17 +571,42 @@ class UnifiedDataFetcher:
     def fetch_cboe_series(self, symbol: str) -> Optional[pd.Series]:
         if symbol not in self.CBOE_FILES:
             return None
+
         file_path = self.cboe_data_dir / self.CBOE_FILES[symbol]
+
         if not file_path.exists():
             self.logger.warning(f"CBOE:{symbol}: File not found")
             return None
+
         try:
-            df = pd.read_csv(file_path, parse_dates=[0], index_col=0)
+            # ⭐ FIX: Read CSV with explicit dtype conversion
+            df = pd.read_csv(
+                file_path,
+                parse_dates=[0],
+                index_col=0,
+                # Force all data columns to numeric, coerce errors to NaN
+                converters={1: lambda x: pd.to_numeric(x, errors="coerce")},
+            )
+
+            # Additional safety: convert ALL columns to numeric
+            for col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
             df = self._normalize_data(df, f"CBOE:{symbol}")
+
             if df is None or df.empty:
                 return None
+
             self.logger.info(f"CBOE:{symbol}: {len(df)} rows")
-            return df.iloc[:, 0] if len(df.columns) > 0 else None
+
+            # Return first column as Series with float64 dtype
+            series = df.iloc[:, 0] if len(df.columns) > 0 else None
+
+            if series is not None:
+                series = series.astype(np.float64)
+
+            return series
+
         except Exception as e:
             self.logger.error(f"CBOE:{symbol}: {str(e)[:100]}")
             return None

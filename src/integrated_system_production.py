@@ -173,87 +173,107 @@ class IntegratedForecastingSystem:
 
         logger.info(f"📊 Total cohorts loaded: {len(self.forecaster.models)}")
 
-    def generate_forecast(
-        self,
-        forecast_date: Optional[pd.Timestamp] = None,
-        store_prediction: bool = True,
-    ) -> Optional[Dict]:
+    def generate_forecast(self, date=None, store_prediction=True):
+        """
+        Generate probabilistic VIX forecast for given date.
+
+        Args:
+            date: Target observation date (None = most recent)
+            store_prediction: If True, save forecast to database
+
+        Returns:
+            dict: Forecast distribution with quantiles, regime probs, metadata
+        """
         logger.info("\n" + "=" * 80)
-        logger.info("PROBABILISTIC FORECAST GENERATION (V3)")
+        logger.info("GENERATING PROBABILISTIC FORECAST")
         logger.info("=" * 80)
 
-        # Step 1: Prepare date and features
-        if forecast_date is None:
-            forecast_date = pd.Timestamp.now().normalize()
+        # 1. Get features (uses cache if available)
+        df = self._get_features()
 
-        logger.info(f"\n📅 Forecast date: {forecast_date.date()}")
-        logger.info(f"📈 Target horizon: {TARGET_CONFIG['horizon_days']} days")
-        logger.info(f"🎯 Primary forecast: Median (q50) from quantile regression")
+        # 2. Select observation date
+        if date is None:
+            date = df.index[-1]
+            logger.info(f"📅 Using latest date: {date.strftime('%Y-%m-%d')}")
+        else:
+            date = pd.Timestamp(date)
+            logger.info(f"📅 Forecast date: {date.strftime('%Y-%m-%d')}")
 
-        # Get feature matrix
-        features = self._get_features()
+        if date not in df.index:
+            raise ValueError(f"Date {date} not in feature data")
 
-        if forecast_date not in features.index:
-            logger.error(f"❌ Date {forecast_date.date()} not in feature matrix")
-            return None
+        observation = df.loc[date]
 
-        # Step 2: Extract observation
-        observation = features.loc[forecast_date]
+        # 3. Check data quality
+        logger.info("🔍 Checking data quality...")
+        feature_dict = observation.to_dict()
+        quality_score = self.validator.compute_feature_quality(feature_dict, date)
+        usable, quality_msg = self.validator.check_quality_threshold(quality_score)
 
-        # Validate temporal hygiene
-        logger.info("\n🔍 Validating temporal hygiene...")
-        is_valid, violations = self.validator.validate_walk_forward_gap(
-            features, forecast_date, strict=False
+        logger.info(f"   Quality Score: {quality_score:.2f}")
+        logger.info(f"   Status: {quality_msg}")
+
+        if not usable:
+            report = self.validator.get_quality_report(feature_dict, date)
+            logger.error("❌ Data quality insufficient:")
+            for issue in report["issues"]:
+                logger.error(f"   • {issue}")
+            raise ValueError(f"Cannot forecast: {quality_msg}")
+
+        # 4. Get calendar cohort
+        cohort = observation.get("calendar_cohort", "mid_cycle")
+        cohort_weight = observation.get("cohort_weight", 1.0)
+        logger.info(f"📅 Calendar Cohort: {cohort} (weight: {cohort_weight:.2f})")
+
+        # 5. Check if cohort model exists
+        if cohort not in self.forecaster.models:
+            logger.warning(f"⚠️  Cohort {cohort} not trained, falling back to mid_cycle")
+            cohort = "mid_cycle"
+
+            if cohort not in self.forecaster.models:
+                raise ValueError("No trained models available. Run training first.")
+
+        # 6. Prepare features for prediction
+        logger.info("🎯 Preparing features for prediction...")
+
+        # NUCLEAR FIX: Extract as numpy array and rebuild DataFrame
+        # This bypasses pandas' dtype metadata bugs
+        feature_values = observation[self.forecaster.feature_names]
+
+        # Convert to numpy array with explicit float64 dtype
+        X_array = np.array([feature_values.values], dtype=np.float64)
+
+        # Create clean DataFrame
+        X_df = pd.DataFrame(X_array, columns=self.forecaster.feature_names)
+
+        # Fill any NaNs
+        X_df = X_df.fillna(0.0)
+
+        # Validation
+        assert X_df.shape == (1, len(self.forecaster.feature_names)), (
+            f"Shape mismatch: {X_df.shape}"
+        )
+        assert all(X_df.dtypes == np.float64), (
+            f"Not all float64: {X_df.dtypes.value_counts()}"
         )
 
-        if violations:
-            logger.warning(f"⚠️  Found {len(violations)} temporal violations")
-            for v in violations[:3]:
-                logger.warning(f"   → {v}")
+        logger.info(f"✅ Features prepared: shape={X_df.shape}, all float64")
 
-        # Step 3: Determine cohort and quality
-        cohort = observation["calendar_cohort"]
-        cohort_weight = observation["cohort_weight"]
-        quality_score = observation["feature_quality"]
+        # 7. Generate distribution
+        logger.info("🎯 Generating probabilistic forecast...")
+
         current_vix = float(observation["vix"])
-
-        logger.info(f"\n📊 Cohort: {cohort} (weight: {cohort_weight:.3f})")
-        logger.info(f"✨ Feature quality: {quality_score:.1%}")
-
-        # Prepare feature vector (exclude metadata columns)
-        metadata_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
-        X = observation.drop(metadata_cols, errors="ignore")
-        X_df = X.to_frame().T
-
-        # Step 4: Generate distribution
-        logger.info("\n🎯 Generating probabilistic forecast...")
 
         try:
             distribution = self.forecaster.predict(X_df, cohort, current_vix)
-            # DEBUG: Log what we got back
-            logger.info(f"🔍 Received keys: {list(distribution.keys())}")
         except Exception as e:
-            logger.error(f"❌ Prediction failed: {e}", exc_info=True)
-            return None
+            logger.error(f"❌ Prediction failed: {e}")
+            raise
 
-        # Step 5: Apply calibration if available
+        # 7.5 Apply calibration if available
         if self.calibrator:
-            calib_result = self.calibrator.calibrate(
-                raw_forecast=distribution["median_forecast"],
-                current_vix=current_vix,
-                cohort=cohort,
-            )
-            # Update distribution with calibrated values
-            adjustment = calib_result["adjustment"]
-            distribution["median_forecast"] = calib_result["calibrated_forecast"]
-            distribution["q50"] = calib_result["calibrated_forecast"]
-            distribution["point_estimate"] = calib_result["calibrated_forecast"]
-            # Apply same adjustment to other quantiles
-            distribution["q10"] += adjustment
-            distribution["q25"] += adjustment
-            distribution["q75"] += adjustment
-            distribution["q90"] += adjustment
-            logger.info(f"📊 Applied calibration: {adjustment:+.2f}% adjustment")
+            distribution = self.calibrator.calibrate(distribution)
+            logger.info("🎯 Applied forecast calibration")
 
         # Adjust confidence by cohort weight
         distribution["confidence_score"] *= 2 - cohort_weight
@@ -261,39 +281,35 @@ class IntegratedForecastingSystem:
             distribution["confidence_score"], 0, 1
         )
 
-        # Validate quantile ordering
-        self._validate_quantile_ordering(distribution)
-
-        # Step 6: Add metadata
-        target_date = forecast_date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+        # 8. Add metadata
+        forecast_date = date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
         distribution["metadata"] = {
-            "observation_date": forecast_date.strftime("%Y-%m-%d"),
-            "forecast_date": target_date.strftime("%Y-%m-%d"),
+            "observation_date": date.strftime("%Y-%m-%d"),
+            "forecast_date": forecast_date.strftime("%Y-%m-%d"),
             "horizon_days": TARGET_CONFIG["horizon_days"],
             "feature_quality": float(quality_score),
             "cohort_weight": float(cohort_weight),
-            "current_vix": float(observation["vix"]),
+            "current_vix": float(current_vix),
             "features_used": len(self.forecaster.feature_names),
         }
 
-        # Display forecast
-        self._display_forecast_summary(distribution, observation)
+        # Add cohort to top level for compatibility
+        distribution["cohort"] = cohort
 
-        # Store in database
+        # 9. Log forecast summary
+        self._log_forecast_summary(distribution)
+
+        # 10. Store in database
         if store_prediction:
-            prediction_id = self._store_prediction(
-                distribution, observation, forecast_date
-            )
+            prediction_id = self._store_prediction(distribution, observation)
             distribution["prediction_id"] = prediction_id
             logger.info(f"💾 Stored prediction: {prediction_id}")
 
-        # Update state
+        # 11. Update state
         self.last_forecast = distribution
-        self.forecast_history.append(
-            {"date": forecast_date, "distribution": distribution}
-        )
+        self.forecast_history.append({"date": date, "distribution": distribution})
 
-        logger.info("\n" + "=" * 80)
+        logger.info("=" * 80)
         logger.info("✅ FORECAST COMPLETE")
         logger.info("=" * 80)
 
@@ -439,7 +455,7 @@ class IntegratedForecastingSystem:
         for date in dates:
             logger.info(f"\nProcessing {date.date()}...")
 
-            result = self.generate_forecast(forecast_date=date)
+            result = self.generate_forecast(date=date)
 
             if result:
                 successful += 1
@@ -689,23 +705,17 @@ class IntegratedForecastingSystem:
     # FEATURE CACHING
     # ========================================================================
 
-    def _get_features(self, force_refresh: bool = False) -> pd.DataFrame:
+    # Replace the entire _get_features method in integrated_system_production.py
+    # (around line 856-900)
+
+    def _get_features(self, force_refresh=False) -> pd.DataFrame:
         """
-        Get features with intelligent caching.
+        Get features with intelligent caching and GUARANTEED numeric dtypes.
 
-        Caching rules:
-        - Features are built once per calendar day
-        - Cache persists across multiple forecasts
-        - force_refresh=True bypasses cache (for batch backtesting)
-
-        Args:
-            force_refresh: Force rebuild regardless of cache state
-
-        Returns:
-            pd.DataFrame: Feature matrix with all features + metadata
+        Nuclear dtype fix applied to eliminate pandas metadata bugs.
         """
-
-        today = pd.Timestamp.now().normalize()
+        now = pd.Timestamp.now()
+        today = (now.year, now.month, now.day)
 
         # Check if cache is valid
         if (
@@ -721,28 +731,50 @@ class IntegratedForecastingSystem:
         feature_data = self.feature_engine.build_complete_features(years=TRAINING_YEARS)
         df = feature_data["features"]
 
-        # Force numeric dtypes (safety check)
+        # Identify metadata columns
         metadata_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
-        for col in df.columns:
-            if col not in metadata_cols and df[col].dtype == object:
-                logger.warning(f"⚠️ Converting object column to numeric: {col}")
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+        numeric_cols = [c for c in df.columns if c not in metadata_cols]
 
-        # Verify no object columns remain
-        object_cols = df.select_dtypes(include=["object"]).columns.tolist()
-        unexpected = [c for c in object_cols if c not in metadata_cols]
-        if unexpected:
-            logger.error(f"❌ Unexpected object columns: {unexpected[:5]}")
-            raise ValueError(
-                f"DataFrame contains {len(unexpected)} non-numeric columns"
+        logger.info(f"   Applying nuclear dtype fix to {len(numeric_cols)} columns...")
+
+        # NUCLEAR FIX: Rebuild DataFrame from numpy array
+        # This forces pandas to reinfer dtypes and breaks metadata bugs
+        numeric_array = df[numeric_cols].values.astype(np.float64)
+        df_clean = pd.DataFrame(numeric_array, columns=numeric_cols, index=df.index)
+
+        # Add back metadata columns
+        for col in metadata_cols:
+            if col in df.columns:
+                df_clean[col] = df[col]
+
+        # Reorder to match original
+        df_clean = df_clean[df.columns]
+
+        # Validation
+        final_object_cols = (
+            df_clean[numeric_cols].select_dtypes(include=["object"]).columns.tolist()
+        )
+        if final_object_cols:
+            logger.error(
+                f"❌ Nuclear fix failed: {len(final_object_cols)} object columns remain"
             )
+            raise ValueError(f"Dtype conversion failed on: {final_object_cols[:10]}")
+
+        # Verify all numeric columns are float64
+        dtype_check = df_clean[numeric_cols].dtypes.value_counts()
+        if len(dtype_check) != 1 or dtype_check.index[0] != np.float64:
+            logger.error(f"❌ Mixed dtypes: {dtype_check.to_dict()}")
+            raise ValueError("Not all numeric columns are float64")
 
         # Cache it
-        self._feature_cache = df
+        self._feature_cache = df_clean
         self._feature_cache_date = today
 
-        logger.info(f"✅ Features cached: {df.shape}, dtypes OK")
-        return df
+        logger.info(f"✅ Features validated and cached")
+        logger.info(f"   Shape: {df_clean.shape}")
+        logger.info(f"   All {len(numeric_cols)} numeric cols are float64")
+
+        return df_clean
 
 
 def main():

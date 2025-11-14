@@ -1345,9 +1345,12 @@ class FeatureEngineer:
         numeric_cols = [col for col in df.columns if col not in metadata_cols]
 
         for col in numeric_cols:
+            # Convert any object columns to numeric (coerce errors to NaN)
             if df[col].dtype == object:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-            if col in df.columns and df[col].dtype in [np.int32, np.int64, np.float32]:
+
+            # Ensure everything is float64 (XGBoost requires consistent dtypes)
+            if df[col].dtype in [np.int32, np.int64, np.float32]:
                 df[col] = df[col].astype(np.float64)
 
         return df
