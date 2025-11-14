@@ -1,17 +1,4 @@
-"""
-Forecast Calibrator V3 - Bias Correction for Log-RV Forecasts
-
-CRITICAL CHANGES FROM V2:
-1. Calibrates median_forecast (not point_estimate)
-2. Uses median_error for bias estimation
-3. Cohort-specific bias correction
-4. Handles log-space predictions properly
-5. Validates calibration improves accuracy
-
-Author: VIX Forecasting System
-Last Updated: 2025-11-13
-Version: 3.0 (Log-RV Quantile Regression)
-"""
+"""Forecast Calibrator V3 - Bias Correction for Log-RV Forecasts"""
 
 import json
 import logging
@@ -30,25 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class ForecastCalibrator:
-    """
-    Post-hoc calibration for median forecasts using historical errors.
-
-    V3 METHODOLOGY:
-    - Fits bias correction models on median_forecast vs actual errors
-    - Supports cohort-specific calibration (different bias per cohort)
-    - Adaptive calibration based on VIX regime
-    - Uses robust regression to handle outliers
-    - Validates that calibration improves out-of-sample accuracy
-
-    CALIBRATION PHILOSOPHY:
-    Even the best models have systematic biases. The calibrator learns
-    these biases from historical predictions and adjusts new forecasts
-    to correct them. This is especially important for:
-    1. Overestimation bias in quantile models
-    2. Cohort-specific biases (e.g., month-end effects)
-    3. Regime-dependent biases (low vs high VIX)
-    """
-
     def __init__(
         self,
         min_samples: int = 50,
@@ -56,16 +24,6 @@ class ForecastCalibrator:
         cohort_specific: bool = True,
         regime_specific: bool = True,
     ):
-        """
-        Initialize calibrator.
-
-        Args:
-            min_samples: Minimum samples required for calibration
-            use_robust: Use robust regression (less sensitive to outliers)
-            cohort_specific: Apply different calibration per cohort
-            regime_specific: Apply different calibration per VIX regime
-        """
-
         self.min_samples = min_samples
         self.use_robust = use_robust
         self.cohort_specific = cohort_specific
@@ -555,6 +513,22 @@ class ForecastCalibrator:
         except Exception as e:
             logger.error(f"❌ Failed to load calibrator: {e}")
             return False
+
+    @classmethod
+    def load(cls, input_dir: str = "models") -> Optional["ForecastCalibrator"]:
+        """
+        Load calibrator from disk (class method for convenience).
+
+        Returns:
+            ForecastCalibrator instance if successful, None otherwise
+        """
+        calibrator = cls()
+        success = calibrator.load_calibrator(input_dir)
+
+        if success:
+            return calibrator
+        else:
+            return None
 
 
 # ============================================================
