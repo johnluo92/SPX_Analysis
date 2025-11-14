@@ -1,9 +1,9 @@
 # System Architecture Documentation
-*Generated: 2025-11-13 15:49:25*
+*Generated: 2025-11-14 15:02:22*
 
 ## Overview
 - Total modules analyzed: 19
-- Total lines of code: 11765
+- Total lines of code: 12658
 
 ## Module Structure
 
@@ -22,7 +22,7 @@
     - `calculate_historical_persistence_stats(self, ensemble_scores: np.ndarray, dates: Optional[pd.DatetimeIndex], ...)`
 
 **Functions:**
-- `validate_feature_quality(features: pd.DataFrame, feature_list: list, detector_name: str) -> Tuple[<ast.Tuple object at 0x100ab9e50>]`
+- `validate_feature_quality(features: pd.DataFrame, feature_list: list, detector_name: str) -> Tuple[<ast.Tuple object at 0x101541150>]`
 - `calculate_robust_anomaly_score(raw_score: float, training_distribution: np.ndarray, min_percentile: float, ...) -> float`
 - `calculate_coverage_penalty(coverage: float, min_coverage: float) -> float`
 - `calculate_statistical_thresholds(self) -> dict`
@@ -30,7 +30,7 @@
 - `detect(self, features: pd.DataFrame, verbose: bool) -> dict`
 - `calculate_historical_persistence_stats(self, ensemble_scores: np.ndarray, dates: Optional[pd.DatetimeIndex], ...) -> Dict`
 - `get_top_anomalies(self, result: dict, top_n: int) -> list`
-- `get_feature_contributions(self, detector_name: str, top_n: int) -> List[Tuple[<ast.Tuple object at 0x100a8d710>]]`
+- `get_feature_contributions(self, detector_name: str, top_n: int) -> List[Tuple[<ast.Tuple object at 0x10150ed90>]]`
 - `classify_anomaly(self, score: float, method: str) -> tuple`
 - `logger(self)`
 
@@ -61,7 +61,7 @@
 **Key Dependencies:** core.prediction_database, matplotlib.pyplot, numpy, pandas
 
 
-#### `data_fetcher.py` (569 lines)
+#### `data_fetcher.py` (690 lines)
 **Classes:**
 - `DataFetchLogger`
     - `__init__(self, name: str)`
@@ -81,18 +81,18 @@
 - `error(self, msg: str)`
 - `fetch_fred(self, series_id: str, start_date: str, ...) -> Optional[pd.Series]`
 - `fetch_fred_series(self, series_id: str, start_date: str, ...) -> Optional[pd.Series]`
-- `fetch_all_fred_series(self, start_date: str, end_date: str, ...) -> Dict[<ast.Tuple object at 0x10087b310>]`
+- `fetch_all_fred_series(self, start_date: str, end_date: str, ...) -> Dict[<ast.Tuple object at 0x1014ac510>]`
 - `fetch_yahoo(self, symbol: str, start_date: str, ...) -> Optional[pd.DataFrame]`
 - `fetch_price(self, symbol: str) -> Optional[float]`
 - `fetch_cboe_series(self, symbol: str) -> Optional[pd.Series]`
-- `fetch_all_cboe(self) -> Dict[<ast.Tuple object at 0x100a6cc90>]`
+- `fetch_all_cboe(self) -> Dict[<ast.Tuple object at 0x101330610>]`
 - `fetch_fomc_calendar(self, start_year: int, end_year: int) -> Optional[pd.DataFrame]`
 - `update_fomc_calendar_from_csv(self, csv_path: str) -> Optional[pd.DataFrame]`
 
 **Key Dependencies:** numpy, pandas
 
 
-#### `feature_engine.py` (1270 lines)
+#### `feature_engineer.py` (1356 lines)
 *Enhanced Feature Engine V5 - Streamlined, No Duplicates, WITH CALENDAR COHORT INTEGRATION*
 
 **Classes:**
@@ -102,19 +102,19 @@
     - `extract_rate_of_change_features(df: pd.DataFrame)`
     - `extract_percentile_rankings(df: pd.DataFrame)`
 - `FuturesFeatureEngine`
-    - `extract_vix_futures_features(vx_data: Dict[<ast.Tuple object at 0x100875dd0>])`
-    - `extract_commodity_futures_features(futures_data: Dict[<ast.Tuple object at 0x1008aa590>])`
-    - `extract_dollar_futures_features(dollar_data: Dict[<ast.Tuple object at 0x1008b5790>])`
-    - `extract_futures_cross_relationships(vx_data: Dict[<ast.Tuple object at 0x1008e1450>], commodity_data: Dict[<ast.Tuple object at 0x1008e1090>], dollar_data: Dict[<ast.Tuple object at 0x1008e0cd0>], ...)`
+    - `extract_vix_futures_features(vx_data: Dict[<ast.Tuple object at 0x1012e8450>])`
+    - `extract_commodity_futures_features(futures_data: Dict[<ast.Tuple object at 0x101306d90>])`
+    - `extract_dollar_futures_features(dollar_data: Dict[<ast.Tuple object at 0x101481a90>])`
+    - `extract_futures_cross_relationships(vx_data: Dict[<ast.Tuple object at 0x101541590>], commodity_data: Dict[<ast.Tuple object at 0x101541950>], dollar_data: Dict[<ast.Tuple object at 0x101541d10>], ...)`
 - `TreasuryYieldFeatureEngine`
     - `extract_term_spreads(yields: pd.DataFrame)`
     - `extract_curve_shape(yields: pd.DataFrame)`
     - `extract_rate_volatility(yields: pd.DataFrame)`
-- `UnifiedFeatureEngine`
+- `FeatureEngineer`
     - `__init__(self, data_fetcher)`
     - `get_calendar_cohort(self, date)`
     - `apply_quality_control(self, features: pd.DataFrame)`
-    - `build_complete_features(self, years: int, end_date: Optional[str])`
+    - `build_complete_features(self, years: int, end_date: Optional[str], ...)`
 
 **Functions:**
 - `calculate_robust_zscore(series, window, min_std)`
@@ -125,77 +125,68 @@
 - `extract_cross_asset_relationships(df: pd.DataFrame, macro: pd.DataFrame) -> pd.DataFrame`
 - `extract_rate_of_change_features(df: pd.DataFrame) -> pd.DataFrame`
 - `extract_percentile_rankings(df: pd.DataFrame) -> pd.DataFrame`
-- `extract_vix_futures_features(vx_data: Dict[<ast.Tuple object at 0x100875dd0>]) -> pd.DataFrame`
-- `extract_commodity_futures_features(futures_data: Dict[<ast.Tuple object at 0x1008aa590>]) -> pd.DataFrame`
-- `extract_dollar_futures_features(dollar_data: Dict[<ast.Tuple object at 0x1008b5790>]) -> pd.DataFrame`
-- `extract_futures_cross_relationships(vx_data: Dict[<ast.Tuple object at 0x1008e1450>], commodity_data: Dict[<ast.Tuple object at 0x1008e1090>], dollar_data: Dict[<ast.Tuple object at 0x1008e0cd0>], ...) -> pd.DataFrame`
+- `extract_vix_futures_features(vx_data: Dict[<ast.Tuple object at 0x1012e8450>]) -> pd.DataFrame`
+- `extract_commodity_futures_features(futures_data: Dict[<ast.Tuple object at 0x101306d90>]) -> pd.DataFrame`
+- `extract_dollar_futures_features(dollar_data: Dict[<ast.Tuple object at 0x101481a90>]) -> pd.DataFrame`
+- `extract_futures_cross_relationships(vx_data: Dict[<ast.Tuple object at 0x101541590>], commodity_data: Dict[<ast.Tuple object at 0x101541950>], dollar_data: Dict[<ast.Tuple object at 0x101541d10>], ...) -> pd.DataFrame`
 - `extract_term_spreads(yields: pd.DataFrame) -> pd.DataFrame`
 - `extract_curve_shape(yields: pd.DataFrame) -> pd.DataFrame`
 - `extract_rate_volatility(yields: pd.DataFrame) -> pd.DataFrame`
 - `get_calendar_cohort(self, date)`
 - `apply_quality_control(self, features: pd.DataFrame)`
-- `build_complete_features(self, years: int, end_date: Optional[str]) -> dict`
+- `build_complete_features(self, years: int, end_date: Optional[str], ...) -> dict`
 
 **Key Dependencies:** numpy, pandas
 
 
-#### `forecast_calibrator.py` (420 lines)
-*Forecast Calibrator - Post-Processing for Probabilistic Forecasts*
+#### `forecast_calibrator.py` (646 lines)
+*Forecast Calibrator V3 - Bias Correction for Log-RV Forecasts*
 
 **Classes:**
 - `ForecastCalibrator`
-  - Calibrates probabilistic forecasts using historical forecast errors.
-    - `__init__(self)`
-    - `fit_from_database(self, db_path: str, min_samples: int, ...)`
-    - `calibrate(self, forecast: Dict)`
-    - `save(self, filepath: str)`
-    - `load(cls, filepath: str)`
+    - `__init__(self, min_samples: int, use_robust: bool, ...)`
+    - `fit_from_database(self, database, start_date: Optional[str], ...)`
+    - `calibrate(self, raw_forecast: float, current_vix: float, ...)`
+    - `get_diagnostics(self)`
+    - `save_calibrator(self, output_dir: str)`
+- `MockDatabase`
+    - `get_predictions(self, with_actuals)`
 
 **Functions:**
-- `fit_from_database(self, db_path: str, min_samples: int, ...) -> bool`
-- `calibrate(self, forecast: Dict) -> Dict`
-- `save(self, filepath: str)`
-- `load(cls, filepath: str) -> Optional[ForecastCalibrator]`
+- `fit_from_database(self, database, start_date: Optional[str], ...) -> bool`
+- `calibrate(self, raw_forecast: float, current_vix: float, ...) -> Dict`
 - `get_diagnostics(self) -> Dict`
+- `save_calibrator(self, output_dir: str)`
+- `load_calibrator(self, input_dir: str)`
+- `load(cls, input_dir: str) -> Optional[ForecastCalibrator]`
+- `test_calibrator()`
+- `get_predictions(self, with_actuals)`
 
-**Key Dependencies:** core.prediction_database, numpy, pandas
+**Key Dependencies:** numpy, pandas, sklearn.linear_model, sklearn.metrics
 
 
-#### `prediction_database.py` (851 lines)
-*Prediction Database for Probabilistic Forecasting System*
+#### `prediction_database.py` (814 lines)
+*Prediction Database Module - Log-Transformed Realized Volatility System V3*
 
 **Classes:**
-- `CommitTracker`
-  - Tracks uncommitted writes and screams if data isn't committed.
-    - `__init__(self)`
-    - `track_write(self, operation: str)`
-    - `verify_clean_exit(self)`
 - `PredictionDatabase`
-  - SQLite database for storing and retrieving probabilistic forecasts.
-    - `__init__(self, db_path)`
+  - Manages storage and retrieval of VIX forecasts and actuals.
+    - `__init__(self, db_path: str)`
+    - `transaction(self)`
     - `store_prediction(self, record: Dict)`
-    - `commit(self)`
-    - `get_commit_status(self)`
-    - `get_predictions(self, start_date: str, end_date: str, ...)`
+    - `get_predictions(self, start_date: Optional[str], end_date: Optional[str], ...)`
+    - `backfill_actuals(self, vix_series: pd.Series, horizon: int)`
 
 **Functions:**
-- `track_write(self, operation: str)`
-- `verify_clean_exit(self)`
+- `transaction(self)`
 - `store_prediction(self, record: Dict) -> Optional[str]`
-- `commit(self)`
-- `get_commit_status(self) -> dict`
-- `get_predictions(self, start_date: str, end_date: str, ...) -> pd.DataFrame`
-- `migrate_schema(self)`
-- `remove_all_duplicates(self)`
-- `get_database_stats(self) -> Dict`
-- `backfill_actuals(self, fetcher)`
-- `compute_quantile_coverage(self, cohort: str) -> Dict`
-- `compute_regime_brier_score(self, cohort: str) -> float`
+- `get_predictions(self, start_date: Optional[str], end_date: Optional[str], ...) -> pd.DataFrame`
+- `backfill_actuals(self, vix_series: pd.Series, horizon: int)`
 - `get_performance_summary(self) -> Dict`
-- `export_to_csv(self, filename: str)`
 - `close(self)`
+- `validate_schema()`
 
-**Key Dependencies:** core.data_fetcher, numpy, pandas
+**Key Dependencies:** numpy, pandas
 
 
 #### `temporal_validator.py` (911 lines)
@@ -204,7 +195,7 @@
 **Classes:**
 - `TemporalSafetyValidator`
   - Comprehensive temporal safety validation with feature quality scoring.
-    - `__init__(self, publication_lags: Dict[<ast.Tuple object at 0x100a6da90>])`
+    - `__init__(self, publication_lags: Dict[<ast.Tuple object at 0x101530910>])`
     - `audit_feature_code(self, feature_engine_path: str)`
     - `validate_split(self, X_train: pd.DataFrame, X_val: pd.DataFrame, ...)`
     - `validate_cv_split(self, X_train: pd.DataFrame, X_val: pd.DataFrame, ...)`
@@ -214,9 +205,9 @@
 - `audit_feature_code(self, feature_engine_path: str) -> Dict`
 - `validate_split(self, X_train: pd.DataFrame, X_val: pd.DataFrame, ...) -> List[str]`
 - `validate_cv_split(self, X_train: pd.DataFrame, X_val: pd.DataFrame, ...) -> bool`
-- `verify_publication_lags(self, features: pd.DataFrame, prediction_date: datetime, ...) -> Tuple[<ast.Tuple object at 0x100885490>]`
-- `validate_walk_forward_gap(self, features: pd.DataFrame, prediction_date: datetime, ...) -> Tuple[<ast.Tuple object at 0x1008794d0>]`
-- `test_feature_availability_at_prediction_time(self, features: pd.DataFrame, feature_metadata: Dict[<ast.Tuple object at 0x10085bc90>], ...) -> Dict`
+- `verify_publication_lags(self, features: pd.DataFrame, prediction_date: datetime, ...) -> Tuple[<ast.Tuple object at 0x1012e1f90>]`
+- `validate_walk_forward_gap(self, features: pd.DataFrame, prediction_date: datetime, ...) -> Tuple[<ast.Tuple object at 0x10134bb10>]`
+- `test_feature_availability_at_prediction_time(self, features: pd.DataFrame, feature_metadata: Dict[<ast.Tuple object at 0x1013483d0>], ...) -> Dict`
 - `compute_feature_quality(self, feature_dict: dict, date: pd.Timestamp) -> float`
 - `compute_feature_quality_batch(self, df: pd.DataFrame) -> pd.Series`
 - `update_feature_timestamp(self, feature_name: str, timestamp: pd.Timestamp)`
@@ -224,40 +215,45 @@
 - `check_quality_threshold(self, quality_score: float, strict: bool) -> tuple`
 - `get_quality_report(self, feature_dict: dict, date: pd.Timestamp) -> dict`
 - `generate_validation_report(self, output_path: str, include_metadata_check: bool, ...)`
-- `run_full_validation(feature_engine_path: str, publication_lags: Dict[<ast.Tuple object at 0x100a85190>]) -> TemporalSafetyValidator`
+- `run_full_validation(feature_engine_path: str, publication_lags: Dict[<ast.Tuple object at 0x101510c10>]) -> TemporalSafetyValidator`
 
 **Key Dependencies:** numpy, pandas, sklearn.linear_model, sklearn.metrics
 
 
-#### `xgboost_feature_selector_v2.py` (510 lines)
-*XGBoost Feature Selector V2 - VIX % Change Forecasting (Regression)*
+#### `xgboost_feature_selector_v2.py` (566 lines)
+*XGBoost Feature Selector V3 - Log-Transformed Realized Volatility System*
 
 **Classes:**
-- `IntelligentFeatureSelector`
-  - Stability-based feature selection for VIX % change forecasting.
-    - `__init__(self, output_dir: str)`
-    - `run_full_pipeline(self, features: pd.DataFrame, vix: pd.Series, ...)`
+- `XGBoostFeatureSelector`
+  - Feature selection using XGBoost feature importance for log-RV forecasting.
+    - `__init__(self, horizon: int, min_importance: float, ...)`
+    - `select_features(self, features_df: pd.DataFrame, spx_returns: pd.Series, ...)`
+    - `save_results(self, output_dir: str)`
+    - `load_results(self, input_dir: str)`
 
 **Functions:**
-- `run_full_pipeline(self, features: pd.DataFrame, vix: pd.Series, ...) -> Dict`
-- `run_intelligent_feature_selection(integrated_system, horizons: List[int], min_stability: float, ...) -> Dict`
+- `select_features(self, features_df: pd.DataFrame, spx_returns: pd.Series, ...) -> Tuple[<ast.Tuple object at 0x1012ea6d0>]`
+- `save_results(self, output_dir: str)`
+- `load_results(self, input_dir: str)`
+- `test_feature_selector()`
 
-**Key Dependencies:** numpy, pandas, sklearn.metrics, sklearn.model_selection, xgboost
+**Key Dependencies:** numpy, pandas, sklearn.model_selection, xgboost
 
 
-#### `xgboost_trainer_v2.py` (605 lines)
-*Probabilistic VIX Forecasting System - Multi-output XGBoost models*
+#### `xgboost_trainer_v3.py` (680 lines)
+*Refactored Probabilistic VIX Forecasting System V3*
 
 **Classes:**
 - `ProbabilisticVIXForecaster`
+  - Quantile-based volatility forecasting with directional classifier.
     - `__init__(self)`
     - `train(self, df: pd.DataFrame, save_dir: str)`
-    - `predict(self, X: pd.DataFrame, cohort: str)`
+    - `predict(self, X: pd.DataFrame, cohort: str, ...)`
     - `load(self, cohort: str, load_dir: str)`
 
 **Functions:**
 - `train(self, df: pd.DataFrame, save_dir: str)`
-- `predict(self, X: pd.DataFrame, cohort: str) -> Dict`
+- `predict(self, X: pd.DataFrame, cohort: str, ...) -> Dict`
 - `load(self, cohort: str, load_dir: str)`
 - `train_probabilistic_forecaster(df: pd.DataFrame, save_dir: str) -> ProbabilisticVIXForecaster`
 
@@ -278,10 +274,10 @@
     - `extract_percentile_rankings(df: pd.DataFrame)`
 - `FuturesFeatureEngine`
   - Specialized feature extraction for futures contracts.
-    - `extract_vix_futures_features(vx_data: Dict[<ast.Tuple object at 0x10086e350>])`
-    - `extract_commodity_futures_features(futures_data: Dict[<ast.Tuple object at 0x100a27ed0>])`
-    - `extract_dollar_futures_features(dollar_data: Dict[<ast.Tuple object at 0x100875b10>])`
-    - `extract_futures_cross_relationships(vx_data: Dict[<ast.Tuple object at 0x100c25e90>], commodity_data: Dict[<ast.Tuple object at 0x100c27710>], dollar_data: Dict[<ast.Tuple object at 0x100c30fd0>], ...)`
+    - `extract_vix_futures_features(vx_data: Dict[<ast.Tuple object at 0x1012e9ed0>])`
+    - `extract_commodity_futures_features(futures_data: Dict[<ast.Tuple object at 0x101388690>])`
+    - `extract_dollar_futures_features(dollar_data: Dict[<ast.Tuple object at 0x101348c10>])`
+    - `extract_futures_cross_relationships(vx_data: Dict[<ast.Tuple object at 0x1014afbd0>], commodity_data: Dict[<ast.Tuple object at 0x1014aff50>], dollar_data: Dict[<ast.Tuple object at 0x1014ac990>], ...)`
 - `UnifiedFeatureEngine`
   - Enhanced unified feature engine with meta-features and futures integration.
     - `__init__(self, data_fetcher)`
@@ -292,10 +288,10 @@
 - `extract_cross_asset_relationships(df: pd.DataFrame, macro: pd.DataFrame) -> pd.DataFrame`
 - `extract_rate_of_change_features(df: pd.DataFrame) -> pd.DataFrame`
 - `extract_percentile_rankings(df: pd.DataFrame) -> pd.DataFrame`
-- `extract_vix_futures_features(vx_data: Dict[<ast.Tuple object at 0x10086e350>]) -> pd.DataFrame`
-- `extract_commodity_futures_features(futures_data: Dict[<ast.Tuple object at 0x100a27ed0>]) -> pd.DataFrame`
-- `extract_dollar_futures_features(dollar_data: Dict[<ast.Tuple object at 0x100875b10>]) -> pd.DataFrame`
-- `extract_futures_cross_relationships(vx_data: Dict[<ast.Tuple object at 0x100c25e90>], commodity_data: Dict[<ast.Tuple object at 0x100c27710>], dollar_data: Dict[<ast.Tuple object at 0x100c30fd0>], ...) -> pd.DataFrame`
+- `extract_vix_futures_features(vx_data: Dict[<ast.Tuple object at 0x1012e9ed0>]) -> pd.DataFrame`
+- `extract_commodity_futures_features(futures_data: Dict[<ast.Tuple object at 0x101388690>]) -> pd.DataFrame`
+- `extract_dollar_futures_features(dollar_data: Dict[<ast.Tuple object at 0x101348c10>]) -> pd.DataFrame`
+- `extract_futures_cross_relationships(vx_data: Dict[<ast.Tuple object at 0x1014afbd0>], commodity_data: Dict[<ast.Tuple object at 0x1014aff50>], dollar_data: Dict[<ast.Tuple object at 0x1014ac990>], ...) -> pd.DataFrame`
 - `build_complete_features(self, years: int) -> dict`
 - `test_enhanced_engine()`
 
@@ -376,8 +372,8 @@
 **Key Dependencies:** numpy, pandas
 
 
-#### `walk_forward_validation.py` (641 lines)
-*Fixed Walk-Forward Validation - Handles Missing quantile_coverage Data*
+#### `walk_forward_validation.py` (731 lines)
+*Walk-Forward Validation - V3 Adapted for Log-RV Quantile Regression*
 
 **Classes:**
 - `EnhancedWalkForwardValidator`
@@ -393,54 +389,38 @@
 - `compute_metrics(self, df: pd.DataFrame) -> Dict`
 - `parse_coverage(x)`
 - `generate_diagnostic_report(self, output_dir: str)`
-- `convert(obj)`
 
 **Key Dependencies:** matplotlib.pyplot, numpy, pandas
 
 
 ### root/
 
-#### `config.py` (911 lines)
-*Configuration V5 - Probabilistic Distribution Forecasting*
+#### `config.py` (1069 lines)
+*Configuration V5 - Refactored for True Quantile Regression*
 
 
-#### `integrated_system_production.py` (1425 lines)
-*Integrated Market Analysis System V5 - Probabilistic Forecasting*
+#### `integrated_system_production.py` (1175 lines)
+*Integrated VIX Forecasting System - Production V3 with Complete Workflow*
 
 **Classes:**
-- `AnomalyOrchestrator`
-  - Orchestrates anomaly detection workflow (preserved for backward compatibility).
-    - `__init__(self)`
-    - `train(self, features: pd.DataFrame, vix: pd.Series, ...)`
-    - `detect_current(self, verbose: bool)`
-    - `get_persistence_stats(self)`
-    - `save_state(self, filepath: str)`
-- `IntegratedSystem`
-  - Main system integrating probabilistic forecasting with anomaly detection.
-    - `__init__(self, models_dir)`
+- `IntegratedForecastingSystem`
+  - Production forecasting system using log-RV quantile regression.
+    - `__init__(self, models_dir: str, db_path: str)`
     - `generate_forecast(self, date, store_prediction)`
-    - `run(self, date)`
+    - `backfill_actuals(self)`
+    - `generate_forecast_batch(self, start_date: str, end_date: str, ...)`
     - `train(self, years: int, real_time_vix: bool, ...)`
-    - `run_feature_selection(self, horizons: list, min_stability: float, ...)`
 
 **Functions:**
-- `train(self, features: pd.DataFrame, vix: pd.Series, ...)`
-- `detect_current(self, verbose: bool) -> dict`
-- `get_persistence_stats(self) -> dict`
-- `save_state(self, filepath: str)`
-- `load_state(self, filepath: str)`
 - `generate_forecast(self, date, store_prediction)`
-- `run(self, date)`
+- `backfill_actuals(self)`
+- `generate_forecast_batch(self, start_date: str, end_date: str, ...)`
 - `train(self, years: int, real_time_vix: bool, ...)`
-- `run_feature_selection(self, horizons: list, min_stability: float, ...) -> dict`
 - `get_market_state(self) -> dict`
 - `print_anomaly_summary(self)`
-- `get_memory_report(self) -> dict`
-- `train_probabilistic_models(self, years: int, save_dir: str)`
-- `generate_forecast_batch(self, start_date: str, end_date: str, ...)`
 - `main()`
 
-**Key Dependencies:** core.anomaly_detector, core.data_fetcher, core.feature_engine, core.forecast_calibrator, core.prediction_database, core.temporal_validator, core.xgboost_feature_selector_v2, core.xgboost_trainer_v2
+**Key Dependencies:** core.anomaly_detector, core.data_fetcher, core.feature_engineer, core.forecast_calibrator, core.prediction_database, core.temporal_validator, core.walk_forward_validation, core.xgboost_trainer_v3
 
 
 #### `logging_config.py` (85 lines)
@@ -451,14 +431,17 @@
 - `get_logger(name: str) -> logging.Logger`
 
 
-#### `train_probabilistic_models.py` (164 lines)
-*Training Script for Probabilistic VIX Forecaster*
+#### `train_probabilistic_models.py` (532 lines)
+*Training Script for Probabilistic VIX Forecaster V3*
 
 **Functions:**
-- `filter_cohorts_by_min_samples(df: pd.DataFrame, min_samples: int) -> pd.DataFrame`
+- `prepare_training_data()`
+- `validate_configuration() -> Tuple[<ast.Tuple object at 0x1012e6f10>]`
+- `save_training_report(training_results: dict, output_dir: str)`
+- `display_training_summary(forecaster: ProbabilisticVIXForecaster)`
 - `main()`
 
-**Key Dependencies:** core.data_fetcher, core.feature_engine, core.xgboost_trainer_v2, pandas
+**Key Dependencies:** core.data_fetcher, core.feature_engineer, core.xgboost_trainer_v3, pandas
 
 
 ## Module Dependencies
@@ -467,7 +450,5 @@ Key internal dependencies:
 
 - `backtesting_engine.py` → core.prediction_database
 - `feature_quality_diagnostic.py` → core.data_fetcher, core.feature_engine
-- `forecast_calibrator.py` → core.prediction_database
-- `integrated_system_production.py` → core.anomaly_detector, core.temporal_validator, core.feature_engine, diagnostics.walk_forward_validation, core.forecast_calibrator, core.prediction_database, core.data_fetcher, core.xgboost_trainer_v2, core.xgboost_feature_selector_v2
-- `prediction_database.py` → core.data_fetcher
-- `train_probabilistic_models.py` → core.data_fetcher, core.xgboost_trainer_v2, core.feature_engine
+- `integrated_system_production.py` → core.anomaly_detector, core.walk_forward_validation, core.feature_engineer, core.data_fetcher, core.xgboost_trainer_v3, core.forecast_calibrator, core.prediction_database, core.temporal_validator
+- `train_probabilistic_models.py` → core.xgboost_trainer_v3, core.data_fetcher, core.feature_engineer

@@ -174,18 +174,6 @@ class IntegratedForecastingSystem:
         logger.info(f"📊 Total cohorts loaded: {len(self.forecaster.models)}")
 
     def generate_forecast(self, date=None, store_prediction=True):
-        """
-        Generate probabilistic VIX forecast for given date.
-
-        **FIXED VERSION** - Handles both live and historical dates correctly.
-
-        Args:
-            date: Target observation date (None = most recent, or specify historical date)
-            store_prediction: If True, save forecast to database
-
-        Returns:
-            dict: Forecast distribution with quantiles, regime probs, metadata
-        """
         logger.info("\n" + "=" * 80)
         logger.info("GENERATING PROBABILISTIC FORECAST")
         logger.info("=" * 80)
@@ -329,7 +317,9 @@ class IntegratedForecastingSystem:
 
         # 10. Store in database
         if store_prediction:
-            prediction_id = self._store_prediction(distribution, observation)
+            prediction_id = self._store_prediction(
+                distribution, observation, target_date
+            )
             distribution["prediction_id"] = prediction_id
             logger.info(f"💾 Stored prediction: {prediction_id}")
 
@@ -401,22 +391,16 @@ class IntegratedForecastingSystem:
         self,
         distribution: Dict,
         observation: pd.Series,
-        forecast_date: pd.Timestamp,
+        observation_date: pd.Timestamp,  # ✅ RENAMED from forecast_date
     ) -> int:
-        """
-        Store prediction to database using V3 schema.
-
-        V3 CHANGES:
-        - median_forecast is primary field
-        - point_estimate populated for backward compatibility
-        - All quantiles stored
-        """
-
-        target_date = forecast_date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+        # Calculate the actual forecast target date
+        target_date = observation_date + pd.Timedelta(
+            days=TARGET_CONFIG["horizon_days"]
+        )
 
         prediction = {
-            "forecast_date": target_date,
-            "observation_date": forecast_date,
+            "forecast_date": target_date,  # ✅ This is correct now
+            "observation_date": observation_date,  # ✅ This is the input date
             "horizon": TARGET_CONFIG["horizon_days"],
             "current_vix": float(observation["vix"]),
             "cohort": observation["calendar_cohort"],
@@ -557,7 +541,8 @@ class IntegratedForecastingSystem:
                 ).fillna(0.0)
 
                 # Generate forecast
-                distribution = self.forecaster.predict(X_df, cohort)
+                current_vix = float(observation["vix"])
+                distribution = self.forecaster.predict(X_df, cohort, current_vix)
 
                 # Apply calibration
                 if self.calibrator:
@@ -581,7 +566,8 @@ class IntegratedForecastingSystem:
                 }
 
                 # Store
-                prediction_id = self._store_prediction(distribution, observation)
+                forecast_date = date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+                prediction_id = self._store_prediction(distribution, observation, date)
                 distribution["prediction_id"] = prediction_id
 
                 forecasts.append(distribution)

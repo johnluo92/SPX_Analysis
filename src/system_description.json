@@ -1,69 +1,123 @@
 {
-  "generated": "2025-11-13T15:49:25.890188",
+  "generated": "2025-11-14T15:02:22.941763",
   "summary": {
     "total_modules": 19,
-    "total_lines": 11765,
-    "total_classes": 25,
-    "total_functions": 255
+    "total_lines": 12658,
+    "total_classes": 24,
+    "total_functions": 233
   },
   "modules": {
     "core/forecast_calibrator.py": {
-      "line_count": 420,
-      "docstring": "Forecast Calibrator - Post-Processing for Probabilistic Forecasts\n\nFixes systematic biases in VIX forecasts:\n1. Over-prediction bias (typically +10-15%)\n2. Miscalibrated quantiles (intervals too narrow)\n3. Backwards confidence scores (high conf = high error)\n\nUsage:\n    # One-time setup (after generating 100+ forecasts)\n    calibrator = ForecastCalibrator()\n    calibrator.fit_from_database()\n    calibrator.save()\n\n    # At runtime (in integrated_system_production.py)\n    calibrator = ForecastCalibrator.load()\n    calibrated = calibrator.calibrate(raw_forecast)",
+      "line_count": 646,
+      "docstring": "Forecast Calibrator V3 - Bias Correction for Log-RV Forecasts",
       "imports": [
-        "core.prediction_database",
+        "pandas",
+        "typing",
+        "logging",
+        "pathlib",
+        "sklearn.linear_model",
+        "sklearn.metrics",
         "pickle",
         "json",
-        "pathlib",
-        "typing",
-        "prediction_database",
-        "sys",
-        "warnings",
-        "logging",
-        "numpy",
-        "pandas"
+        "datetime",
+        "numpy"
       ],
       "classes": [
         {
           "name": "ForecastCalibrator",
           "bases": [],
-          "docstring": "Calibrates probabilistic forecasts using historical forecast errors.\n\nThree-step calibration:\n1. Bias Correction: Subtract systematic over/under-prediction\n2. Quantile Adjustment: Widen/narrow prediction intervals\n3. Confidence Recalibration: Fix correlation with forecast error",
+          "docstring": null,
           "methods": [
             "__init__",
             "fit_from_database",
-            "_fit_bias_correction",
-            "_fit_quantile_adjustments",
-            "_fit_confidence_mapping",
             "calibrate",
-            "save",
-            "load",
-            "get_diagnostics"
+            "get_diagnostics",
+            "save_calibrator",
+            "load_calibrator",
+            "load"
+          ]
+        },
+        {
+          "name": "MockDatabase",
+          "bases": [],
+          "docstring": null,
+          "methods": [
+            "get_predictions"
           ]
         }
       ],
       "functions": [
         "__init__",
         "fit_from_database",
-        "_fit_bias_correction",
-        "_fit_quantile_adjustments",
-        "_fit_confidence_mapping",
         "calibrate",
-        "save",
+        "get_diagnostics",
+        "save_calibrator",
+        "load_calibrator",
         "load",
-        "get_diagnostics"
+        "test_calibrator",
+        "get_predictions"
       ]
     },
-    "core/feature_engine.py": {
-      "line_count": 1270,
+    "core/prediction_database.py": {
+      "line_count": 814,
+      "docstring": "Prediction Database Module - Log-Transformed Realized Volatility System V3\n\nCRITICAL CHANGES FROM V2:\n1. Schema updated: median_forecast is now PRIMARY forecast metric\n2. point_estimate maintained for BACKWARD COMPATIBILITY (populated with median value)\n3. New error metrics: median_error (primary), point_error (backward compat)\n4. Quantile storage: q10, q25, q50, q75, q90\n5. All storage operations handle median_forecast correctly\n\nAuthor: VIX Forecasting System\nLast Updated: 2025-11-13\nVersion: 3.0 (Log-RV Quantile Regression)",
+      "imports": [
+        "pandas",
+        "typing",
+        "sqlite3",
+        "logging",
+        "pathlib",
+        "json",
+        "datetime",
+        "contextlib",
+        "numpy"
+      ],
+      "classes": [
+        {
+          "name": "PredictionDatabase",
+          "bases": [],
+          "docstring": "Manages storage and retrieval of VIX forecasts and actuals.\n\nSCHEMA PHILOSOPHY V3:\n- median_forecast: Primary forecast from q50 quantile model\n- point_estimate: Backward compatibility (equals median_forecast)\n- q10-q90: Full quantile distribution\n- median_error: Primary error metric |actual - median_forecast|\n- point_error: Backward compatibility (equals median_error)\n\nThis dual approach ensures:\n1. New code uses median_forecast (better statistics)\n2. Old code continues to work (point_estimate exists)\n3. Easy migration path (both fields identical)",
+          "methods": [
+            "__init__",
+            "_create_schema",
+            "transaction",
+            "store_prediction",
+            "_get_schema_columns",
+            "get_predictions",
+            "backfill_actuals",
+            "_report_quantile_coverage",
+            "get_performance_summary",
+            "close",
+            "__del__"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "_create_schema",
+        "transaction",
+        "store_prediction",
+        "_get_schema_columns",
+        "get_predictions",
+        "backfill_actuals",
+        "_report_quantile_coverage",
+        "get_performance_summary",
+        "close",
+        "__del__",
+        "validate_schema"
+      ]
+    },
+    "core/feature_engineer.py": {
+      "line_count": 1356,
       "docstring": "Enhanced Feature Engine V5 - Streamlined, No Duplicates, WITH CALENDAR COHORT INTEGRATION",
       "imports": [
+        "pandas",
+        "typing",
+        "config",
         "os",
         "datetime",
-        "typing",
-        "warnings",
         "numpy",
-        "config",
-        "pandas"
+        "warnings"
       ],
       "classes": [
         {
@@ -99,7 +153,7 @@
           ]
         },
         {
-          "name": "UnifiedFeatureEngine",
+          "name": "FeatureEngineer",
           "bases": [],
           "docstring": null,
           "methods": [
@@ -170,93 +224,21 @@
         "_ensure_numeric_dtypes"
       ]
     },
-    "core/prediction_database.py": {
-      "line_count": 851,
-      "docstring": "Prediction Database for Probabilistic Forecasting System\n\nStores all forecasts with full distribution + metadata for backtesting.",
-      "imports": [
-        "datetime",
-        "core.data_fetcher",
-        "json",
-        "pathlib",
-        "typing",
-        "warnings",
-        "logging",
-        "numpy",
-        "config",
-        "sqlite3",
-        "pandas",
-        "atexit"
-      ],
-      "classes": [
-        {
-          "name": "CommitTracker",
-          "bases": [],
-          "docstring": "Tracks uncommitted writes and screams if data isn't committed.",
-          "methods": [
-            "__init__",
-            "track_write",
-            "verify_clean_exit"
-          ]
-        },
-        {
-          "name": "PredictionDatabase",
-          "bases": [],
-          "docstring": "SQLite database for storing and retrieving probabilistic forecasts.\n\nSchema:\n    - predictions: Main table with forecasts\n    - actuals: Realized VIX values (joined by forecast_date)\n\nExample:\n    >>> db = PredictionDatabase()\n    >>> db.store_prediction(forecast_record)\n    >>> db.commit()  # REQUIRED!\n    >>> db.backfill_actuals(vix_data)\n    >>> metrics = db.compute_quantile_coverage()",
-          "methods": [
-            "__init__",
-            "_create_schema",
-            "store_prediction",
-            "commit",
-            "get_commit_status",
-            "get_predictions",
-            "migrate_schema",
-            "remove_all_duplicates",
-            "get_database_stats",
-            "backfill_actuals",
-            "compute_quantile_coverage",
-            "compute_regime_brier_score",
-            "get_performance_summary",
-            "export_to_csv",
-            "close"
-          ]
-        }
-      ],
-      "functions": [
-        "__init__",
-        "track_write",
-        "verify_clean_exit",
-        "__init__",
-        "_create_schema",
-        "store_prediction",
-        "commit",
-        "get_commit_status",
-        "get_predictions",
-        "migrate_schema",
-        "remove_all_duplicates",
-        "get_database_stats",
-        "backfill_actuals",
-        "compute_quantile_coverage",
-        "compute_regime_brier_score",
-        "get_performance_summary",
-        "export_to_csv",
-        "close"
-      ]
-    },
     "core/anomaly_detector.py": {
       "line_count": 628,
       "docstring": "Consolidated Anomaly Detection System\n\nRobust anomaly scoring with feature quality validation, coverage penalties,\nand outlier-resistant percentile calculation.",
       "imports": [
-        "pytz",
-        "datetime",
-        "sklearn.ensemble",
+        "pandas",
         "typing",
-        "shap",
-        "sklearn.preprocessing",
-        "warnings",
-        "logging",
-        "numpy",
         "config",
-        "pandas"
+        "logging",
+        "sklearn.preprocessing",
+        "pytz",
+        "shap",
+        "sklearn.ensemble",
+        "datetime",
+        "numpy",
+        "warnings"
       ],
       "classes": [
         {
@@ -305,14 +287,14 @@
       "line_count": 311,
       "docstring": "Backtesting Engine for Probabilistic Forecasts\n\nEvaluates forecast quality using proper scoring rules.",
       "imports": [
-        "core.prediction_database",
-        "seaborn",
-        "json",
-        "pathlib",
-        "logging",
-        "numpy",
         "pandas",
-        "matplotlib.pyplot"
+        "seaborn",
+        "logging",
+        "matplotlib.pyplot",
+        "pathlib",
+        "core.prediction_database",
+        "json",
+        "numpy"
       ],
       "classes": [
         {
@@ -346,17 +328,17 @@
       "line_count": 911,
       "docstring": "Temporal Safety Validator - Prevent Look-Ahead Bias\n====================================================\nThree-tier validation system to ensure no data leakage in training/prediction.\nEnhanced with Feature Quality Scoring for confidence models.",
       "imports": [
-        "datetime",
-        "sklearn.metrics",
-        "sklearn.linear_model",
+        "pandas",
         "typing",
-        "pathlib",
-        "json",
-        "warnings",
-        "re",
-        "numpy",
         "config",
-        "pandas"
+        "re",
+        "pathlib",
+        "sklearn.linear_model",
+        "sklearn.metrics",
+        "json",
+        "datetime",
+        "numpy",
+        "warnings"
       ],
       "classes": [
         {
@@ -403,41 +385,41 @@
         "run_full_validation"
       ]
     },
-    "core/xgboost_trainer_v2.py": {
-      "line_count": 605,
-      "docstring": "Probabilistic VIX Forecasting System - Multi-output XGBoost models",
+    "core/xgboost_trainer_v3.py": {
+      "line_count": 680,
+      "docstring": "Refactored Probabilistic VIX Forecasting System V3\nImplements true quantile regression with log-transformed realized volatility targets.\nRemoves redundant point estimates - median (q50) serves as primary forecast.",
       "imports": [
+        "pandas",
+        "typing",
+        "config",
         "xgboost",
+        "logging",
+        "matplotlib.pyplot",
+        "pathlib",
         "sklearn.metrics",
         "pickle",
-        "sklearn.model_selection",
         "json",
-        "pathlib",
-        "typing",
-        "warnings",
-        "logging",
-        "numpy",
-        "config",
         "sklearn.isotonic",
-        "pandas",
-        "matplotlib.pyplot"
+        "sklearn.model_selection",
+        "numpy",
+        "warnings"
       ],
       "classes": [
         {
           "name": "ProbabilisticVIXForecaster",
           "bases": [],
-          "docstring": null,
+          "docstring": "Quantile-based volatility forecasting with directional classifier.\n\nKey improvements:\n- True quantile regression (separate models per quantile)\n- Log-transformed realized volatility targets\n- Domain-aware bounds (VIX rarely < 10 or > 90)\n- No redundant point estimates (q50 median is primary forecast)",
           "methods": [
             "__init__",
             "train",
-            "_get_adaptive_cv_config",
             "_create_targets",
-            "predict",
             "_train_cohort_models",
-            "_train_regressor",
-            "_convert_to_json_serializable",
+            "_train_quantile_regressor",
             "_train_classifier",
+            "_train_regressor",
+            "_get_adaptive_cv_config",
             "_calibrate_probabilities",
+            "predict",
             "_save_cohort_models",
             "load",
             "_generate_diagnostics"
@@ -447,14 +429,14 @@
       "functions": [
         "__init__",
         "train",
-        "_get_adaptive_cv_config",
         "_create_targets",
-        "predict",
         "_train_cohort_models",
-        "_train_regressor",
-        "_convert_to_json_serializable",
+        "_train_quantile_regressor",
         "_train_classifier",
+        "_train_regressor",
+        "_get_adaptive_cv_config",
         "_calibrate_probabilities",
+        "predict",
         "_save_cohort_models",
         "load",
         "_generate_diagnostics",
@@ -462,22 +444,22 @@
       ]
     },
     "core/data_fetcher.py": {
-      "line_count": 569,
+      "line_count": 690,
       "docstring": null,
       "imports": [
-        "os",
-        "datetime",
-        "calendar",
-        "dotenv",
-        "requests",
-        "json",
-        "pathlib",
-        "typing",
-        "warnings",
-        "logging",
-        "numpy",
+        "pandas",
         "yfinance",
-        "pandas"
+        "calendar",
+        "typing",
+        "requests",
+        "logging",
+        "pathlib",
+        "os",
+        "json",
+        "dotenv",
+        "datetime",
+        "numpy",
+        "warnings"
       ],
       "classes": [
         {
@@ -535,58 +517,53 @@
       ]
     },
     "core/xgboost_feature_selector_v2.py": {
-      "line_count": 510,
-      "docstring": "XGBoost Feature Selector V2 - VIX % Change Forecasting (Regression)",
+      "line_count": 566,
+      "docstring": "XGBoost Feature Selector V3 - Log-Transformed Realized Volatility System\n\nCRITICAL CHANGES FROM V2:\n1. Target calculation changed from VIX % change to forward-looking realized volatility\n2. Realized volatility calculated from SPX returns over forecast horizon\n3. Log transformation applied to target for better distribution\n4. Feature importance evaluated against log(RV) target\n5. All features maintain strict temporal hygiene (no future leakage)\n\nAuthor: VIX Forecasting System\nLast Updated: 2025-11-13\nVersion: 3.0 (Log-RV Feature Selection)",
       "imports": [
-        "xgboost",
-        "sklearn.metrics",
-        "sklearn.model_selection",
+        "pandas",
         "typing",
+        "xgboost",
+        "logging",
         "pathlib",
-        "warnings",
-        "numpy",
-        "pandas"
+        "json",
+        "sklearn.model_selection",
+        "datetime",
+        "numpy"
       ],
       "classes": [
         {
-          "name": "IntelligentFeatureSelector",
+          "name": "XGBoostFeatureSelector",
           "bases": [],
-          "docstring": "Stability-based feature selection for VIX % change forecasting.",
+          "docstring": "Feature selection using XGBoost feature importance for log-RV forecasting.\n\nKEY V3 METHODOLOGY:\n- Target: Log-transformed forward-looking realized volatility\n- Forward window: Returns from t to t+horizon (e.g., 21 days)\n- Realized vol: Annualized std of SPX returns over forward window\n- Log transform: log(realized_vol) for better distribution\n- Temporal hygiene: Features at time t, target from t to t+horizon\n\nThis ensures we're selecting features that predict FUTURE volatility,\nnot features that explain PAST VIX changes.",
           "methods": [
             "__init__",
-            "run_full_pipeline",
-            "_train_baseline_with_stability",
-            "_rank_features_with_stability",
-            "_remove_multicollinearity",
-            "_recursive_feature_addition",
-            "_preserve_forward_indicators",
-            "_save_results"
+            "_calculate_forward_realized_volatility",
+            "select_features",
+            "save_results",
+            "load_results"
           ]
         }
       ],
       "functions": [
         "__init__",
-        "run_full_pipeline",
-        "_train_baseline_with_stability",
-        "_rank_features_with_stability",
-        "_remove_multicollinearity",
-        "_recursive_feature_addition",
-        "_preserve_forward_indicators",
-        "_save_results",
-        "run_intelligent_feature_selection"
+        "_calculate_forward_realized_volatility",
+        "select_features",
+        "save_results",
+        "load_results",
+        "test_feature_selector"
       ]
     },
     "core/.ipynb_checkpoints/feature_engine-checkpoint.py": {
       "line_count": 1186,
       "docstring": "Enhanced Feature Engine V4 - Meta Features, Futures, and Maximum Feature Richness",
       "imports": [
-        "datetime",
+        "pandas",
         "typing",
-        "data_fetcher_v7",
-        "warnings",
-        "numpy",
         "config",
-        "pandas"
+        "data_fetcher_v7",
+        "datetime",
+        "numpy",
+        "warnings"
       ],
       "classes": [
         {
@@ -675,15 +652,15 @@
       "line_count": 275,
       "docstring": "Feature Quality Diagnostics\n\nRun when feature_quality score looks wrong to identify which\nfeatures are degraded/missing/stale.\n\nUSAGE:\n  python diagnostics/feature_quality_diagnostic.py\n\n  OR with saved features:\n  python diagnostics/feature_quality_diagnostic.py --features-csv data_cache/features.csv",
       "imports": [
-        "datetime",
-        "argparse",
-        "core.data_fetcher",
-        "sys",
-        "pathlib",
-        "core.feature_engine",
+        "pandas",
         "logging",
+        "pathlib",
+        "core.data_fetcher",
         "numpy",
-        "pandas"
+        "core.feature_engine",
+        "argparse",
+        "datetime",
+        "sys"
       ],
       "classes": [],
       "functions": [
@@ -695,9 +672,9 @@
       "line_count": 136,
       "docstring": "Database Investigation - Find out why quantile_coverage is inconsistent",
       "imports": [
+        "pandas",
         "datetime",
-        "sqlite3",
-        "pandas"
+        "sqlite3"
       ],
       "classes": [],
       "functions": []
@@ -706,14 +683,14 @@
       "line_count": 411,
       "docstring": "BIAS DIAGNOSTIC - Find the source of the +17.59% systematic error\n\nAnalyzes forecast errors across:\n- Time periods (2023 vs 2024 vs 2025)\n- Calendar cohorts\n- VIX regimes (low/high VIX environments)\n- Feature quality scores\n\nOutput: Identifies when and where the bias occurs",
       "imports": [
-        "datetime",
-        "scipy",
-        "seaborn",
-        "pathlib",
-        "numpy",
-        "sqlite3",
         "pandas",
-        "matplotlib.pyplot"
+        "seaborn",
+        "sqlite3",
+        "scipy",
+        "matplotlib.pyplot",
+        "pathlib",
+        "datetime",
+        "numpy"
       ],
       "classes": [],
       "functions": [
@@ -731,15 +708,15 @@
       "line_count": 456,
       "docstring": "Production-Grade Diagnostics for VIX Forecasting System\n\nAdds comprehensive logging, validation, and health checks.",
       "imports": [
-        "dataclasses",
-        "datetime",
-        "json",
-        "pathlib",
+        "pandas",
         "typing",
-        "warnings",
         "logging",
+        "pathlib",
+        "json",
+        "datetime",
+        "dataclasses",
         "numpy",
-        "pandas"
+        "warnings"
       ],
       "classes": [
         {
@@ -804,26 +781,26 @@
       ]
     },
     "diagnostics/walk_forward_validation.py": {
-      "line_count": 641,
-      "docstring": "Fixed Walk-Forward Validation - Handles Missing quantile_coverage Data",
+      "line_count": 731,
+      "docstring": "Walk-Forward Validation - V3 Adapted for Log-RV Quantile Regression\n\nCRITICAL CHANGES FROM V2:\n1. Primary metric changed from point_estimate to median_forecast\n2. point_error replaced with median_error as primary error metric\n3. All analyses now use median_forecast (q50) as the central tendency\n4. Backward compatible: still computes point_estimate metrics if available\n5. Enhanced quantile calibration diagnostics\n\nAuthor: VIX Forecasting System\nLast Updated: 2025-11-14\nVersion: 3.0 (Log-RV Quantile Regression)",
       "imports": [
-        "scipy",
-        "seaborn",
-        "argparse",
-        "typing",
-        "json",
-        "pathlib",
-        "logging",
-        "numpy",
-        "sqlite3",
         "pandas",
-        "matplotlib.pyplot"
+        "typing",
+        "seaborn",
+        "sqlite3",
+        "scipy",
+        "logging",
+        "matplotlib.pyplot",
+        "pathlib",
+        "json",
+        "argparse",
+        "numpy"
       ],
       "classes": [
         {
           "name": "EnhancedWalkForwardValidator",
           "bases": [],
-          "docstring": "Production-ready walk-forward validation with detailed diagnostics.",
+          "docstring": "Production-ready walk-forward validation with detailed diagnostics.\n\nV3 ENHANCEMENTS:\n- Median forecast as primary metric (more robust than mean)\n- Quantile calibration analysis\n- Forecast uncertainty quantification\n- Regime-specific performance",
           "methods": [
             "__init__",
             "load_predictions_with_actuals",
@@ -840,7 +817,6 @@
             "_plot_calibration",
             "_plot_forecast_vs_actual",
             "_plot_confidence_analysis",
-            "_plot_cohort_performance",
             "_plot_time_series"
           ]
         }
@@ -859,151 +835,117 @@
         "_analyze_confidence",
         "_compute_time_series_metrics",
         "generate_diagnostic_report",
-        "convert",
         "_print_summary",
         "_plot_calibration",
         "_plot_forecast_vs_actual",
         "_plot_confidence_analysis",
-        "_plot_cohort_performance",
         "_plot_time_series"
       ]
     },
     "integrated_system_production.py": {
-      "line_count": 1425,
-      "docstring": "Integrated Market Analysis System V5 - Probabilistic Forecasting\nUpgraded architecture with probabilistic distribution forecasting.\nAnomaly detection preserved but probabilistic forecasting is primary focus.",
+      "line_count": 1175,
+      "docstring": "Integrated VIX Forecasting System - Production V3 with Complete Workflow\n\nCRITICAL CHANGES FROM V2:\n1. Imports from xgboost_trainer_v3 (log-RV system)\n2. Primary forecast is now median_forecast (from q50)\n3. point_estimate maintained for backward compatibility\n4. Enhanced logging shows quantile distribution\n5. All predictions validated for quantile ordering\n\nRESTORED IN V3 (5th Pass):\n1. Complete mode - Full calibration/recalibration/walk-forward validation\n2. Anomaly mode - Backward compatible with anomaly detection system\n3. Config-driven workflow using CALIBRATION_PERIOD, VALIDATION_PERIOD\n4. Walk-forward diagnostics integration\n5. Batch forecasting with proper temporal hygiene\n\nAuthor: VIX Forecasting System\nLast Updated: 2025-11-14\nVersion: 3.1 (Log-RV with Complete Workflow)",
       "imports": [
-        "os",
-        "datetime",
-        "argparse",
-        "core.anomaly_detector",
-        "json",
-        "pathlib",
-        "uuid",
         "config",
-        "core.temporal_validator",
-        "pickle",
-        "core.feature_engine",
+        "core.anomaly_detector",
+        "core.walk_forward_validation",
+        "argparse",
+        "core.feature_engineer",
+        "sqlite3",
+        "pathlib",
+        "core.data_fetcher",
+        "sys",
+        "warnings",
+        "pandas",
+        "psutil",
+        "core.xgboost_trainer_v3",
+        "datetime",
         "numpy",
-        "diagnostics.walk_forward_validation",
+        "export.unified_exporter",
+        "typing",
+        "logging",
         "core.forecast_calibrator",
         "core.prediction_database",
-        "core.data_fetcher",
-        "core.xgboost_trainer_v2",
-        "core.xgboost_feature_selector_v2",
-        "logging",
-        "psutil",
-        "export.unified_exporter",
-        "subprocess",
-        "warnings",
-        "gc",
-        "sqlite3",
-        "pandas"
+        "walk_forward_validation",
+        "os",
+        "core.temporal_validator"
       ],
       "classes": [
         {
-          "name": "AnomalyOrchestrator",
+          "name": "IntegratedForecastingSystem",
           "bases": [],
-          "docstring": "Orchestrates anomaly detection workflow (preserved for backward compatibility).\n1. Manages VIX/SPX history\n2. Maintains regime statistics\n3. Coordinates anomaly detector\n4. Handles state persistence",
-          "methods": [
-            "__init__",
-            "train",
-            "_generate_historical_scores",
-            "detect_current",
-            "get_persistence_stats",
-            "_compute_regime_statistics",
-            "save_state",
-            "load_state",
-            "_dict_to_series",
-            "_dict_to_dataframe"
-          ]
-        },
-        {
-          "name": "IntegratedSystem",
-          "bases": [],
-          "docstring": "Main system integrating probabilistic forecasting with anomaly detection.\n\nComponents:\n  - Feature Engine: Generate 232 features with calendar cohorts\n  - Probabilistic Forecaster: Multi-output distribution model\n  - Prediction Database: Store forecasts for backtesting\n  - Anomaly Detector: Identify market regime anomalies (parallel)\n  - Temporal Validator: Check data quality\n\nExample:\n    >>> system = IntegratedSystem()\n    >>> distribution = system.generate_forecast()\n    >>> print(distribution['point_estimate'])  # 8.5% expected VIX change",
+          "docstring": "Production forecasting system using log-RV quantile regression.\n\nV3 ENHANCEMENTS:\n- Median forecast as primary output (more robust than mean)\n- Full quantile distribution (q10, q25, q50, q75, q90)\n- Direction classifier for complementary signal\n- Confidence scoring based on feature quality\n- Domain-aware bounds enforcement [10%, 90%]\n\nRESTORED CAPABILITIES (5th Pass):\n- Complete workflow mode for calibration/validation\n- Anomaly detection integration (backward compatible)\n- Config-driven operational modes",
           "methods": [
             "__init__",
             "_load_models",
-            "_log_forecast_summary",
-            "_store_prediction",
-            "_get_model_version",
             "generate_forecast",
-            "run",
+            "_validate_quantile_ordering",
+            "_display_forecast_summary",
+            "_store_prediction",
+            "backfill_actuals",
+            "generate_forecast_batch",
             "train",
-            "run_feature_selection",
             "get_market_state",
+            "print_anomaly_summary",
             "_get_cached_anomaly_result",
             "_classify_vix_regime",
-            "_get_spx_feature_state",
             "_get_top_anomalies_list",
-            "print_anomaly_summary",
-            "_initialize_memory_baseline",
             "_log_memory_stats",
-            "get_memory_report",
-            "train_probabilistic_models",
-            "generate_forecast_batch",
             "_get_features"
           ]
         }
       ],
       "functions": [
         "__init__",
-        "train",
-        "_generate_historical_scores",
-        "detect_current",
-        "get_persistence_stats",
-        "_compute_regime_statistics",
-        "save_state",
-        "load_state",
-        "_dict_to_series",
-        "_dict_to_dataframe",
-        "__init__",
         "_load_models",
-        "_log_forecast_summary",
-        "_store_prediction",
-        "_get_model_version",
         "generate_forecast",
-        "run",
+        "_validate_quantile_ordering",
+        "_display_forecast_summary",
+        "_store_prediction",
+        "backfill_actuals",
+        "generate_forecast_batch",
         "train",
-        "run_feature_selection",
         "get_market_state",
+        "print_anomaly_summary",
         "_get_cached_anomaly_result",
         "_classify_vix_regime",
-        "_get_spx_feature_state",
         "_get_top_anomalies_list",
-        "print_anomaly_summary",
-        "_initialize_memory_baseline",
         "_log_memory_stats",
-        "get_memory_report",
-        "train_probabilistic_models",
-        "generate_forecast_batch",
         "_get_features",
         "main"
       ]
     },
     "train_probabilistic_models.py": {
-      "line_count": 164,
-      "docstring": "Training Script for Probabilistic VIX Forecaster\nTrains all cohort models and saves to disk",
+      "line_count": 532,
+      "docstring": "Training Script for Probabilistic VIX Forecaster V3\n\nCRITICAL CHANGES FROM V2:\n1. Imports from xgboost_trainer_v3 (log-RV system)\n2. Target is log-transformed forward realized volatility\n3. 7 models per cohort (removed point and uncertainty)\n4. Models: 5 quantiles + direction + confidence\n5. Enhanced validation and diagnostics\n\nAuthor: VIX Forecasting System\nLast Updated: 2025-11-13\nVersion: 3.0 (Log-RV Quantile Regression)",
       "imports": [
-        "core.data_fetcher",
-        "core.xgboost_trainer_v2",
-        "sys",
-        "pathlib",
-        "core.feature_engine",
-        "warnings",
-        "config",
         "pandas",
-        "logging_config"
+        "typing",
+        "config",
+        "logging",
+        "core.xgboost_trainer_v3",
+        "pathlib",
+        "core.data_fetcher",
+        "logging_config",
+        "json",
+        "argparse",
+        "core.feature_engineer",
+        "datetime",
+        "sys"
       ],
       "classes": [],
       "functions": [
-        "filter_cohorts_by_min_samples",
+        "prepare_training_data",
+        "_get_calendar_cohort",
+        "validate_configuration",
+        "save_training_report",
+        "display_training_summary",
         "main"
       ]
     },
     "config.py": {
-      "line_count": 911,
-      "docstring": "Configuration V5 - Probabilistic Distribution Forecasting",
+      "line_count": 1069,
+      "docstring": "Configuration V5 - Refactored for True Quantile Regression\n\nKEY CHANGES FROM V2:\n1. Removed TARGET_CONFIG[\"point_estimate\"] - median (q50) is primary forecast\n2. Updated TARGET_CONFIG for log-transformed realized volatility\n3. Added volatility_bounds (domain knowledge: VIX rarely <10 or >90)\n4. Removed XGBOOST_CONFIG[\"objectives\"][\"point\"] and [\"uncertainty\"]\n5. True quantile regression objectives for q10, q25, q50, q75, q90\n\nALL OTHER SECTIONS PRESERVED EXACTLY AS-IS",
       "imports": [
         "pathlib"
       ],
@@ -1014,9 +956,9 @@
       "line_count": 85,
       "docstring": "Centralized logging configuration for the entire system",
       "imports": [
+        "pathlib",
         "sys",
-        "logging",
-        "pathlib"
+        "logging"
       ],
       "classes": [],
       "functions": [
@@ -1027,223 +969,221 @@
   },
   "dependencies": {
     "core/forecast_calibrator.py": [
-      "core.prediction_database",
+      "pandas",
+      "typing",
+      "logging",
+      "pathlib",
+      "sklearn.linear_model",
+      "sklearn.metrics",
       "pickle",
       "json",
-      "pathlib",
-      "typing",
-      "prediction_database",
-      "sys",
-      "warnings",
-      "logging",
-      "numpy",
-      "pandas"
-    ],
-    "core/feature_engine.py": [
-      "os",
       "datetime",
-      "typing",
-      "warnings",
-      "numpy",
-      "config",
-      "pandas"
+      "numpy"
     ],
     "core/prediction_database.py": [
-      "datetime",
-      "core.data_fetcher",
-      "json",
-      "pathlib",
-      "typing",
-      "warnings",
-      "logging",
-      "numpy",
-      "config",
-      "sqlite3",
       "pandas",
-      "atexit"
+      "typing",
+      "sqlite3",
+      "logging",
+      "pathlib",
+      "json",
+      "datetime",
+      "contextlib",
+      "numpy"
+    ],
+    "core/feature_engineer.py": [
+      "pandas",
+      "typing",
+      "config",
+      "os",
+      "datetime",
+      "numpy",
+      "warnings"
     ],
     "core/anomaly_detector.py": [
-      "pytz",
-      "datetime",
-      "sklearn.ensemble",
+      "pandas",
       "typing",
-      "shap",
-      "sklearn.preprocessing",
-      "warnings",
-      "logging",
-      "numpy",
       "config",
-      "pandas"
+      "logging",
+      "sklearn.preprocessing",
+      "pytz",
+      "shap",
+      "sklearn.ensemble",
+      "datetime",
+      "numpy",
+      "warnings"
     ],
     "core/backtesting_engine.py": [
-      "core.prediction_database",
-      "seaborn",
-      "json",
-      "pathlib",
-      "logging",
-      "numpy",
       "pandas",
-      "matplotlib.pyplot"
+      "seaborn",
+      "logging",
+      "matplotlib.pyplot",
+      "pathlib",
+      "core.prediction_database",
+      "json",
+      "numpy"
     ],
     "core/temporal_validator.py": [
-      "datetime",
-      "sklearn.metrics",
-      "sklearn.linear_model",
+      "pandas",
       "typing",
-      "pathlib",
-      "json",
-      "warnings",
-      "re",
-      "numpy",
       "config",
-      "pandas"
+      "re",
+      "pathlib",
+      "sklearn.linear_model",
+      "sklearn.metrics",
+      "json",
+      "datetime",
+      "numpy",
+      "warnings"
     ],
-    "core/xgboost_trainer_v2.py": [
+    "core/xgboost_trainer_v3.py": [
+      "pandas",
+      "typing",
+      "config",
       "xgboost",
+      "logging",
+      "matplotlib.pyplot",
+      "pathlib",
       "sklearn.metrics",
       "pickle",
-      "sklearn.model_selection",
       "json",
-      "pathlib",
-      "typing",
-      "warnings",
-      "logging",
-      "numpy",
-      "config",
       "sklearn.isotonic",
-      "pandas",
-      "matplotlib.pyplot"
+      "sklearn.model_selection",
+      "numpy",
+      "warnings"
     ],
     "core/data_fetcher.py": [
-      "os",
-      "datetime",
-      "calendar",
-      "dotenv",
-      "requests",
-      "json",
-      "pathlib",
-      "typing",
-      "warnings",
-      "logging",
-      "numpy",
+      "pandas",
       "yfinance",
-      "pandas"
+      "calendar",
+      "typing",
+      "requests",
+      "logging",
+      "pathlib",
+      "os",
+      "json",
+      "dotenv",
+      "datetime",
+      "numpy",
+      "warnings"
     ],
     "core/xgboost_feature_selector_v2.py": [
-      "xgboost",
-      "sklearn.metrics",
-      "sklearn.model_selection",
+      "pandas",
       "typing",
+      "xgboost",
+      "logging",
       "pathlib",
-      "warnings",
-      "numpy",
-      "pandas"
+      "json",
+      "sklearn.model_selection",
+      "datetime",
+      "numpy"
     ],
     "core/.ipynb_checkpoints/feature_engine-checkpoint.py": [
-      "datetime",
+      "pandas",
       "typing",
-      "data_fetcher_v7",
-      "warnings",
-      "numpy",
       "config",
-      "pandas"
+      "data_fetcher_v7",
+      "datetime",
+      "numpy",
+      "warnings"
     ],
     "diagnostics/feature_quality_diagnostic.py": [
-      "datetime",
-      "argparse",
-      "core.data_fetcher",
-      "sys",
-      "pathlib",
-      "core.feature_engine",
+      "pandas",
       "logging",
+      "pathlib",
+      "core.data_fetcher",
       "numpy",
-      "pandas"
+      "core.feature_engine",
+      "argparse",
+      "datetime",
+      "sys"
     ],
     "diagnostics/database_investigator.py": [
+      "pandas",
       "datetime",
-      "sqlite3",
-      "pandas"
+      "sqlite3"
     ],
     "diagnostics/bias_diagnostic.py": [
-      "datetime",
-      "scipy",
-      "seaborn",
-      "pathlib",
-      "numpy",
-      "sqlite3",
       "pandas",
-      "matplotlib.pyplot"
+      "seaborn",
+      "sqlite3",
+      "scipy",
+      "matplotlib.pyplot",
+      "pathlib",
+      "datetime",
+      "numpy"
     ],
     "diagnostics/production_diagnostics.py": [
-      "dataclasses",
-      "datetime",
-      "json",
-      "pathlib",
+      "pandas",
       "typing",
-      "warnings",
       "logging",
+      "pathlib",
+      "json",
+      "datetime",
+      "dataclasses",
       "numpy",
-      "pandas"
+      "warnings"
     ],
     "diagnostics/walk_forward_validation.py": [
-      "scipy",
-      "seaborn",
-      "argparse",
-      "typing",
-      "json",
-      "pathlib",
-      "logging",
-      "numpy",
-      "sqlite3",
       "pandas",
-      "matplotlib.pyplot"
+      "typing",
+      "seaborn",
+      "sqlite3",
+      "scipy",
+      "logging",
+      "matplotlib.pyplot",
+      "pathlib",
+      "json",
+      "argparse",
+      "numpy"
     ],
     "integrated_system_production.py": [
-      "os",
-      "datetime",
-      "argparse",
-      "core.anomaly_detector",
-      "json",
-      "pathlib",
-      "uuid",
       "config",
-      "core.temporal_validator",
-      "pickle",
-      "core.feature_engine",
+      "core.anomaly_detector",
+      "core.walk_forward_validation",
+      "argparse",
+      "core.feature_engineer",
+      "sqlite3",
+      "pathlib",
+      "core.data_fetcher",
+      "sys",
+      "warnings",
+      "pandas",
+      "psutil",
+      "core.xgboost_trainer_v3",
+      "datetime",
       "numpy",
-      "diagnostics.walk_forward_validation",
+      "export.unified_exporter",
+      "typing",
+      "logging",
       "core.forecast_calibrator",
       "core.prediction_database",
-      "core.data_fetcher",
-      "core.xgboost_trainer_v2",
-      "core.xgboost_feature_selector_v2",
-      "logging",
-      "psutil",
-      "export.unified_exporter",
-      "subprocess",
-      "warnings",
-      "gc",
-      "sqlite3",
-      "pandas"
+      "walk_forward_validation",
+      "os",
+      "core.temporal_validator"
     ],
     "train_probabilistic_models.py": [
-      "core.data_fetcher",
-      "core.xgboost_trainer_v2",
-      "sys",
-      "pathlib",
-      "core.feature_engine",
-      "warnings",
-      "config",
       "pandas",
-      "logging_config"
+      "typing",
+      "config",
+      "logging",
+      "core.xgboost_trainer_v3",
+      "pathlib",
+      "core.data_fetcher",
+      "logging_config",
+      "json",
+      "argparse",
+      "core.feature_engineer",
+      "datetime",
+      "sys"
     ],
     "config.py": [
       "pathlib"
     ],
     "logging_config.py": [
+      "pathlib",
       "sys",
-      "logging",
-      "pathlib"
+      "logging"
     ]
   }
 }

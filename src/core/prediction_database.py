@@ -342,6 +342,21 @@ class PredictionDatabase:
         columns = {row[1] for row in cursor.fetchall()}
         return columns
 
+    def commit(self):
+        try:
+            self.conn.commit()
+            logger.debug("✅ Transaction committed")
+        except Exception as e:
+            logger.error(f"❌ Commit failed: {e}")
+            raise
+
+    def get_commit_status(self) -> dict:
+        return {
+            "pending_writes": 0,  # V3 auto-commits, so always 0
+            "last_commit": datetime.now().isoformat(),
+            "recent_operations": [],  # V3 doesn't track this
+        }
+
     def get_predictions(
         self,
         start_date: Optional[str] = None,
@@ -406,25 +421,6 @@ class PredictionDatabase:
             return pd.DataFrame()
 
     def backfill_actuals(self, vix_series: pd.Series, horizon: int = 21):
-        """
-        Backfill actual outcomes and compute errors for past predictions.
-
-        CRITICAL V3 CHANGES:
-        1. Computes median_error as |actual - median_forecast|
-        2. Sets point_error = median_error for backward compatibility
-        3. Computes quantile_coverage to validate quantile models
-
-        The quantile coverage tells us if our quantile models are well-calibrated:
-        - q10 should be exceeded by ~10% of actuals
-        - q25 should be exceeded by ~25% of actuals
-        - q50 should be exceeded by ~50% of actuals (median)
-        - etc.
-
-        Args:
-            vix_series: Series with VIX values indexed by date
-            horizon: Forecast horizon in days (default 21)
-        """
-
         logger.info("Starting actuals backfill...")
 
         # Get all predictions without actuals
