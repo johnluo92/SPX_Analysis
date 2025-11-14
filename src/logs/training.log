@@ -756,3 +756,62 @@ Next steps:
 2025-11-14 01:48:56 | INFO | __main__ |   3. Backfill actuals: python src/integrated_system_production.py --mode backfill
 2025-11-14 01:48:56 | INFO | __main__ | ================================================================================
 
+2025-11-14 10:56:35 | INFO | __main__ | 
+2025-11-14 10:56:35 | INFO | __main__ | ================================================================================
+2025-11-14 10:56:35 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 10:56:35 | INFO | __main__ | ================================================================================
+2025-11-14 10:56:35 | INFO | __main__ | 
+2025-11-14 10:56:35 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 10:56:35 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 10:56:35 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 10:56:35 | INFO | __main__ | 
+2025-11-14 10:56:35 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 10:56:35 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 10:56:35 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 10:56:35 | INFO | __main__ | 
+2025-11-14 10:56:35 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 10:56:35 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 10:56:35 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 10:56:35 | INFO | __main__ | 
+2025-11-14 10:56:35 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 10:56:35 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 10:56:35 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 10:56:35 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 10:56:35 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 10:56:35 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 10:56:35 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 10:56:35 | INFO | __main__ | 
+2025-11-14 10:56:35 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 10:56:35 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 10:56:35 | INFO | __main__ | ================================================================================
+2025-11-14 10:56:35 | INFO | __main__ | 
+================================================================================
+2025-11-14 10:56:35 | INFO | __main__ | DATA PREPARATION
+2025-11-14 10:56:35 | INFO | __main__ | ================================================================================
+2025-11-14 10:56:35 | INFO | __main__ | 
+[1/3] Initializing feature engineering pipeline...
+2025-11-14 10:56:35 | INFO | __main__ | 
+[2/3] Building complete feature set...
+2025-11-14 10:56:35 | INFO | __main__ |   Training window: 3 years
+2025-11-14 10:56:35 | INFO | __main__ |   Training end date: 2022-12-31
+2025-11-14 10:56:36 | ERROR | yfinance | $^GSPC: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 10:56:36 | ERROR | yfinance | $^VIX: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762754400, endDate = 1672466400")
+2025-11-14 10:56:36 | ERROR | yfinance | $CL=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 10:56:37 | ERROR | yfinance | $DX-Y.NYB: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 10:56:37 | ERROR | yfinance | $GC=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 10:56:41 | ERROR | __main__ | 
+❌ Training failed with error: '<=' not supported between instances of 'int' and 'NoneType'
+Traceback (most recent call last):
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 397, in main
+    complete_df = prepare_training_data()
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 78, in prepare_training_data
+    result = feature_engineer.build_complete_features(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/core/feature_engineer.py", line 770, in build_complete_features
+    "calendar_cohort": self.get_calendar_cohort(date)[0],
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/core/feature_engineer.py", line 552, in get_calendar_cohort
+    if range_min <= days_to_opex <= range_max:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<=' not supported between instances of 'int' and 'NoneType'

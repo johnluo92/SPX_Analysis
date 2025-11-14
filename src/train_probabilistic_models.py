@@ -1,33 +1,32 @@
 """
-Training Script for Probabilistic VIX Forecaster
-Trains all cohort models and saves to disk
+Training Script for Probabilistic VIX Forecaster V3
+
+CRITICAL CHANGES FROM V2:
+1. Imports from xgboost_trainer_v3 (log-RV system)
+2. Target is log-transformed forward realized volatility
+3. 7 models per cohort (removed point and uncertainty)
+4. Models: 5 quantiles + direction + confidence
+5. Enhanced validation and diagnostics
+
+Author: VIX Forecasting System
+Last Updated: 2025-11-13
+Version: 3.0 (Log-RV Quantile Regression)
 """
 
+import argparse
+import json
+import logging
 import sys
-import warnings
+from datetime import datetime
 from pathlib import Path
 from typing import Tuple
 
 import pandas as pd
-<<<<<<< HEAD
-
-warnings.filterwarnings("ignore")
-
-# Setup clean logging FIRST
-from logging_config import get_logger, setup_logging
-
-setup_logging(level="DEBUG", quiet_mode=True)
-
-from config import TRAINING_END_DATE, TRAINING_YEARS
-from core.data_fetcher import UnifiedDataFetcher
-from core.feature_engine import UnifiedFeatureEngine
-from core.xgboost_trainer_v2 import train_probabilistic_forecaster
-
-=======
 
 from config import (
     CALENDAR_COHORTS,
     TARGET_CONFIG,
+    TRAINING_END_DATE,
     TRAINING_YEARS,
     XGBOOST_CONFIG,
 )
@@ -48,24 +47,11 @@ Path("logs").mkdir(exist_ok=True)
 
 # Configure logging
 setup_logging(level=logging.INFO, quiet_mode=False, log_file="logs/training.log")
->>>>>>> parent of a703350 (Revert "fuck claude")
 logger = get_logger(__name__)
 
 
-def filter_cohorts_by_min_samples(
-    df: pd.DataFrame, min_samples: int = 200
-) -> pd.DataFrame:
+def prepare_training_data():
     """
-<<<<<<< HEAD
-    Merge small cohorts into mid_cycle to ensure sufficient training data.
-
-    Args:
-        df: Feature dataframe with calendar_cohort column
-        min_samples: Minimum samples required for separate cohort training
-
-    Returns:
-        Modified dataframe with small cohorts merged to mid_cycle
-=======
     Fetch and prepare data for training using FeatureEngineer.build_complete_features().
 
     V3 CHANGE: Returns single merged dataframe with features, VIX, SPX, and calendar_cohort.
@@ -73,22 +59,12 @@ def filter_cohorts_by_min_samples(
 
     Returns:
         Complete dataframe ready for trainer (with calendar_cohort)
->>>>>>> parent of a703350 (Revert "fuck claude")
     """
-    cohort_counts = df["calendar_cohort"].value_counts()
 
-    small_cohorts = cohort_counts[cohort_counts < min_samples].index.tolist()
+    logger.info("\n" + "=" * 80)
+    logger.info("DATA PREPARATION")
+    logger.info("=" * 80)
 
-<<<<<<< HEAD
-    if small_cohorts:
-        logger.warning(
-            f"\n⚠️  Merging small cohorts into mid_cycle (< {min_samples} samples):"
-        )
-        for cohort in small_cohorts:
-            count = cohort_counts[cohort]
-            logger.warning(f"   {cohort}: {count} samples → mid_cycle")
-            df.loc[df["calendar_cohort"] == cohort, "calendar_cohort"] = "mid_cycle"
-=======
     # Initialize data fetcher and feature engineer
     logger.info("\n[1/3] Initializing feature engineering pipeline...")
     data_fetcher = UnifiedDataFetcher()
@@ -97,10 +73,11 @@ def filter_cohorts_by_min_samples(
     # Build complete features (fetches data internally)
     logger.info("\n[2/3] Building complete feature set...")
     logger.info(f"  Training window: {TRAINING_YEARS} years")
+    logger.info(f"  Training end date: {TRAINING_END_DATE}")
 
     result = feature_engineer.build_complete_features(
         years=TRAINING_YEARS,
-        end_date=None,  # Use current date
+        end_date=TRAINING_END_DATE,  # Use configured training end date
     )
 
     features_df = result["features"]
@@ -136,17 +113,10 @@ def filter_cohorts_by_min_samples(
     logger.info(
         f"  Columns: features ({len(features_df.columns)}) + vix + spx + calendar_cohort"
     )
->>>>>>> parent of a703350 (Revert "fuck claude")
 
-        logger.info(f"\n📊 Updated cohort distribution:")
-        updated_counts = df["calendar_cohort"].value_counts()
-        for cohort, count in updated_counts.items():
-            pct = count / len(df) * 100
-            logger.info(f"   {cohort:30s}: {count:5d} samples ({pct:5.1f}%)")
+    logger.info("\n✅ Data preparation complete")
+    logger.info("=" * 80 + "\n")
 
-<<<<<<< HEAD
-    return df
-=======
     return complete_df
 
 
@@ -355,7 +325,6 @@ def save_training_report(training_results: dict, output_dir: str = "models"):
         json.dump(report, f, indent=2, default=str)
 
     logger.info(f"✅ Training report saved: {report_file}")
->>>>>>> parent of a703350 (Revert "fuck claude")
 
 
 def display_training_summary(forecaster: ProbabilisticVIXForecaster):
@@ -375,38 +344,25 @@ def display_training_summary(forecaster: ProbabilisticVIXForecaster):
 
 
 def main():
-    """
-    Complete training pipeline:
-    1. Build features with calendar cohorts
-    2. Train probabilistic models for each cohort
-    3. Save models to disk
-    """
+    """Main training entry point."""
 
-    logger.info("=" * 80)
-    logger.info("PROBABILISTIC VIX FORECASTER - TRAINING PIPELINE")
-    logger.info("=" * 80)
+    parser = argparse.ArgumentParser(
+        description="Train Probabilistic VIX Forecaster V3"
+    )
 
-    # Check models directory
-    models_dir = Path("models")
-    models_dir.mkdir(exist_ok=True)
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="models",
+        help="Directory to save trained models",
+    )
 
-    logger.info(f"\n📂 Models will be saved to: {models_dir.absolute()}")
-    logger.info(f"📅 Training window: {TRAINING_YEARS} years")
+    parser.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help="Skip configuration validation (not recommended)",
+    )
 
-<<<<<<< HEAD
-    # Step 1: Build Features
-    logger.info("\n" + "=" * 80)
-    logger.info("STEP 1: BUILDING FEATURES")
-    logger.info("=" * 80)
-
-    try:
-        data_fetcher = UnifiedDataFetcher()
-        feature_engine = UnifiedFeatureEngine(data_fetcher=data_fetcher)
-
-        feature_data = feature_engine.build_complete_features(years=TRAINING_YEARS)
-        df = feature_data["features"]
-        df = df[df.index <= TRAINING_END_DATE]
-=======
     parser.add_argument(
         "--force-retrain",
         action="store_true",
@@ -439,32 +395,16 @@ def main():
 
         # Step 2: Prepare training data
         complete_df = prepare_training_data()
->>>>>>> parent of a703350 (Revert "fuck claude")
 
-        logger.info(f"\n✅ Features built successfully")
-        logger.info(f"   Shape: {df.shape}")
-        logger.info(f"   Date range: {df.index[0].date()} to {df.index[-1].date()}")
-        logger.info(f"   Features: {len(df.columns)}")
+        # Step 3: Train models
+        logger.info("\n" + "=" * 80)
+        logger.info("MODEL TRAINING")
+        logger.info("=" * 80)
+        logger.info("\nStarting training...")
+        logger.info(f"  Models per cohort: 7 (5 quantiles, direction, confidence)")
+        logger.info(f"  Primary forecast: Median (50th percentile)")
+        logger.info(f"  Target: Log-transformed forward realized volatility\n")
 
-<<<<<<< HEAD
-        # Validate required columns
-        required_cols = ["vix", "calendar_cohort", "cohort_weight", "feature_quality"]
-        missing = [col for col in required_cols if col not in df.columns]
-
-        if missing:
-            logger.error(f"❌ Missing required columns: {missing}")
-            return False
-
-        # Show cohort distribution
-        cohort_dist = df["calendar_cohort"].value_counts()
-        logger.info(f"\n📊 Calendar Cohort Distribution:")
-        for cohort, count in cohort_dist.items():
-            pct = count / len(df) * 100
-            logger.info(f"   {cohort:30s}: {count:5d} samples ({pct:5.1f}%)")
-
-        # Filter small cohorts to prevent CV errors
-        df = filter_cohorts_by_min_samples(df, min_samples=200)
-=======
         # V3 CORRECTED CALL: Pass single dataframe
         forecaster = train_probabilistic_forecaster(
             df=complete_df,
@@ -549,53 +489,11 @@ def main():
         logger.info("=" * 80 + "\n")
 
         sys.exit(0)
->>>>>>> parent of a703350 (Revert "fuck claude")
 
     except Exception as e:
-        logger.error(f"❌ Feature building failed: {e}", exc_info=True)
-        return False
-
-    # Step 2: Train Probabilistic Forecaster
-    logger.info("\n" + "=" * 80)
-    logger.info("STEP 2: TRAINING PROBABILISTIC MODELS")
-    logger.info("=" * 80)
-
-    try:
-        forecaster = train_probabilistic_forecaster(df=df, save_dir=str(models_dir))
-
-        logger.info(f"\n✅ Training complete!")
-        logger.info(f"   Cohorts trained: {len(forecaster.models)}")
-        logger.info(f"   Models per cohort: 8 (point, 5 quantiles, regime, confidence)")
-
-        # Verify saved files
-        model_files = list(models_dir.glob("probabilistic_forecaster_*.pkl"))
-        logger.info(f"\n💾 Saved model files:")
-        for model_file in model_files:
-            size_mb = model_file.stat().st_size / (1024 * 1024)
-            logger.info(f"   {model_file.name:50s} ({size_mb:.2f} MB)")
-
-        # Show metrics
-        logger.info(f"\n📊 Model diagnostics saved:")
-        diagnostics_file = models_dir / "probabilistic_model_metrics.json"
-        if diagnostics_file.exists():
-            logger.info(f"   {diagnostics_file}")
-
-        plot_file = models_dir / "regime_performance.png"
-        if plot_file.exists():
-            logger.info(f"   {plot_file}")
-
-        return True
-
-    except Exception as e:
-        logger.error(f"❌ Training failed: {e}", exc_info=True)
-        return False
-
-    finally:
-        logger.info("\n" + "=" * 80)
-        logger.info("TRAINING PIPELINE COMPLETE")
-        logger.info("=" * 80)
+        logger.error(f"\n❌ Training failed with error: {e}", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    main()

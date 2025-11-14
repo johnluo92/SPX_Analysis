@@ -59,19 +59,11 @@ from config import (
 )
 from core.anomaly_detector import MultiDimensionalAnomalyDetector
 from core.data_fetcher import UnifiedDataFetcher
-<<<<<<< HEAD
-from core.feature_engine import UnifiedFeatureEngine
-from core.forecast_calibrator import ForecastCalibrator
-from core.prediction_database import PredictionDatabase
-from core.temporal_validator import TemporalSafetyValidator
-from core.xgboost_trainer_v2 import ProbabilisticVIXForecaster
-=======
 from core.feature_engineer import FeatureEngineer as UnifiedFeatureEngine
 from core.forecast_calibrator import ForecastCalibrator
 from core.prediction_database import PredictionDatabase
-from core.temporal_validator import TemporalValidator
+from core.temporal_validator import TemporalSafetyValidator as TemporalValidator
 from core.xgboost_trainer_v3 import ProbabilisticVIXForecaster
->>>>>>> parent of a703350 (Revert "fuck claude")
 
 # Configure logging
 logging.basicConfig(
@@ -130,11 +122,7 @@ class IntegratedForecastingSystem:
         self.prediction_db = PredictionDatabase(db_path=db_path)
 
         # Anomaly detector (runs independently when needed)
-<<<<<<< HEAD
-        self.orchestrator = AnomalyOrchestrator()
-=======
         self.orchestrator = MultiDimensionalAnomalyDetector()
->>>>>>> parent of a703350 (Revert "fuck claude")
 
         # Load trained models
         self._load_models()
@@ -932,12 +920,24 @@ def main():
             )
             system.prediction_db.backfill_actuals()
 
-            from diagnostics.walk_forward_validation import EnhancedWalkForwardValidator
+            # Run walk-forward validation if available
+            try:
+                from core.walk_forward_validation import EnhancedWalkForwardValidator
+            except ImportError:
+                # Try alternative import path
+                try:
+                    from walk_forward_validation import EnhancedWalkForwardValidator
+                except ImportError:
+                    logger.warning(
+                        "Walk-forward validation module not found - skipping diagnostic report"
+                    )
+                    EnhancedWalkForwardValidator = None
 
-            validator = EnhancedWalkForwardValidator(
-                db_path=system.prediction_db.db_path
-            )
-            validator.generate_diagnostic_report()
+            if EnhancedWalkForwardValidator:
+                validator = EnhancedWalkForwardValidator(
+                    db_path=system.prediction_db.db_path
+                )
+                validator.generate_diagnostic_report()
 
             logger.info("\n" + "=" * 80)
             logger.info("✅ COMPLETE WORKFLOW FINISHED")
