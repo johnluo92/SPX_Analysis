@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 """
-Fixed Walk-Forward Validation - Handles Missing quantile_coverage Data
+Walk-Forward Validation - V3 Adapted for Log-RV Quantile Regression
+
+CRITICAL CHANGES FROM V2:
+1. Primary metric changed from point_estimate to median_forecast
+2. point_error replaced with median_error as primary error metric
+3. All analyses now use median_forecast (q50) as the central tendency
+4. Backward compatible: still computes point_estimate metrics if available
+5. Enhanced quantile calibration diagnostics
+
+Author: VIX Forecasting System
+Last Updated: 2025-11-14
+Version: 3.0 (Log-RV Quantile Regression)
 """
 
 import json
@@ -20,9 +31,21 @@ logger = logging.getLogger(__name__)
 
 
 class EnhancedWalkForwardValidator:
-    """Production-ready walk-forward validation with detailed diagnostics."""
+    """
+    Production-ready walk-forward validation with detailed diagnostics.
 
-    def __init__(self, db_path: str = "data_cache/predictions.db", horizon: int = 5):
+    V3 ENHANCEMENTS:
+    - Median forecast as primary metric (more robust than mean)
+    - Quantile calibration analysis
+    - Forecast uncertainty quantification
+    - Regime-specific performance
+    """
+
+    def __init__(
+        self,
+        db_path: str = "data_cache/predictions.db",
+        horizon: int = 5,
+    ):
         self.db_path = Path(db_path)
         self.horizon = horizon
         self.results = None
@@ -31,21 +54,33 @@ class EnhancedWalkForwardValidator:
             raise FileNotFoundError(f"Database not found: {self.db_path}")
 
     def load_predictions_with_actuals(self) -> pd.DataFrame:
-        """Load all predictions that have actual outcomes."""
+        """
+        Load all predictions that have actual outcomes.
+
+        V3 CHANGES:
+        - Loads median_forecast as primary field
+        - Loads median_error as primary error metric
+        - Maintains backward compatibility with point_estimate
+        """
+
         conn = sqlite3.connect(self.db_path)
 
         query = """
         SELECT
             forecast_date,
+            observation_date,
             calendar_cohort as cohort,
             current_vix as vix_start,
+            median_forecast,
             point_estimate,
             q10, q25, q50, q75, q90,
-            prob_low, prob_normal, prob_elevated, prob_crisis,
+            prob_up,
+            prob_down,
             confidence_score as confidence,
             feature_quality,
             actual_vix_change,
             actual_regime,
+            median_error,
             point_error,
             quantile_coverage,
             horizon
@@ -54,13 +89,10 @@ class EnhancedWalkForwardValidator:
         ORDER BY forecast_date
         """
 
-        df = pd.read_sql_query(query, conn, parse_dates=["forecast_date"])
-        conn.close()
-
-        # Compute target_date from forecast_date + horizon
-        df["target_date"] = df["forecast_date"] + pd.to_timedelta(
-            df["horizon"], unit="D"
+        df = pd.read_sql_query(
+            query, conn, parse_dates=["forecast_date", "observation_date"]
         )
+        conn.close()
 
         logger.info(f"Loaded {len(df)} predictions with actuals")
         logger.info(
@@ -103,7 +135,14 @@ class EnhancedWalkForwardValidator:
         return df
 
     def compute_metrics(self, df: pd.DataFrame) -> Dict:
-        """Compute comprehensive evaluation metrics."""
+        """
+        Compute comprehensive evaluation metrics.
+
+        V3 CHANGES:
+        - Primary metrics based on median_forecast
+        - Quantile calibration analysis
+        - Enhanced uncertainty quantification
+        """
 
         # Parse quantile coverage JSON - FIXED: Handle None/empty values
         def parse_coverage(x):
@@ -143,64 +182,113 @@ class EnhancedWalkForwardValidator:
         return metrics
 
     def _compute_overall_metrics(self, df: pd.DataFrame) -> Dict:
-        """Overall forecast accuracy."""
+        """
+        Overall forecast accuracy.
+
+        V3: Uses median_error as primary metric, with backward compat for point_error
+        """
+
+        # Use median_error as primary, fallback to point_error if needed
+        if "median_error" in df.columns and df["median_error"].notna().any():
+            primary_error = df["median_error"]
+            logger.info("Using median_error as primary metric")
+        elif "point_error" in df.columns:
+            primary_error = df["point_error"]
+            logger.warning("median_error not available, using point_error")
+        else:
+            # Compute from median_forecast and actual
+            primary_error = df["actual_vix_change"] - df["median_forecast"]
+            logger.info("Computing error from median_forecast and actual")
+
         return {
             "n_forecasts": int(len(df)),
-            "mae": float(df["point_error"].abs().mean()),
-            "rmse": float(np.sqrt((df["point_error"] ** 2).mean())),
-            "mape": float((df["point_error"].abs() / df["vix_start"]).mean() * 100),
-            "median_abs_error": float(df["point_error"].abs().median()),
-            "bias": float(df["point_error"].mean()),
+            "mae": float(primary_error.abs().mean()),
+            "rmse": float(np.sqrt((primary_error**2).mean())),
+            "mape": float((primary_error.abs() / df["vix_start"]).mean() * 100),
+            "median_abs_error": float(primary_error.abs().median()),
+            "bias": float(primary_error.mean()),
             "forecast_width_mean": float((df["q90"] - df["q10"]).mean()),
             "forecast_iqr_mean": float((df["q75"] - df["q25"]).mean()),
         }
 
     def _compute_quantile_calibration(self, df: pd.DataFrame) -> Dict:
-        """Check if quantiles are well-calibrated."""
+        """
+        Check if quantiles are well-calibrated.
+
+        V3: Enhanced analysis for log-RV quantile regression
+        """
+
         calibration = {}
 
+        # Check each quantile
         for q in [10, 25, 50, 75, 90]:
-            # FIXED: Handle missing coverage data gracefully
-            hits = (
+            expected = q / 100
+
+            # Observed coverage
+            observed = (
                 df["coverage"]
                 .apply(
                     lambda x: x.get(f"q{q}", 0) if (x and isinstance(x, dict)) else 0
                 )
                 .mean()
             )
-            expected = q / 100.0
+
+            # Statistical test (binomial proportion test)
+            n = len(df)
+            stderr = np.sqrt(expected * (1 - expected) / n)
+            z_score = (observed - expected) / stderr if stderr > 0 else 0
+            p_value = 2 * (1 - stats.norm.cdf(abs(z_score)))
+
+            # Is it calibrated? (95% confidence)
+            calibrated = p_value > 0.05
 
             calibration[f"q{q}"] = {
-                "observed": float(hits),
                 "expected": float(expected),
-                "diff": float(hits - expected),
-                "calibrated": bool(abs(hits - expected) < 0.10),
+                "observed": float(observed),
+                "diff": float(observed - expected),
+                "stderr": float(stderr),
+                "z_score": float(z_score),
+                "p_value": float(p_value),
+                "calibrated": bool(calibrated),
             }
 
         # Interval coverage
-        calibration["interval_80"] = {
-            "coverage": float(
-                (
-                    (df["actual_vix_change"] >= df["q10"])
-                    & (df["actual_vix_change"] <= df["q90"])
-                ).mean()
+        interval_80 = (
+            df["coverage"]
+            .apply(
+                lambda x: (x.get("q10", 0) == 0 and x.get("q90", 0) == 1)
+                if (x and isinstance(x, dict))
+                else False
             )
+            .mean()
+        )
+
+        interval_50 = (
+            df["coverage"]
+            .apply(
+                lambda x: (x.get("q25", 0) == 0 and x.get("q75", 0) == 1)
+                if (x and isinstance(x, dict))
+                else False
+            )
+            .mean()
+        )
+
+        calibration["interval_80"] = {
+            "coverage": float(interval_80),
+            "expected": 0.80,
         }
 
         calibration["interval_50"] = {
-            "coverage": float(
-                (
-                    (df["actual_vix_change"] >= df["q25"])
-                    & (df["actual_vix_change"] <= df["q75"])
-                ).mean()
-            )
+            "coverage": float(interval_50),
+            "expected": 0.50,
         }
 
         return calibration
 
     def _compute_by_cohort(self, df: pd.DataFrame) -> Dict:
-        """Breakdown by calendar cohort."""
-        by_cohort = {}
+        """Performance breakdown by cohort."""
+
+        metrics_by_cohort = {}
 
         for cohort in df["cohort"].unique():
             cohort_df = df[df["cohort"] == cohort]
@@ -208,145 +296,160 @@ class EnhancedWalkForwardValidator:
             if len(cohort_df) < 5:
                 continue
 
-            by_cohort[str(cohort)] = {
+            # Use median_error if available, else compute
+            if (
+                "median_error" in cohort_df.columns
+                and cohort_df["median_error"].notna().any()
+            ):
+                error = cohort_df["median_error"]
+            else:
+                error = cohort_df["actual_vix_change"] - cohort_df["median_forecast"]
+
+            metrics_by_cohort[cohort] = {
                 "n": int(len(cohort_df)),
-                "mae": float(cohort_df["point_error"].abs().mean()),
-                "rmse": float(np.sqrt((cohort_df["point_error"] ** 2).mean())),
-                "forecast_width": float((cohort_df["q90"] - cohort_df["q10"]).mean()),
-                "q50_coverage": float(
-                    cohort_df["coverage"]
-                    .apply(
-                        lambda x: x.get("q50", 0) if (x and isinstance(x, dict)) else 0
-                    )
-                    .mean()
-                ),
+                "mae": float(error.abs().mean()),
+                "bias": float(error.mean()),
             }
 
-        return by_cohort
+        return metrics_by_cohort
 
     def _compute_by_regime(self, df: pd.DataFrame) -> Dict:
-        """Breakdown by actual VIX regime."""
-        by_regime = {}
+        """Performance breakdown by VIX regime."""
 
-        for regime in df["actual_regime"].unique():
+        metrics_by_regime = {}
+
+        if "actual_regime" not in df.columns:
+            return metrics_by_regime
+
+        for regime in df["actual_regime"].dropna().unique():
             regime_df = df[df["actual_regime"] == regime]
 
-            by_regime[str(regime)] = {
+            if len(regime_df) < 5:
+                continue
+
+            # Use median_error if available
+            if (
+                "median_error" in regime_df.columns
+                and regime_df["median_error"].notna().any()
+            ):
+                error = regime_df["median_error"]
+            else:
+                error = regime_df["actual_vix_change"] - regime_df["median_forecast"]
+
+            metrics_by_regime[regime] = {
                 "n": int(len(regime_df)),
-                "mae": float(regime_df["point_error"].abs().mean()),
-                "mean_forecast_width": float(
-                    (regime_df["q90"] - regime_df["q10"]).mean()
-                ),
+                "mae": float(error.abs().mean()),
+                "bias": float(error.mean()),
             }
 
-        return by_regime
+        return metrics_by_regime
 
     def _analyze_confidence(self, df: pd.DataFrame) -> Dict:
-        """Analyze if confidence scores are meaningful."""
+        """Analyze relationship between confidence and forecast accuracy."""
 
-        # Bin by confidence
-        df["conf_bin"] = pd.cut(
-            df["confidence"],
-            bins=[0, 0.7, 0.85, 0.95, 1.0],
-            labels=["Low", "Medium", "High", "Very High"],
-        )
+        # Use median_error if available
+        if "median_error" in df.columns and df["median_error"].notna().any():
+            error = df["median_error"].abs()
+        else:
+            error = (df["actual_vix_change"] - df["median_forecast"]).abs()
 
-        # Aggregate by confidence bin
-        conf_stats = (
-            df.groupby("conf_bin", observed=True)
-            .agg({"point_error": lambda x: x.abs().mean(), "forecast_date": "count"})
-            .rename(columns={"forecast_date": "count"})
-        )
+        # Correlation between confidence and error (should be negative)
+        correlation = df["confidence"].corr(-error)
 
-        # Convert to JSON-serializable dictionary
-        by_bin = {}
-        for bin_name, row in conf_stats.iterrows():
-            by_bin[str(bin_name)] = {
-                "mean_abs_error": float(row["point_error"]),
-                "count": int(row["count"]),
-            }
-
-        # Correlation
-        corr = df[["confidence", "point_error"]].corr().iloc[0, 1]
+        # Check if confidence is useful (statistically significant)
+        _, p_value = stats.pearsonr(df["confidence"], -error)
+        is_useful = p_value < 0.05
 
         return {
-            "by_bin": by_bin,
-            "correlation": float(corr),
-            "is_useful": bool(corr < -0.1),
+            "correlation": float(correlation),
+            "p_value": float(p_value),
+            "is_useful": bool(is_useful),
+            "interpretation": (
+                "Higher confidence → Lower error ✅"
+                if correlation > 0.1
+                else "Confidence not predictive ⚠️"
+            ),
         }
 
     def _compute_time_series_metrics(self, df: pd.DataFrame) -> Dict:
-        """Track forecast quality over time."""
-        df = df.sort_values("forecast_date").copy()
+        """Time series analysis of forecast quality."""
 
-        window = 20
-        result = {"has_trend": bool(len(df) >= window), "recent_mae": None}
+        df = df.sort_values("forecast_date")
 
-        if len(df) >= 10:
-            result["recent_mae"] = float(df["point_error"].abs().tail(10).mean())
+        # Use median_error
+        if "median_error" in df.columns and df["median_error"].notna().any():
+            error = df["median_error"].abs()
+        else:
+            error = (df["actual_vix_change"] - df["median_forecast"]).abs()
 
-        return result
+        # Rolling statistics
+        window = min(20, len(df) // 4)
+        rolling_mae = error.rolling(window, min_periods=5).mean()
+
+        return {
+            "rolling_mae_mean": float(rolling_mae.mean()),
+            "rolling_mae_std": float(rolling_mae.std()),
+            "trend": "improving"
+            if rolling_mae.iloc[-1] < rolling_mae.iloc[0]
+            else "worsening",
+        }
 
     def generate_diagnostic_report(self, output_dir: str = "diagnostics"):
-        """Generate comprehensive diagnostic report and plots."""
+        """Generate comprehensive diagnostic report with plots."""
+
         output_dir = Path(output_dir)
-        output_dir.mkdir(exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info("=" * 80)
-        logger.info("GENERATING DIAGNOSTIC REPORT")
+        logger.info("GENERATING WALK-FORWARD VALIDATION REPORT")
         logger.info("=" * 80)
 
         # Load data
         df = self.load_predictions_with_actuals()
 
-        if len(df) == 0:
-            logger.error("No predictions with actuals found!")
+        if len(df) < 10:
+            logger.error(
+                "❌ Insufficient data for validation (need at least 10 predictions)"
+            )
             return
 
         # Compute metrics
         metrics = self.compute_metrics(df)
 
-        # Print summary
-        self._print_summary(metrics)
+        # Save metrics
+        with open(output_dir / "walk_forward_metrics.json", "w") as f:
+            json.dump(metrics, f, indent=2)
+
+        logger.info(f"✅ Saved metrics to: {output_dir / 'walk_forward_metrics.json'}")
 
         # Generate plots
         self._plot_calibration(df, output_dir)
         self._plot_forecast_vs_actual(df, output_dir)
         self._plot_confidence_analysis(df, output_dir)
-        self._plot_cohort_performance(df, output_dir)
         self._plot_time_series(df, output_dir)
 
-        # Save metrics to JSON
-        metrics_path = output_dir / "walk_forward_metrics.json"
+        # Print summary
+        self._print_summary(metrics)
 
-        # Convert non-serializable types
-        def convert(obj):
-            if isinstance(obj, (np.integer, np.floating)):
-                return float(obj)
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            elif pd.isna(obj):
-                return None
-            return obj
+        logger.info("=" * 80)
+        logger.info("✅ VALIDATION REPORT COMPLETE")
+        logger.info("=" * 80)
 
-        with open(metrics_path, "w") as f:
-            json.dump(metrics, f, indent=2, default=convert)
-
-        logger.info(f"\n✅ Report saved to {output_dir}/")
-        logger.info(f"   - walk_forward_metrics.json")
-        logger.info(f"   - *.png (diagnostic plots)")
+        self.results = metrics
+        return metrics
 
     def _print_summary(self, metrics: Dict):
         """Print human-readable summary."""
+
         m = metrics["overall"]
 
         print("\n" + "=" * 80)
-        print("WALK-FORWARD VALIDATION SUMMARY")
+        print("WALK-FORWARD VALIDATION SUMMARY (V3)")
         print("=" * 80)
 
         print(f"\n📊 Overall Performance ({m['n_forecasts']} forecasts):")
-        print(f"   MAE:  {m['mae']:.2f}%")
-        print(f"   RMSE: {m['rmse']:.2f}%")
+        print(f"   MAE (median):  {m['mae']:.2f}%")
+        print(f"   RMSE:          {m['rmse']:.2f}%")
         print(f"   Median Abs Error: {m['median_abs_error']:.2f}%")
         print(
             f"   Bias: {m['bias']:+.2f}% {'(over-predicting)' if m['bias'] > 0 else '(under-predicting)'}"
@@ -363,8 +466,8 @@ class EnhancedWalkForwardValidator:
         int80 = metrics["quantile_calibration"]["interval_80"]["coverage"]
         int50 = metrics["quantile_calibration"]["interval_50"]["coverage"]
         print(f"\n📦 Interval Coverage:")
-        print(f"   80% interval (q10-q90): {int80:.1%}")
-        print(f"   50% interval (q25-q75): {int50:.1%}")
+        print(f"   80% interval (q10-q90): {int80:.1%} (expected 80%)")
+        print(f"   50% interval (q25-q75): {int50:.1%} (expected 50%)")
 
         if metrics["by_cohort"]:
             print(f"\n📅 Performance by Cohort:")
@@ -375,9 +478,11 @@ class EnhancedWalkForwardValidator:
         print(f"\n🎯 Confidence Analysis:")
         print(f"   Correlation (conf vs error): {conf['correlation']:.3f}")
         print(f"   Confidence useful: {'✅ Yes' if conf['is_useful'] else '⚠️ No'}")
+        print(f"   {conf['interpretation']}")
 
     def _plot_calibration(self, df: pd.DataFrame, output_dir: Path):
         """Calibration plot."""
+
         fig, ax = plt.subplots(figsize=(10, 8))
 
         quantiles = [10, 25, 50, 75, 90]
@@ -426,7 +531,7 @@ class EnhancedWalkForwardValidator:
         ax.set_xlabel("Expected Quantile Coverage", fontsize=12, fontweight="bold")
         ax.set_ylabel("Observed Quantile Coverage", fontsize=12, fontweight="bold")
         ax.set_title(
-            "Quantile Calibration\n(Points should lie on diagonal)",
+            "Quantile Calibration (V3)\n(Points should lie on diagonal)",
             fontsize=14,
             fontweight="bold",
         )
@@ -440,13 +545,14 @@ class EnhancedWalkForwardValidator:
         plt.close()
 
     def _plot_forecast_vs_actual(self, df: pd.DataFrame, output_dir: Path):
-        """Forecast vs actual scatter."""
+        """Forecast vs actual scatter - V3 uses median_forecast."""
+
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-        # Point forecast
+        # Median forecast (V3 primary)
         ax = axes[0]
         ax.scatter(
-            df["point_estimate"],
+            df["median_forecast"],
             df["actual_vix_change"],
             alpha=0.6,
             s=50,
@@ -456,19 +562,25 @@ class EnhancedWalkForwardValidator:
 
         # Perfect prediction line
         lims = [
-            min(df["point_estimate"].min(), df["actual_vix_change"].min()),
-            max(df["point_estimate"].max(), df["actual_vix_change"].max()),
+            min(df["median_forecast"].min(), df["actual_vix_change"].min()),
+            max(df["median_forecast"].max(), df["actual_vix_change"].max()),
         ]
         ax.plot(lims, lims, "k--", alpha=0.4, linewidth=2)
 
-        ax.set_xlabel("Predicted VIX Change (%)", fontsize=11, fontweight="bold")
+        ax.set_xlabel(
+            "Predicted VIX Change (%) - Median", fontsize=11, fontweight="bold"
+        )
         ax.set_ylabel("Actual VIX Change (%)", fontsize=11, fontweight="bold")
-        ax.set_title("Point Forecast Accuracy", fontsize=12, fontweight="bold")
+        ax.set_title("Median Forecast Accuracy (V3)", fontsize=12, fontweight="bold")
         ax.grid(True, alpha=0.3)
 
         # Error distribution
         ax = axes[1]
-        errors = df["actual_vix_change"] - df["point_estimate"]
+        if "median_error" in df.columns and df["median_error"].notna().any():
+            errors = df["median_error"]
+        else:
+            errors = df["actual_vix_change"] - df["median_forecast"]
+
         ax.hist(errors, bins=30, alpha=0.7, edgecolor="black", color="coral")
         ax.axvline(0, color="red", linestyle="--", linewidth=2, label="Zero Error")
         ax.axvline(
@@ -481,7 +593,7 @@ class EnhancedWalkForwardValidator:
 
         ax.set_xlabel("Forecast Error (%)", fontsize=11, fontweight="bold")
         ax.set_ylabel("Frequency", fontsize=11, fontweight="bold")
-        ax.set_title("Error Distribution", fontsize=12, fontweight="bold")
+        ax.set_title("Error Distribution (V3)", fontsize=12, fontweight="bold")
         ax.legend()
         ax.grid(True, alpha=0.3)
 
@@ -491,48 +603,56 @@ class EnhancedWalkForwardValidator:
 
     def _plot_confidence_analysis(self, df: pd.DataFrame, output_dir: Path):
         """Confidence vs error relationship."""
+
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-        # Scatter
-        ax = axes[0]
-        ax.scatter(df["confidence"], df["point_error"].abs(), alpha=0.5, s=50)
+        # Use median_error if available
+        if "median_error" in df.columns and df["median_error"].notna().any():
+            abs_error = df["median_error"].abs()
+        else:
+            abs_error = (df["actual_vix_change"] - df["median_forecast"]).abs()
 
-        # Add trend line
-        z = np.polyfit(df["confidence"], df["point_error"].abs(), 1)
+        # Scatter plot
+        ax = axes[0]
+        ax.scatter(df["confidence"], abs_error, alpha=0.6, s=50, color="steelblue")
+
+        # Trend line
+        z = np.polyfit(df["confidence"], abs_error, 1)
         p = np.poly1d(z)
-        x_line = np.linspace(df["confidence"].min(), df["confidence"].max(), 100)
-        ax.plot(x_line, p(x_line), "r--", linewidth=2, label="Trend")
+        x_trend = np.linspace(df["confidence"].min(), df["confidence"].max(), 100)
+        ax.plot(x_trend, p(x_trend), "r--", linewidth=2, label="Trend")
 
         ax.set_xlabel("Confidence Score", fontsize=11, fontweight="bold")
-        ax.set_ylabel("Absolute Forecast Error (%)", fontsize=11, fontweight="bold")
-        ax.set_title(
-            "Confidence vs Error\n(Should be negative correlation)",
-            fontsize=12,
-            fontweight="bold",
-        )
+        ax.set_ylabel("Absolute Error (%)", fontsize=11, fontweight="bold")
+        ax.set_title("Confidence vs Error", fontsize=12, fontweight="bold")
         ax.legend()
         ax.grid(True, alpha=0.3)
 
         # Binned analysis
         ax = axes[1]
         df["conf_bin"] = pd.cut(df["confidence"], bins=5)
-        binned = df.groupby("conf_bin", observed=True)["point_error"].agg(
-            ["mean", "std", "count"]
-        )
-        binned["mean"].abs().plot(
-            kind="bar",
+        binned = df.groupby("conf_bin")[
+            abs_error.name if hasattr(abs_error, "name") else "error"
+        ].agg(["mean", "std", "count"])
+
+        x_pos = range(len(binned))
+        ax.bar(
+            x_pos,
+            binned["mean"],
             yerr=binned["std"],
-            ax=ax,
-            capsize=5,
-            color="steelblue",
             alpha=0.7,
+            color="steelblue",
+            capsize=5,
+        )
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(
+            [f"{b.left:.2f}-{b.right:.2f}" for b in binned.index], rotation=45
         )
 
-        ax.set_xlabel("Confidence Bin", fontsize=11, fontweight="bold")
-        ax.set_ylabel("Mean Abs Error (%)", fontsize=11, fontweight="bold")
+        ax.set_xlabel("Confidence Bins", fontsize=11, fontweight="bold")
+        ax.set_ylabel("Mean Absolute Error (%)", fontsize=11, fontweight="bold")
         ax.set_title("Error by Confidence Level", fontsize=12, fontweight="bold")
         ax.grid(True, alpha=0.3, axis="y")
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha="right")
 
         plt.tight_layout()
         plt.savefig(
@@ -540,78 +660,46 @@ class EnhancedWalkForwardValidator:
         )
         plt.close()
 
-    def _plot_cohort_performance(self, df: pd.DataFrame, output_dir: Path):
-        """Performance by cohort."""
-        cohort_stats = (
-            df.groupby("cohort")
-            .agg({"point_error": lambda x: x.abs().mean(), "forecast_date": "count"})
-            .rename(columns={"forecast_date": "count"})
-        )
-
-        cohort_stats = cohort_stats[cohort_stats["count"] >= 5].sort_values(
-            "point_error"
-        )
-
-        if len(cohort_stats) == 0:
-            return
-
-        fig, ax = plt.subplots(figsize=(12, 6))
-        cohort_stats["point_error"].plot(kind="barh", ax=ax, color="teal", alpha=0.7)
-
-        # Add count labels
-        for i, (idx, row) in enumerate(cohort_stats.iterrows()):
-            ax.text(
-                row["point_error"],
-                i,
-                f"  n={int(row['count'])}",
-                va="center",
-                fontsize=9,
-            )
-
-        ax.set_xlabel("Mean Absolute Error (%)", fontsize=11, fontweight="bold")
-        ax.set_ylabel("Calendar Cohort", fontsize=11, fontweight="bold")
-        ax.set_title("Forecast Accuracy by Cohort", fontsize=12, fontweight="bold")
-        ax.grid(True, alpha=0.3, axis="x")
-
-        plt.tight_layout()
-        plt.savefig(output_dir / "cohort_performance.png", dpi=300, bbox_inches="tight")
-        plt.close()
-
     def _plot_time_series(self, df: pd.DataFrame, output_dir: Path):
-        """Forecast quality over time."""
+        """Time series of forecast quality."""
+
         df = df.sort_values("forecast_date")
+
+        # Use median_error if available
+        if "median_error" in df.columns and df["median_error"].notna().any():
+            abs_error = df["median_error"].abs()
+        else:
+            abs_error = (df["actual_vix_change"] - df["median_forecast"]).abs()
 
         fig, axes = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
 
         # Rolling MAE
         ax = axes[0]
         if len(df) >= 20:
-            df["rolling_mae"] = (
-                df["point_error"].abs().rolling(20, min_periods=5).mean()
-            )
-            ax.plot(
-                df["forecast_date"], df["rolling_mae"], linewidth=2, color="darkblue"
-            )
-            ax.fill_between(df["forecast_date"], 0, df["rolling_mae"], alpha=0.3)
+            rolling_mae = abs_error.rolling(20, min_periods=5).mean()
+            ax.plot(df["forecast_date"], rolling_mae, linewidth=2, color="darkblue")
+            ax.fill_between(df["forecast_date"], 0, rolling_mae, alpha=0.3)
         else:
-            ax.plot(df["forecast_date"], df["point_error"].abs(), "o-", linewidth=2)
+            ax.plot(df["forecast_date"], abs_error, "o-", linewidth=2)
 
         ax.set_ylabel(
             "Rolling MAE (20-forecast window)", fontsize=11, fontweight="bold"
         )
-        ax.set_title("Forecast Quality Over Time", fontsize=12, fontweight="bold")
+        ax.set_title("Forecast Quality Over Time (V3)", fontsize=12, fontweight="bold")
         ax.grid(True, alpha=0.3)
 
         # Confidence scores
         ax = axes[1]
-        ax.scatter(
+        scatter = ax.scatter(
             df["forecast_date"],
             df["confidence"],
-            c=df["point_error"].abs(),
+            c=abs_error,
             cmap="RdYlGn_r",
             s=50,
             alpha=0.6,
         )
+        plt.colorbar(scatter, ax=ax, label="Absolute Error (%)")
+
         ax.set_ylabel("Confidence Score", fontsize=11, fontweight="bold")
         ax.set_xlabel("Forecast Date", fontsize=11, fontweight="bold")
         ax.set_title(
@@ -629,7 +717,9 @@ class EnhancedWalkForwardValidator:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Enhanced walk-forward validation")
+    parser = argparse.ArgumentParser(
+        description="Enhanced walk-forward validation (V3)"
+    )
     parser.add_argument(
         "--db", default="data_cache/predictions.db", help="Database path"
     )

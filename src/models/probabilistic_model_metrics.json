@@ -1,37 +1,37 @@
 {
   "mid_cycle": {
     "point": {
-      "rmse": 13.595352757666054,
-      "rmse_std": 6.050587237128333,
-      "n_splits": 5,
-      "test_size": 112
+      "rmse": 12.455367789496927,
+      "rmse_std": 3.8357968847364887,
+      "n_splits": 3,
+      "test_size": 67
     },
     "uncertainty": {
-      "rmse": 0.08560702260209484,
-      "rmse_std": 0.005706936514501917,
-      "n_splits": 5,
-      "test_size": 112
+      "rmse": 0.07240570408033173,
+      "rmse_std": 0.004725637441491582,
+      "n_splits": 3,
+      "test_size": 67
     },
     "direction": {
-      "accuracy": 0.6035714285714285,
-      "accuracy_std": 0.03321620578167548,
-      "log_loss": 0.6594171777667291,
-      "log_loss_std": 0.019430470540574375,
+      "accuracy": 0.5223880597014926,
+      "accuracy_std": 0.15269660948480407,
+      "log_loss": 0.6655607849369664,
+      "log_loss_std": 0.044973357982545446,
       "num_classes": 2,
       "class_mapping": {
         "0": 0,
         "1": 1
       },
-      "valid_folds": 5,
+      "valid_folds": 3,
       "skipped_folds": 0,
-      "n_splits": 5,
-      "test_size": 112
+      "n_splits": 3,
+      "test_size": 67
     },
     "confidence": {
-      "rmse": 0.0232121311762565,
-      "rmse_std": 0.005419368842198029,
-      "n_splits": 5,
-      "test_size": 112
+      "rmse": 0.02624018986892586,
+      "rmse_std": 0.002476508789355214,
+      "n_splits": 3,
+      "test_size": 67
     }
   }
 }
