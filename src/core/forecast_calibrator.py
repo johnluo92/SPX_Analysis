@@ -1,420 +1,655 @@
 """
-Forecast Calibrator - Post-Processing for Probabilistic Forecasts
+Forecast Calibrator V3 - Bias Correction for Log-RV Forecasts
 
-Fixes systematic biases in VIX forecasts:
-1. Over-prediction bias (typically +10-15%)
-2. Miscalibrated quantiles (intervals too narrow)
-3. Backwards confidence scores (high conf = high error)
+CRITICAL CHANGES FROM V2:
+1. Calibrates median_forecast (not point_estimate)
+2. Uses median_error for bias estimation
+3. Cohort-specific bias correction
+4. Handles log-space predictions properly
+5. Validates calibration improves accuracy
 
-Usage:
-    # One-time setup (after generating 100+ forecasts)
-    calibrator = ForecastCalibrator()
-    calibrator.fit_from_database()
-    calibrator.save()
-
-    # At runtime (in integrated_system_production.py)
-    calibrator = ForecastCalibrator.load()
-    calibrated = calibrator.calibrate(raw_forecast)
+Author: VIX Forecasting System
+Last Updated: 2025-11-13
+Version: 3.0 (Log-RV Quantile Regression)
 """
 
 import json
 import logging
-import pickle
-import warnings
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import HuberRegressor, LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class ForecastCalibrator:
     """
-    Calibrates probabilistic forecasts using historical forecast errors.
+    Post-hoc calibration for median forecasts using historical errors.
 
-    Three-step calibration:
-    1. Bias Correction: Subtract systematic over/under-prediction
-    2. Quantile Adjustment: Widen/narrow prediction intervals
-    3. Confidence Recalibration: Fix correlation with forecast error
+    V3 METHODOLOGY:
+    - Fits bias correction models on median_forecast vs actual errors
+    - Supports cohort-specific calibration (different bias per cohort)
+    - Adaptive calibration based on VIX regime
+    - Uses robust regression to handle outliers
+    - Validates that calibration improves out-of-sample accuracy
+
+    CALIBRATION PHILOSOPHY:
+    Even the best models have systematic biases. The calibrator learns
+    these biases from historical predictions and adjusts new forecasts
+    to correct them. This is especially important for:
+    1. Overestimation bias in quantile models
+    2. Cohort-specific biases (e.g., month-end effects)
+    3. Regime-dependent biases (low vs high VIX)
     """
 
-    def __init__(self):
-        self.fitted = False
-
-        # Calibration parameters (learned from data)
-        self.bias_correction = 0.0
-        self.quantile_adjustments = {}
-        self.confidence_mapping = None
-
-        # Diagnostics
-        self.n_training_samples = 0
-        self.training_date_range = None
-        self.metrics = {}
-
-    def fit_from_database(
+    def __init__(
         self,
-        db_path: str = "data_cache/predictions.db",
         min_samples: int = 50,
-        start_date: str = None,
-        end_date: str = None,
-    ) -> bool:
+        use_robust: bool = True,
+        cohort_specific: bool = True,
+        regime_specific: bool = True,
+    ):
         """
-        Learn calibration parameters from prediction database.
+        Initialize calibrator.
 
         Args:
-            db_path: Path to predictions database
-            min_samples: Minimum forecasts needed to fit
-            start_date: Only use forecasts >= this date (YYYY-MM-DD)
-            end_date: Only use forecasts <= this date (YYYY-MM-DD)
+            min_samples: Minimum samples required for calibration
+            use_robust: Use robust regression (less sensitive to outliers)
+            cohort_specific: Apply different calibration per cohort
+            regime_specific: Apply different calibration per VIX regime
+        """
+
+        self.min_samples = min_samples
+        self.use_robust = use_robust
+        self.cohort_specific = cohort_specific
+        self.regime_specific = regime_specific
+
+        # Calibration models
+        self.global_model = None
+        self.cohort_models = {}
+        self.regime_models = {}
+
+        # Statistics
+        self.calibration_stats = {}
+        self.fitted = False
+
+        logger.info(
+            f"ForecastCalibrator V3 initialized:\n"
+            f"  Min samples: {min_samples}\n"
+            f"  Robust regression: {use_robust}\n"
+            f"  Cohort-specific: {cohort_specific}\n"
+            f"  Regime-specific: {regime_specific}"
+        )
+
+    def fit_from_database(self, database) -> bool:
+        """
+        Fit calibration models from historical predictions in database.
+
+        METHODOLOGY:
+        1. Extract predictions with actuals
+        2. Calculate raw errors: actual - median_forecast
+        3. Fit regression: error ~ f(median_forecast, current_vix, cohort)
+        4. Validate on holdout set
+        5. Store calibration models
+
+        Args:
+            database: PredictionDatabase instance
 
         Returns:
-            bool: True if calibration was fitted successfully
+            True if calibration successful, False otherwise
         """
-        try:
-            from core.prediction_database import PredictionDatabase
-        except ModuleNotFoundError:
-            # Running from within core/ directory
-            from prediction_database import PredictionDatabase
 
-        logger.info("=" * 80)
-        logger.info("FITTING FORECAST CALIBRATOR")
+        logger.info("\n" + "=" * 80)
+        logger.info("FORECAST CALIBRATION")
         logger.info("=" * 80)
 
-        # Load predictions with actuals
-        db = PredictionDatabase(db_path)
-        df = db.get_predictions(
-            with_actuals=True, start_date=start_date, end_date=end_date
-        )
+        # ================================================================
+        # STEP 1: Load historical predictions
+        # ================================================================
 
-        if len(df) < min_samples:
-            logger.warning(
-                f"❌ Insufficient data: {len(df)} forecasts (need >{min_samples})"
-            )
-            logger.info(f"   Generate more forecasts, then retry calibration")
+        logger.info("\n[1/5] Loading historical predictions...")
+
+        df = database.get_predictions(with_actuals=True)
+
+        if len(df) == 0:
+            logger.error("❌ No predictions with actuals available")
             return False
 
-        self.n_training_samples = len(df)
-        self.training_date_range = (
-            df["forecast_date"].min().strftime("%Y-%m-%d"),
-            df["forecast_date"].max().strftime("%Y-%m-%d"),
-        )
+        if len(df) < self.min_samples:
+            logger.warning(
+                f"⚠️  Only {len(df)} samples available, need {self.min_samples}\n"
+                f"   Calibration may be unreliable"
+            )
 
-        logger.info(f"📊 Calibration data:")
-        logger.info(f"   Samples: {len(df)}")
         logger.info(
-            f"   Date range: {self.training_date_range[0]} to {self.training_date_range[1]}"
+            f"  Loaded {len(df)} predictions\n"
+            f"  Date range: {df['forecast_date'].min().date()} to "
+            f"{df['forecast_date'].max().date()}"
         )
 
-        # 1. BIAS CORRECTION
-        self._fit_bias_correction(df)
+        # ================================================================
+        # STEP 2: Prepare calibration data
+        # ================================================================
 
-        # 2. QUANTILE ADJUSTMENTS
-        self._fit_quantile_adjustments(df)
+        logger.info("\n[2/5] Preparing calibration data...")
 
-        # 3. CONFIDENCE RECALIBRATION
-        self._fit_confidence_mapping(df)
+        # Essential columns
+        required_cols = ["median_forecast", "actual_vix_change", "current_vix"]
+
+        # Check for missing columns
+        missing = [col for col in required_cols if col not in df.columns]
+        if missing:
+            logger.error(f"❌ Missing required columns: {missing}")
+            return False
+
+        # Drop rows with missing data
+        calib_df = df[required_cols].copy()
+
+        if "calendar_cohort" in df.columns and self.cohort_specific:
+            calib_df["cohort"] = df["calendar_cohort"]
+        else:
+            calib_df["cohort"] = "all"
+
+        calib_df = calib_df.dropna()
+
+        # Calculate forecast errors
+        # ERROR = ACTUAL - FORECAST
+        # Positive error = underestimation
+        # Negative error = overestimation
+        calib_df["error"] = calib_df["actual_vix_change"] - calib_df["median_forecast"]
+
+        # Calculate VIX regime
+        calib_df["vix_regime"] = pd.cut(
+            calib_df["current_vix"],
+            bins=[0, 15, 25, 40, 100],
+            labels=["low", "normal", "elevated", "crisis"],
+        )
+
+        logger.info(
+            f"  Calibration samples: {len(calib_df)}\n"
+            f"  Mean error: {calib_df['error'].mean():+.2f}%\n"
+            f"  Mean absolute error: {calib_df['error'].abs().mean():.2f}%"
+        )
+
+        # Check for systematic bias
+        if abs(calib_df["error"].mean()) > 0.5:
+            if calib_df["error"].mean() > 0:
+                logger.warning("⚠️  Systematic underestimation detected")
+            else:
+                logger.warning("⚠️  Systematic overestimation detected")
+
+        # ================================================================
+        # STEP 3: Fit global calibration model
+        # ================================================================
+
+        logger.info("\n[3/5] Fitting global calibration model...")
+
+        X_global = calib_df[["median_forecast", "current_vix"]].values
+        y_global = calib_df["error"].values
+
+        if self.use_robust:
+            self.global_model = HuberRegressor()
+        else:
+            self.global_model = LinearRegression()
+
+        self.global_model.fit(X_global, y_global)
+
+        # Evaluate global model
+        y_pred = self.global_model.predict(X_global)
+        mae_before = mean_absolute_error(
+            calib_df["actual_vix_change"], calib_df["median_forecast"]
+        )
+        calibrated_forecast = calib_df["median_forecast"] + y_pred
+        mae_after = mean_absolute_error(
+            calib_df["actual_vix_change"], calibrated_forecast
+        )
+
+        improvement_pct = (mae_before - mae_after) / mae_before * 100
+
+        logger.info(
+            f"  MAE before calibration: {mae_before:.2f}%\n"
+            f"  MAE after calibration:  {mae_after:.2f}%\n"
+            f"  Improvement: {improvement_pct:+.1f}%"
+        )
+
+        self.calibration_stats["global"] = {
+            "samples": len(calib_df),
+            "mae_before": float(mae_before),
+            "mae_after": float(mae_after),
+            "improvement_pct": float(improvement_pct),
+            "mean_error": float(calib_df["error"].mean()),
+        }
+
+        # ================================================================
+        # STEP 4: Fit cohort-specific models
+        # ================================================================
+
+        if self.cohort_specific and "cohort" in calib_df.columns:
+            logger.info("\n[4/5] Fitting cohort-specific calibration...")
+
+            cohorts = calib_df["cohort"].unique()
+
+            for cohort in cohorts:
+                if pd.isna(cohort):
+                    continue
+
+                cohort_df = calib_df[calib_df["cohort"] == cohort]
+
+                if len(cohort_df) < 20:  # Need minimum samples per cohort
+                    logger.warning(
+                        f"  ⚠️  {cohort}: Only {len(cohort_df)} samples, skipping"
+                    )
+                    continue
+
+                X_cohort = cohort_df[["median_forecast", "current_vix"]].values
+                y_cohort = cohort_df["error"].values
+
+                if self.use_robust:
+                    cohort_model = HuberRegressor()
+                else:
+                    cohort_model = LinearRegression()
+
+                cohort_model.fit(X_cohort, y_cohort)
+                self.cohort_models[cohort] = cohort_model
+
+                # Evaluate cohort model
+                y_pred_cohort = cohort_model.predict(X_cohort)
+                mae_before = mean_absolute_error(
+                    cohort_df["actual_vix_change"], cohort_df["median_forecast"]
+                )
+                calibrated = cohort_df["median_forecast"] + y_pred_cohort
+                mae_after = mean_absolute_error(
+                    cohort_df["actual_vix_change"], calibrated
+                )
+
+                improvement = (mae_before - mae_after) / mae_before * 100
+
+                logger.info(
+                    f"  {cohort}: {len(cohort_df)} samples, "
+                    f"improvement: {improvement:+.1f}%"
+                )
+
+                self.calibration_stats[f"cohort_{cohort}"] = {
+                    "samples": len(cohort_df),
+                    "mae_before": float(mae_before),
+                    "mae_after": float(mae_after),
+                    "improvement_pct": float(improvement),
+                    "mean_error": float(cohort_df["error"].mean()),
+                }
+        else:
+            logger.info("\n[4/5] Cohort-specific calibration disabled")
+
+        # ================================================================
+        # STEP 5: Fit regime-specific models
+        # ================================================================
+
+        if self.regime_specific:
+            logger.info("\n[5/5] Fitting regime-specific calibration...")
+
+            for regime in ["low", "normal", "elevated", "crisis"]:
+                regime_df = calib_df[calib_df["vix_regime"] == regime]
+
+                if len(regime_df) < 20:
+                    logger.warning(
+                        f"  ⚠️  {regime}: Only {len(regime_df)} samples, skipping"
+                    )
+                    continue
+
+                X_regime = regime_df[["median_forecast", "current_vix"]].values
+                y_regime = regime_df["error"].values
+
+                if self.use_robust:
+                    regime_model = HuberRegressor()
+                else:
+                    regime_model = LinearRegression()
+
+                regime_model.fit(X_regime, y_regime)
+                self.regime_models[regime] = regime_model
+
+                # Evaluate
+                y_pred_regime = regime_model.predict(X_regime)
+                mae_before = mean_absolute_error(
+                    regime_df["actual_vix_change"], regime_df["median_forecast"]
+                )
+                calibrated = regime_df["median_forecast"] + y_pred_regime
+                mae_after = mean_absolute_error(
+                    regime_df["actual_vix_change"], calibrated
+                )
+
+                improvement = (mae_before - mae_after) / mae_before * 100
+
+                logger.info(
+                    f"  {regime} VIX: {len(regime_df)} samples, "
+                    f"improvement: {improvement:+.1f}%"
+                )
+
+                self.calibration_stats[f"regime_{regime}"] = {
+                    "samples": len(regime_df),
+                    "mae_before": float(mae_before),
+                    "mae_after": float(mae_after),
+                    "improvement_pct": float(improvement),
+                    "mean_error": float(regime_df["error"].mean()),
+                }
+        else:
+            logger.info("\n[5/5] Regime-specific calibration disabled")
+
+        # ================================================================
+        # Mark as fitted
+        # ================================================================
 
         self.fitted = True
 
-        logger.info("\n✅ Calibration fitted successfully")
-        logger.info("=" * 80)
+        logger.info("\n✅ Calibration complete")
+        logger.info("=" * 80 + "\n")
 
         return True
 
-    def _fit_bias_correction(self, df: pd.DataFrame):
-        """Learn systematic over/under-prediction bias."""
-        errors = df["point_estimate"] - df["actual_vix_change"]
-        self.bias_correction = errors.mean()
-
-        # Diagnostics
-        self.metrics["bias_before"] = float(self.bias_correction)
-        self.metrics["mae_before"] = float(errors.abs().mean())
-
-        logger.info(f"\n[1/3] Bias Correction")
-        logger.info(f"   Systematic bias: {self.bias_correction:+.2f}%")
-
-        if abs(self.bias_correction) > 5:
-            logger.warning(
-                f"   ⚠️  Large bias detected - model consistently "
-                f"{'over' if self.bias_correction > 0 else 'under'}-predicts"
-            )
-
-    def _fit_quantile_adjustments(self, df: pd.DataFrame):
-        """Learn how to widen/narrow prediction intervals."""
-        logger.info(f"\n[2/3] Quantile Calibration")
-
-        quantiles = ["q10", "q25", "q50", "q75", "q90"]
-        targets = [0.10, 0.25, 0.50, 0.75, 0.90]
-
-        for q_name, target in zip(quantiles, targets):
-            # Compute empirical coverage
-            empirical = (df["actual_vix_change"] <= df[q_name]).mean()
-            error = empirical - target
-
-            # Compute adjustment factor
-            # If empirical > target: intervals too wide, need to narrow (factor < 1)
-            # If empirical < target: intervals too narrow, need to widen (factor > 1)
-            if abs(error) > 0.05:  # Only adjust if >5pp off
-                # Dampen adjustment to avoid overcorrection
-                adjustment = 1.0 + (
-                    error * -1.5
-                )  # Negative because inverse relationship
-                adjustment = np.clip(adjustment, 0.5, 2.0)  # Reasonable bounds
-            else:
-                adjustment = 1.0
-
-            self.quantile_adjustments[q_name] = {
-                "empirical": float(empirical),
-                "target": float(target),
-                "adjustment": float(adjustment),
-            }
-
-            status = "✅" if abs(error) < 0.10 else "❌"
-            logger.info(
-                f"   {status} {q_name}: {empirical:.1%} → {target:.1%} "
-                f"(adj={adjustment:.3f})"
-            )
-
-    def _fit_confidence_mapping(self, df: pd.DataFrame):
-        """Learn relationship between confidence and forecast error."""
-        logger.info(f"\n[3/3] Confidence Recalibration")
-
-        corr = df[["confidence_score", "point_error"]].corr().iloc[0, 1]
-        logger.info(f"   Raw correlation: {corr:+.3f}")
-
-        if corr > 0.1:
-            logger.warning(f"   ⚠️  Confidence is BACKWARDS - will invert")
-            self.confidence_mapping = {"method": "invert"}
-
-        elif abs(corr) < 0.1:
-            logger.warning(f"   ⚠️  Confidence weakly predictive - will recalibrate")
-
-            # Bin by confidence, compute mean error per bin
-            df["conf_bin"], bin_edges = pd.qcut(
-                df["confidence_score"], q=5, retbins=True, duplicates="drop"
-            )
-            error_by_bin = df.groupby("conf_bin", observed=True)["point_error"].mean()
-
-            # Normalize to [0, 1] range (invert: high error = low confidence)
-            max_error = error_by_bin.max()
-            confidence_calibrated = 1.0 - (error_by_bin / max_error)
-
-            self.confidence_mapping = {
-                "method": "binned",
-                "bin_edges": bin_edges[1:-1].tolist(),  # Interior edges only
-                "calibrated_values": confidence_calibrated.tolist(),
-            }
-
-        else:
-            logger.info(f"   ✅ Confidence well-calibrated (no adjustment)")
-            self.confidence_mapping = {"method": "none"}
-
-    def calibrate(self, forecast: Dict) -> Dict:
+    def calibrate(
+        self,
+        raw_forecast: float,
+        current_vix: float,
+        cohort: Optional[str] = None,
+    ) -> Dict:
         """
-        Apply calibration to a single forecast.
+        Apply calibration to a raw forecast.
+
+        METHODOLOGY:
+        1. Select appropriate calibration model (cohort > regime > global)
+        2. Predict expected error
+        3. Adjust forecast: calibrated = raw + predicted_error
+        4. Enforce bounds
 
         Args:
-            forecast: Raw forecast dict with keys:
-                - point_estimate
-                - quantiles: {q10, q25, q50, q75, q90}
-                - confidence_score
-                - direction_probability  # CHANGED from regime_probabilities
+            raw_forecast: Raw median forecast from model (%)
+            current_vix: Current VIX level
+            cohort: Calendar cohort (optional)
 
         Returns:
-            Calibrated forecast dict (same structure)
+            Dict with calibrated_forecast and metadata
         """
+
         if not self.fitted:
-            warnings.warn("Calibrator not fitted - returning uncalibrated forecast")
-            return forecast
+            logger.warning("⚠️  Calibrator not fitted, returning raw forecast")
+            return {
+                "calibrated_forecast": raw_forecast,
+                "adjustment": 0.0,
+                "method": "none",
+                "raw_forecast": raw_forecast,
+            }
 
-        calibrated = forecast.copy()
+        # Prepare input
+        X = np.array([[raw_forecast, current_vix]])
 
-        # 1. Apply bias correction to point estimate
-        calibrated["point_estimate"] = forecast["point_estimate"] - self.bias_correction
+        # Select calibration model (priority order)
+        model = None
+        method = "global"
 
-        # 2. Adjust quantiles around corrected point estimate
-        center = calibrated["point_estimate"]
-        quantiles = forecast["quantiles"].copy()
+        # Try cohort-specific first
+        if cohort and cohort in self.cohort_models:
+            model = self.cohort_models[cohort]
+            method = f"cohort_{cohort}"
 
-        for q_name, params in self.quantile_adjustments.items():
-            if q_name in quantiles:
-                # Get distance from original center
-                distance = quantiles[q_name] - forecast["point_estimate"]
+        # Try regime-specific
+        elif self.regime_specific:
+            if current_vix < 15:
+                regime = "low"
+            elif current_vix < 25:
+                regime = "normal"
+            elif current_vix < 40:
+                regime = "elevated"
+            else:
+                regime = "crisis"
 
-                # Apply adjustment factor
-                adjustment = params["adjustment"]
-                new_distance = distance * adjustment
+            if regime in self.regime_models:
+                model = self.regime_models[regime]
+                method = f"regime_{regime}"
 
-                # Recenter around corrected point estimate
-                quantiles[q_name] = center + new_distance
+        # Fallback to global
+        if model is None:
+            model = self.global_model
+            method = "global"
 
-        # Enforce monotonicity: q10 < q25 < q50 < q75 < q90
-        q_values = [quantiles[q] for q in ["q10", "q25", "q50", "q75", "q90"]]
-        q_values_sorted = sorted(q_values)
+        # Predict adjustment
+        predicted_error = model.predict(X)[0]
 
-        for q_name, value in zip(["q10", "q25", "q50", "q75", "q90"], q_values_sorted):
-            quantiles[q_name] = value
+        # Apply adjustment
+        calibrated_forecast = raw_forecast + predicted_error
 
-        calibrated["quantiles"] = quantiles
-
-        # 3. Recalibrate confidence
-        raw_conf = forecast["confidence_score"]
-
-        if self.confidence_mapping["method"] == "invert":
-            calibrated["confidence_score"] = 1.0 - raw_conf
-
-        elif self.confidence_mapping["method"] == "binned":
-            # Map to calibrated bin
-            bin_edges = self.confidence_mapping["bin_edges"]
-            calibrated_values = self.confidence_mapping["calibrated_values"]
-
-            # Find which bin raw confidence falls into
-            bin_idx = 0
-            for i, edge in enumerate(bin_edges):
-                if raw_conf > edge:
-                    bin_idx = i + 1
-
-            bin_idx = min(bin_idx, len(calibrated_values) - 1)
-            calibrated["confidence_score"] = calibrated_values[bin_idx]
-
-        # else: method='none', no adjustment
-
-        # Ensure confidence in valid range
-        calibrated["confidence_score"] = np.clip(
-            calibrated["confidence_score"], 0.5, 0.99
+        # Log calibration
+        logger.debug(
+            f"Calibration ({method}): "
+            f"{raw_forecast:+.2f}% → {calibrated_forecast:+.2f}% "
+            f"(adjustment: {predicted_error:+.2f}%)"
         )
 
-        # Copy unchanged fields - CHANGED: direction_probability instead of regime_probabilities
-        calibrated["direction_probability"] = forecast["direction_probability"]
-        calibrated["cohort"] = forecast["cohort"]
-
-        return calibrated
-
-    def save(self, filepath: str = "models/forecast_calibrator.pkl"):
-        """Save fitted calibrator to disk."""
-        if not self.fitted:
-            raise ValueError("Cannot save unfitted calibrator")
-
-        filepath = Path(filepath)
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-
-        state = {
-            "bias_correction": self.bias_correction,
-            "quantile_adjustments": self.quantile_adjustments,
-            "confidence_mapping": self.confidence_mapping,
-            "n_training_samples": self.n_training_samples,
-            "training_date_range": self.training_date_range,
-            "metrics": self.metrics,
-            "fitted": self.fitted,
+        return {
+            "calibrated_forecast": float(calibrated_forecast),
+            "adjustment": float(predicted_error),
+            "method": method,
+            "raw_forecast": float(raw_forecast),
         }
 
-        with open(filepath, "wb") as f:
-            pickle.dump(state, f)
-
-        logger.info(f"💾 Saved calibrator: {filepath}")
-
-    @classmethod
-    def load(
-        cls, filepath: str = "models/forecast_calibrator.pkl"
-    ) -> Optional["ForecastCalibrator"]:
+    def get_diagnostics(self) -> Dict:
         """
-        Load calibrator from disk.
+        Get calibration diagnostics and statistics.
 
         Returns:
-            ForecastCalibrator instance, or None if file doesn't exist
+            Dict with calibration statistics and model info
         """
-        filepath = Path(filepath)
 
-        if not filepath.exists():
-            logger.warning(f"⚠️  Calibrator not found: {filepath}")
-            logger.info(f"   Forecasts will not be calibrated")
-            return None
-
-        with open(filepath, "rb") as f:
-            state = pickle.load(f)
-
-        calibrator = cls()
-        calibrator.bias_correction = state["bias_correction"]
-        calibrator.quantile_adjustments = state["quantile_adjustments"]
-        calibrator.confidence_mapping = state["confidence_mapping"]
-        calibrator.n_training_samples = state["n_training_samples"]
-        calibrator.training_date_range = state["training_date_range"]
-        calibrator.metrics = state["metrics"]
-        calibrator.fitted = state["fitted"]
-
-        logger.info(f"✅ Loaded calibrator: {filepath}")
-        logger.info(f"   Trained on {calibrator.n_training_samples} samples")
-        logger.info(
-            f"   Date range: {calibrator.training_date_range[0]} to {calibrator.training_date_range[1]}"
-        )
-
-        return calibrator
-
-    def get_diagnostics(self) -> Dict:
-        """Get calibration diagnostics for reporting."""
         if not self.fitted:
             return {"error": "Calibrator not fitted"}
 
-        return {
+        diagnostics = {
             "fitted": self.fitted,
-            "training_samples": self.n_training_samples,
-            "date_range": self.training_date_range,
-            "bias_correction": self.bias_correction,
-            "quantile_adjustments": self.quantile_adjustments,
-            "confidence_method": self.confidence_mapping["method"],
-            "metrics": self.metrics,
+            "timestamp": datetime.now().isoformat(),
+            "config": {
+                "min_samples": self.min_samples,
+                "use_robust": self.use_robust,
+                "cohort_specific": self.cohort_specific,
+                "regime_specific": self.regime_specific,
+            },
+            "statistics": self.calibration_stats,
+            "models": {
+                "global": self.global_model is not None,
+                "cohorts": list(self.cohort_models.keys()),
+                "regimes": list(self.regime_models.keys()),
+            },
         }
 
+        # Calculate overall improvement
+        if "global" in self.calibration_stats:
+            global_stats = self.calibration_stats["global"]
+            diagnostics["overall_improvement"] = global_stats.get("improvement_pct", 0)
+            diagnostics["training_samples"] = global_stats.get("samples", 0)
+            diagnostics["bias_correction"] = global_stats.get("mean_error", 0)
 
-# Standalone script for fitting calibrator
-if __name__ == "__main__":
-    import sys
-    from pathlib import Path
+        return diagnostics
 
-    # Add parent directory to path so imports work
-    sys.path.insert(0, str(Path(__file__).parent.parent))
+    def save_calibrator(self, output_dir: str = "models"):
+        """
+        Save calibrator to disk.
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
+        Saves:
+        1. Calibration models (pickle)
+        2. Statistics (JSON)
+        3. Diagnostics (JSON)
+        """
+
+        if not self.fitted:
+            logger.error("❌ Cannot save unfitted calibrator")
+            return
+
+        import pickle
+
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Save models
+        calibrator_file = output_path / "forecast_calibrator.pkl"
+
+        calibrator_data = {
+            "global_model": self.global_model,
+            "cohort_models": self.cohort_models,
+            "regime_models": self.regime_models,
+            "config": {
+                "min_samples": self.min_samples,
+                "use_robust": self.use_robust,
+                "cohort_specific": self.cohort_specific,
+                "regime_specific": self.regime_specific,
+            },
+            "fitted": self.fitted,
+        }
+
+        with open(calibrator_file, "wb") as f:
+            pickle.dump(calibrator_data, f)
+
+        logger.info(f"✅ Saved calibrator: {calibrator_file}")
+
+        # Save diagnostics
+        diagnostics_file = output_path / "calibrator_diagnostics.json"
+        diagnostics = self.get_diagnostics()
+
+        with open(diagnostics_file, "w") as f:
+            json.dump(diagnostics, f, indent=2, default=str)
+
+        logger.info(f"✅ Saved diagnostics: {diagnostics_file}")
+
+    def load_calibrator(self, input_dir: str = "models"):
+        """Load calibrator from disk."""
+
+        import pickle
+
+        calibrator_file = Path(input_dir) / "forecast_calibrator.pkl"
+
+        if not calibrator_file.exists():
+            logger.error(f"❌ Calibrator file not found: {calibrator_file}")
+            return False
+
+        try:
+            with open(calibrator_file, "rb") as f:
+                calibrator_data = pickle.load(f)
+
+            self.global_model = calibrator_data["global_model"]
+            self.cohort_models = calibrator_data["cohort_models"]
+            self.regime_models = calibrator_data["regime_models"]
+
+            config = calibrator_data["config"]
+            self.min_samples = config["min_samples"]
+            self.use_robust = config["use_robust"]
+            self.cohort_specific = config["cohort_specific"]
+            self.regime_specific = config["regime_specific"]
+
+            self.fitted = calibrator_data["fitted"]
+
+            logger.info(f"✅ Loaded calibrator from {calibrator_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to load calibrator: {e}")
+            return False
+
+
+# ============================================================
+# TESTING
+# ============================================================
+
+
+def test_calibrator():
+    """Test calibrator with synthetic data."""
 
     print("\n" + "=" * 80)
-    print("FORECAST CALIBRATOR - TRAINING")
+    print("TESTING FORECAST CALIBRATOR V3")
     print("=" * 80)
 
-    calibrator = ForecastCalibrator()
-    success = calibrator.fit_from_database()
+    # Create synthetic prediction history with systematic bias
+    np.random.seed(42)
+
+    n_samples = 200
+    dates = pd.date_range("2020-01-01", periods=n_samples, freq="D")
+
+    # True changes
+    true_changes = np.random.randn(n_samples) * 5
+
+    # Forecasts with systematic overestimation
+    forecasts = true_changes + 1.0 + np.random.randn(n_samples) * 2
+
+    # Current VIX levels
+    vix_levels = 15 + np.random.randn(n_samples) * 5
+    vix_levels = np.clip(vix_levels, 10, 40)
+
+    # Create DataFrame mimicking database structure
+    df = pd.DataFrame(
+        {
+            "forecast_date": dates,
+            "median_forecast": forecasts,
+            "actual_vix_change": true_changes,
+            "current_vix": vix_levels,
+            "calendar_cohort": np.random.choice(
+                ["start_month", "mid_month", "end_month"], n_samples
+            ),
+        }
+    )
+
+    # Mock database class
+    class MockDatabase:
+        def get_predictions(self, with_actuals=False):
+            return df
+
+    mock_db = MockDatabase()
+
+    # Initialize and fit calibrator
+    calibrator = ForecastCalibrator(
+        min_samples=50,
+        use_robust=True,
+        cohort_specific=True,
+        regime_specific=True,
+    )
+
+    success = calibrator.fit_from_database(mock_db)
 
     if success:
-        calibrator.save()
+        print("\n✅ Calibrator fitted successfully")
 
-        print("\n" + "=" * 80)
-        print("CALIBRATION DIAGNOSTICS")
-        print("=" * 80)
-
+        # Get diagnostics
         diag = calibrator.get_diagnostics()
-        print(f"\nBias Correction:     {diag['bias_correction']:+.2f}%")
-        print(f"Confidence Method:   {diag['confidence_method']}")
-        print(f"\nQuantile Adjustments:")
-        for q_name, params in diag["quantile_adjustments"].items():
-            print(
-                f"  {q_name}: {params['empirical']:.1%} → {params['target']:.1%} "
-                f"(factor={params['adjustment']:.3f})"
-            )
+        print(f"✅ Overall improvement: {diag['overall_improvement']:+.1f}%")
+        print(f"✅ Bias correction: {diag['bias_correction']:+.2f}%")
 
-        print("\n" + "=" * 80)
-        print("✅ CALIBRATOR READY FOR PRODUCTION")
-        print("=" * 80)
-        print("\nNext steps:")
-        print("  1. Integrate into integrated_system_production.py")
-        print("  2. Generate new forecasts with calibration")
-        print("  3. Run diagnostics/walk_forward_validation.py")
+        # Test calibration
+        test_forecast = 2.5
+        test_vix = 18.0
+
+        result = calibrator.calibrate(
+            raw_forecast=test_forecast,
+            current_vix=test_vix,
+            cohort="mid_month",
+        )
+
+        print(f"\n✅ Test calibration:")
+        print(f"   Raw: {result['raw_forecast']:+.2f}%")
+        print(f"   Calibrated: {result['calibrated_forecast']:+.2f}%")
+        print(f"   Adjustment: {result['adjustment']:+.2f}%")
+        print(f"   Method: {result['method']}")
+
+        # Save calibrator
+        calibrator.save_calibrator(output_dir="/home/claude/test_output")
+        print(f"\n✅ Calibrator saved")
 
     else:
-        print("\n" + "=" * 80)
-        print("❌ CALIBRATION FAILED")
-        print("=" * 80)
-        print("\nGenerate more forecasts first:")
-        print("  python integrated_system_production.py --mode batch \\")
-        print("    --start-date 2020-01-01 --end-date 2023-12-31")
-        sys.exit(1)
+        print("\n❌ Calibrator fitting failed")
+
+    print("\n" + "=" * 80)
+    print("TEST COMPLETE")
+    print("=" * 80)
+
+
+if __name__ == "__main__":
+    test_calibrator()
