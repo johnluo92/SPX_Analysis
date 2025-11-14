@@ -815,3 +815,1197 @@ Traceback (most recent call last):
     if range_min <= days_to_opex <= range_max:
        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: '<=' not supported between instances of 'int' and 'NoneType'
+2025-11-14 11:01:34 | INFO | __main__ | 
+2025-11-14 11:01:34 | INFO | __main__ | ================================================================================
+2025-11-14 11:01:34 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 11:01:34 | INFO | __main__ | ================================================================================
+2025-11-14 11:01:34 | INFO | __main__ | 
+2025-11-14 11:01:34 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 11:01:34 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 11:01:34 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 11:01:34 | INFO | __main__ | 
+2025-11-14 11:01:34 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 11:01:34 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 11:01:34 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 11:01:34 | INFO | __main__ | 
+2025-11-14 11:01:34 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 11:01:34 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 11:01:34 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 11:01:34 | INFO | __main__ | 
+2025-11-14 11:01:34 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 11:01:34 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 11:01:34 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 11:01:34 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 11:01:34 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 11:01:34 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 11:01:34 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 11:01:34 | INFO | __main__ | 
+2025-11-14 11:01:34 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 11:01:34 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 11:01:34 | INFO | __main__ | ================================================================================
+2025-11-14 11:01:34 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:01:34 | INFO | __main__ | DATA PREPARATION
+2025-11-14 11:01:34 | INFO | __main__ | ================================================================================
+2025-11-14 11:01:34 | INFO | __main__ | 
+[1/3] Initializing feature engineering pipeline...
+2025-11-14 11:01:34 | INFO | __main__ | 
+[2/3] Building complete feature set...
+2025-11-14 11:01:34 | INFO | __main__ |   Training window: 3 years
+2025-11-14 11:01:34 | INFO | __main__ |   Training end date: 2022-12-31
+2025-11-14 11:01:35 | ERROR | yfinance | $^GSPC: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:01:35 | ERROR | yfinance | $^VIX: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762754400, endDate = 1672466400")
+2025-11-14 11:01:36 | ERROR | yfinance | $CL=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:01:36 | ERROR | yfinance | $DX-Y.NYB: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:01:37 | ERROR | yfinance | $GC=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:01:42 | ERROR | __main__ | 
+❌ Training failed with error: '<=' not supported between instances of 'int' and 'NoneType'
+Traceback (most recent call last):
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 397, in main
+    complete_df = prepare_training_data()
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 78, in prepare_training_data
+    result = feature_engineer.build_complete_features(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/core/feature_engineer.py", line 770, in build_complete_features
+    "calendar_cohort": self.get_calendar_cohort(date)[0],
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/core/feature_engineer.py", line 552, in get_calendar_cohort
+    if range_min <= days_to_opex <= range_max:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<=' not supported between instances of 'int' and 'NoneType'
+2025-11-14 11:04:38 | INFO | __main__ | 
+2025-11-14 11:04:38 | INFO | __main__ | ================================================================================
+2025-11-14 11:04:38 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 11:04:38 | INFO | __main__ | ================================================================================
+2025-11-14 11:04:38 | INFO | __main__ | 
+2025-11-14 11:04:38 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 11:04:38 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 11:04:38 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 11:04:38 | INFO | __main__ | 
+2025-11-14 11:04:38 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 11:04:38 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 11:04:38 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 11:04:38 | INFO | __main__ | 
+2025-11-14 11:04:38 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 11:04:38 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 11:04:38 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 11:04:38 | INFO | __main__ | 
+2025-11-14 11:04:38 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 11:04:38 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 11:04:38 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 11:04:38 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 11:04:38 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 11:04:38 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 11:04:38 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 11:04:38 | INFO | __main__ | 
+2025-11-14 11:04:38 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 11:04:38 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 11:04:38 | INFO | __main__ | ================================================================================
+2025-11-14 11:04:38 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:04:38 | INFO | __main__ | DATA PREPARATION
+2025-11-14 11:04:38 | INFO | __main__ | ================================================================================
+2025-11-14 11:04:38 | INFO | __main__ | 
+[1/3] Initializing feature engineering pipeline...
+2025-11-14 11:04:38 | INFO | __main__ | 
+[2/3] Building complete feature set...
+2025-11-14 11:04:38 | INFO | __main__ |   Training window: 3 years
+2025-11-14 11:04:38 | INFO | __main__ |   Training end date: 2022-12-31
+2025-11-14 11:04:38 | ERROR | yfinance | $^GSPC: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:04:38 | ERROR | yfinance | $^VIX: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762754400, endDate = 1672466400")
+2025-11-14 11:04:39 | ERROR | yfinance | $CL=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:04:39 | ERROR | yfinance | $DX-Y.NYB: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:04:40 | ERROR | yfinance | $GC=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:04:43 | INFO | __main__ |   Features created: 235
+  Date range: 2021-08-23 to 2025-11-12
+  Total samples: 1062
+2025-11-14 11:04:43 | INFO | __main__ | 
+[3/3] Merging features with price data...
+2025-11-14 11:04:43 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 11:04:43 | INFO | __main__ |   Cohort distribution:
+2025-11-14 11:04:43 | INFO | __main__ |     q1: 1062 samples
+2025-11-14 11:04:43 | INFO | __main__ | 
+  Final dataframe shape: (1062, 236)
+2025-11-14 11:04:43 | INFO | __main__ |   Columns: features (235) + vix + spx + calendar_cohort
+2025-11-14 11:04:43 | INFO | __main__ | 
+✅ Data preparation complete
+2025-11-14 11:04:43 | INFO | __main__ | ================================================================================
+
+2025-11-14 11:04:43 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:04:43 | INFO | __main__ | MODEL TRAINING
+2025-11-14 11:04:43 | INFO | __main__ | ================================================================================
+2025-11-14 11:04:43 | INFO | __main__ | 
+Starting training...
+2025-11-14 11:04:43 | INFO | __main__ |   Models per cohort: 7 (5 quantiles, direction, confidence)
+2025-11-14 11:04:43 | INFO | __main__ |   Primary forecast: Median (50th percentile)
+2025-11-14 11:04:43 | INFO | __main__ |   Target: Log-transformed forward realized volatility
+
+2025-11-14 11:04:43 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:04:43 | INFO | core.xgboost_trainer_v3 | REFACTORED QUANTILE REGRESSION TRAINING
+2025-11-14 11:04:43 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:04:43 | INFO | core.xgboost_trainer_v3 | 
+Training 1 cohorts: ['q1']
+2025-11-14 11:04:43 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:04:43 | INFO | core.xgboost_trainer_v3 | Cohort: q1 (1062 samples)
+2025-11-14 11:04:43 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:04:43 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-14 11:04:57 | INFO | core.xgboost_trainer_v3 |     q10: MAE=0.3670
+2025-11-14 11:05:11 | INFO | core.xgboost_trainer_v3 |     q25: MAE=0.3420
+2025-11-14 11:05:26 | INFO | core.xgboost_trainer_v3 |     q50: MAE=0.3663
+2025-11-14 11:05:40 | INFO | core.xgboost_trainer_v3 |     q75: MAE=0.4364
+2025-11-14 11:05:51 | INFO | core.xgboost_trainer_v3 |     q90: MAE=0.5798
+2025-11-14 11:05:51 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-14 11:05:59 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.584
+2025-11-14 11:05:59 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-14 11:05:59 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-14 11:06:02 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.018
+2025-11-14 11:06:02 | INFO | core.xgboost_trainer_v3 | ✅ Saved: q1
+2025-11-14 11:06:02 | INFO | core.xgboost_trainer_v3 |   Saved metrics: models/training_metrics.json
+2025-11-14 11:06:03 | INFO | core.xgboost_trainer_v3 |   Saved plots: models/model_performance.png
+2025-11-14 11:06:03 | INFO | core.xgboost_trainer_v3 | 
+================================================================================
+2025-11-14 11:06:03 | INFO | core.xgboost_trainer_v3 | TRAINING COMPLETE
+2025-11-14 11:06:03 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:06:03 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:06:03 | INFO | __main__ | TRAINING SUMMARY
+2025-11-14 11:06:03 | INFO | __main__ | ================================================================================
+2025-11-14 11:06:03 | INFO | __main__ | 
+Cohorts trained: 1
+2025-11-14 11:06:03 | INFO | __main__ |   q1: 7 models - ['q10', 'q25', 'q50', 'q75', 'q90', 'direction', 'confidence']
+2025-11-14 11:06:03 | INFO | __main__ | 
+================================================================================
+
+2025-11-14 11:06:03 | INFO | __main__ | ✅ Training report saved: models/training_report_20251114_110603.json
+2025-11-14 11:06:03 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:06:03 | INFO | __main__ | MODEL VALIDATION
+2025-11-14 11:06:03 | INFO | __main__ | ================================================================================
+2025-11-14 11:06:03 | INFO | __main__ | ✅ Models loaded successfully (tested cohort: q1)
+2025-11-14 11:06:03 | INFO | __main__ | 
+Testing prediction capability...
+2025-11-14 11:06:03 | INFO | __main__ | ✅ Test prediction successful
+2025-11-14 11:06:03 | INFO | __main__ |    Median forecast: -30.65%
+2025-11-14 11:06:03 | INFO | __main__ |    Quantiles: ['q10', 'q25', 'q50', 'q75', 'q90']
+2025-11-14 11:06:03 | INFO | __main__ |    Direction prob: 0.01
+2025-11-14 11:06:03 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:06:03 | INFO | __main__ | ✅ TRAINING COMPLETE!
+2025-11-14 11:06:03 | INFO | __main__ | ================================================================================
+2025-11-14 11:06:03 | INFO | __main__ | 
+Models saved to: models
+2025-11-14 11:06:03 | INFO | __main__ | 
+Next steps:
+2025-11-14 11:06:03 | INFO | __main__ |   1. Review training report
+2025-11-14 11:06:03 | INFO | __main__ |   2. Run: python src/integrated_system_production.py --mode predict
+2025-11-14 11:06:03 | INFO | __main__ |   3. Backfill actuals: python src/integrated_system_production.py --mode backfill
+2025-11-14 11:06:03 | INFO | __main__ | ================================================================================
+
+2025-11-14 11:18:54 | INFO | __main__ | 
+2025-11-14 11:18:54 | INFO | __main__ | ================================================================================
+2025-11-14 11:18:54 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 11:18:54 | INFO | __main__ | ================================================================================
+2025-11-14 11:18:54 | INFO | __main__ | 
+2025-11-14 11:18:54 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 11:18:54 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 11:18:54 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 11:18:54 | INFO | __main__ | 
+2025-11-14 11:18:54 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 11:18:54 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 11:18:54 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 11:18:54 | INFO | __main__ | 
+2025-11-14 11:18:54 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 11:18:54 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 11:18:54 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 11:18:54 | INFO | __main__ | 
+2025-11-14 11:18:54 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 11:18:54 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 11:18:54 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 11:18:54 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 11:18:54 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 11:18:54 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 11:18:54 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 11:18:54 | INFO | __main__ | 
+2025-11-14 11:18:54 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 11:18:54 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 11:18:54 | INFO | __main__ | ================================================================================
+2025-11-14 11:18:54 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:18:54 | INFO | __main__ | DATA PREPARATION
+2025-11-14 11:18:54 | INFO | __main__ | ================================================================================
+2025-11-14 11:18:54 | INFO | __main__ | 
+[1/3] Initializing feature engineering pipeline...
+2025-11-14 11:18:54 | INFO | __main__ | 
+[2/3] Building complete feature set...
+2025-11-14 11:18:54 | INFO | __main__ |   Training window: 3 years
+2025-11-14 11:18:54 | INFO | __main__ |   Training end date: 2022-12-31
+2025-11-14 11:18:55 | ERROR | yfinance | $^GSPC: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:18:55 | ERROR | yfinance | $^VIX: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762754400, endDate = 1672466400")
+2025-11-14 11:18:56 | ERROR | yfinance | $CL=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:18:56 | ERROR | yfinance | $DX-Y.NYB: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:18:57 | ERROR | yfinance | $GC=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 11:18:59 | INFO | __main__ |   Features created: 235
+  Date range: 2021-08-23 to 2025-11-12
+  Total samples: 1062
+2025-11-14 11:18:59 | INFO | __main__ | 
+[3/3] Merging features with price data...
+2025-11-14 11:18:59 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 11:18:59 | INFO | __main__ |   Cohort distribution:
+2025-11-14 11:18:59 | INFO | __main__ |     q1: 1062 samples
+2025-11-14 11:18:59 | INFO | __main__ | 
+  Final dataframe shape: (1062, 236)
+2025-11-14 11:18:59 | INFO | __main__ |   Columns: features (235) + vix + spx + calendar_cohort
+2025-11-14 11:18:59 | INFO | __main__ | 
+✅ Data preparation complete
+2025-11-14 11:18:59 | INFO | __main__ | ================================================================================
+
+2025-11-14 11:18:59 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:18:59 | INFO | __main__ | MODEL TRAINING
+2025-11-14 11:18:59 | INFO | __main__ | ================================================================================
+2025-11-14 11:18:59 | INFO | __main__ | 
+Starting training...
+2025-11-14 11:18:59 | INFO | __main__ |   Models per cohort: 7 (5 quantiles, direction, confidence)
+2025-11-14 11:18:59 | INFO | __main__ |   Primary forecast: Median (50th percentile)
+2025-11-14 11:18:59 | INFO | __main__ |   Target: Log-transformed forward realized volatility
+
+2025-11-14 11:18:59 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:18:59 | INFO | core.xgboost_trainer_v3 | REFACTORED QUANTILE REGRESSION TRAINING
+2025-11-14 11:18:59 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:18:59 | INFO | core.xgboost_trainer_v3 | 
+Training 1 cohorts: ['q1']
+2025-11-14 11:18:59 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:18:59 | INFO | core.xgboost_trainer_v3 | Cohort: q1 (1062 samples)
+2025-11-14 11:18:59 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:18:59 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-14 11:19:11 | INFO | core.xgboost_trainer_v3 |     q10: MAE=0.3670
+2025-11-14 11:19:26 | INFO | core.xgboost_trainer_v3 |     q25: MAE=0.3420
+2025-11-14 11:19:41 | INFO | core.xgboost_trainer_v3 |     q50: MAE=0.3663
+2025-11-14 11:19:56 | INFO | core.xgboost_trainer_v3 |     q75: MAE=0.4364
+2025-11-14 11:20:07 | INFO | core.xgboost_trainer_v3 |     q90: MAE=0.5798
+2025-11-14 11:20:07 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-14 11:20:15 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.584
+2025-11-14 11:20:15 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-14 11:20:15 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-14 11:20:18 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.018
+2025-11-14 11:20:18 | INFO | core.xgboost_trainer_v3 | ✅ Saved: q1
+2025-11-14 11:20:18 | INFO | core.xgboost_trainer_v3 |   Saved metrics: models/training_metrics.json
+2025-11-14 11:20:19 | INFO | core.xgboost_trainer_v3 |   Saved plots: models/model_performance.png
+2025-11-14 11:20:19 | INFO | core.xgboost_trainer_v3 | 
+================================================================================
+2025-11-14 11:20:19 | INFO | core.xgboost_trainer_v3 | TRAINING COMPLETE
+2025-11-14 11:20:19 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:20:19 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:20:19 | INFO | __main__ | TRAINING SUMMARY
+2025-11-14 11:20:19 | INFO | __main__ | ================================================================================
+2025-11-14 11:20:19 | INFO | __main__ | 
+Cohorts trained: 1
+2025-11-14 11:20:19 | INFO | __main__ |   q1: 7 models - ['q10', 'q25', 'q50', 'q75', 'q90', 'direction', 'confidence']
+2025-11-14 11:20:19 | INFO | __main__ | 
+================================================================================
+
+2025-11-14 11:20:19 | INFO | __main__ | ✅ Training report saved: models/training_report_20251114_112019.json
+2025-11-14 11:20:19 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:20:19 | INFO | __main__ | MODEL VALIDATION
+2025-11-14 11:20:19 | INFO | __main__ | ================================================================================
+2025-11-14 11:20:19 | INFO | __main__ | ✅ Models loaded successfully (tested cohort: q1)
+2025-11-14 11:20:19 | INFO | __main__ | 
+Testing prediction capability...
+2025-11-14 11:20:19 | INFO | __main__ | ✅ Test prediction successful
+2025-11-14 11:20:19 | INFO | __main__ |    Median forecast: -30.65%
+2025-11-14 11:20:19 | INFO | __main__ |    Quantiles: ['q10', 'q25', 'q50', 'q75', 'q90']
+2025-11-14 11:20:19 | INFO | __main__ |    Direction prob: 0.01
+2025-11-14 11:20:19 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:20:19 | INFO | __main__ | ✅ TRAINING COMPLETE!
+2025-11-14 11:20:19 | INFO | __main__ | ================================================================================
+2025-11-14 11:20:19 | INFO | __main__ | 
+Models saved to: models
+2025-11-14 11:20:19 | INFO | __main__ | 
+Next steps:
+2025-11-14 11:20:19 | INFO | __main__ |   1. Review training report
+2025-11-14 11:20:19 | INFO | __main__ |   2. Run: python src/integrated_system_production.py --mode predict
+2025-11-14 11:20:19 | INFO | __main__ |   3. Backfill actuals: python src/integrated_system_production.py --mode backfill
+2025-11-14 11:20:19 | INFO | __main__ | ================================================================================
+
+2025-11-14 11:28:03 | INFO | __main__ | 
+2025-11-14 11:28:03 | INFO | __main__ | ================================================================================
+2025-11-14 11:28:03 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 11:28:03 | INFO | __main__ | ================================================================================
+2025-11-14 11:28:03 | INFO | __main__ | 
+2025-11-14 11:28:03 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 11:28:03 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 11:28:03 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 11:28:03 | INFO | __main__ | 
+2025-11-14 11:28:03 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 11:28:03 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 11:28:03 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 11:28:03 | INFO | __main__ | 
+2025-11-14 11:28:03 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 11:28:03 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 11:28:03 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 11:28:03 | INFO | __main__ | 
+2025-11-14 11:28:03 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 11:28:03 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 11:28:03 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 11:28:03 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 11:28:03 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 11:28:03 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 11:28:03 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 11:28:03 | INFO | __main__ | 
+2025-11-14 11:28:03 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 11:28:03 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 11:28:03 | INFO | __main__ | ================================================================================
+2025-11-14 11:28:03 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:28:03 | INFO | __main__ | DATA PREPARATION
+2025-11-14 11:28:03 | INFO | __main__ | ================================================================================
+2025-11-14 11:28:03 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-14 11:28:03 | INFO | __main__ | 
+[2/4] Building complete feature set (all available data)...
+2025-11-14 11:28:03 | INFO | __main__ |   Feature lookback window: 3 years
+2025-11-14 11:28:03 | INFO | __main__ |   Training will be filtered to end: 2022-12-31
+2025-11-14 11:28:09 | INFO | __main__ |   Features created: 235
+  Full date range: 2021-08-23 to 2025-11-12
+  Total samples: 1062
+2025-11-14 11:28:09 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-14 11:28:09 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 11:28:09 | INFO | __main__ | 
+[4/4] Filtering to training period (≤ 2022-12-31)...
+2025-11-14 11:28:09 | INFO | __main__ |   Filtered date range: 2021-08-23 to 2022-12-30
+  Training samples: 343 (was 1062)
+2025-11-14 11:28:09 | INFO | __main__ |   Cohort distribution:
+2025-11-14 11:28:09 | INFO | __main__ |     q1: 343 samples
+2025-11-14 11:28:09 | INFO | __main__ | 
+  Final dataframe shape: (343, 236)
+2025-11-14 11:28:09 | INFO | __main__ |   Columns: features (235) + vix + spx + calendar_cohort
+2025-11-14 11:28:09 | INFO | __main__ | 
+✅ Data preparation complete
+2025-11-14 11:28:09 | INFO | __main__ | ✅ Temporal hygiene validated: All data ≤ 2022-12-31
+2025-11-14 11:28:09 | INFO | __main__ | ================================================================================
+
+2025-11-14 11:28:09 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:28:09 | INFO | __main__ | MODEL TRAINING
+2025-11-14 11:28:09 | INFO | __main__ | ================================================================================
+2025-11-14 11:28:09 | INFO | __main__ | 
+Starting training...
+2025-11-14 11:28:09 | INFO | __main__ |   Models per cohort: 7 (5 quantiles, direction, confidence)
+2025-11-14 11:28:09 | INFO | __main__ |   Primary forecast: Median (50th percentile)
+2025-11-14 11:28:09 | INFO | __main__ |   Target: Log-transformed forward realized volatility
+
+2025-11-14 11:28:09 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:28:09 | INFO | core.xgboost_trainer_v3 | REFACTORED QUANTILE REGRESSION TRAINING
+2025-11-14 11:28:09 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:28:09 | INFO | core.xgboost_trainer_v3 | 
+Training 1 cohorts: ['q1']
+2025-11-14 11:28:09 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:28:09 | INFO | core.xgboost_trainer_v3 | Cohort: q1 (343 samples)
+2025-11-14 11:28:09 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:28:09 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-14 11:28:14 | INFO | core.xgboost_trainer_v3 |     q10: MAE=0.5385
+2025-11-14 11:28:20 | INFO | core.xgboost_trainer_v3 |     q25: MAE=0.3941
+2025-11-14 11:28:27 | INFO | core.xgboost_trainer_v3 |     q50: MAE=0.3418
+2025-11-14 11:28:33 | INFO | core.xgboost_trainer_v3 |     q75: MAE=0.3275
+2025-11-14 11:28:38 | INFO | core.xgboost_trainer_v3 |     q90: MAE=0.3625
+2025-11-14 11:28:38 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-14 11:28:40 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.529
+2025-11-14 11:28:40 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-14 11:28:40 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-14 11:28:42 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.024
+2025-11-14 11:28:42 | INFO | core.xgboost_trainer_v3 | ✅ Saved: q1
+2025-11-14 11:28:42 | INFO | core.xgboost_trainer_v3 |   Saved metrics: models/training_metrics.json
+2025-11-14 11:28:43 | INFO | core.xgboost_trainer_v3 |   Saved plots: models/model_performance.png
+2025-11-14 11:28:43 | INFO | core.xgboost_trainer_v3 | 
+================================================================================
+2025-11-14 11:28:43 | INFO | core.xgboost_trainer_v3 | TRAINING COMPLETE
+2025-11-14 11:28:43 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:28:43 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:28:43 | INFO | __main__ | TRAINING SUMMARY
+2025-11-14 11:28:43 | INFO | __main__ | ================================================================================
+2025-11-14 11:28:43 | INFO | __main__ | 
+Cohorts trained: 1
+2025-11-14 11:28:43 | INFO | __main__ |   q1: 7 models - ['q10', 'q25', 'q50', 'q75', 'q90', 'direction', 'confidence']
+2025-11-14 11:28:43 | INFO | __main__ | 
+================================================================================
+
+2025-11-14 11:28:43 | INFO | __main__ | ✅ Training report saved: models/training_report_20251114_112843.json
+2025-11-14 11:28:43 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:28:43 | INFO | __main__ | MODEL VALIDATION
+2025-11-14 11:28:43 | INFO | __main__ | ================================================================================
+2025-11-14 11:28:43 | INFO | __main__ | ✅ Models loaded successfully (tested cohort: q1)
+2025-11-14 11:28:43 | INFO | __main__ | 
+Testing prediction capability...
+2025-11-14 11:28:43 | INFO | __main__ | ✅ Test prediction successful
+2025-11-14 11:28:43 | INFO | __main__ |    Median forecast: -5.64%
+2025-11-14 11:28:43 | INFO | __main__ |    Quantiles: ['q10', 'q25', 'q50', 'q75', 'q90']
+2025-11-14 11:28:43 | INFO | __main__ |    Direction prob: 0.02
+2025-11-14 11:28:43 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:28:43 | INFO | __main__ | ✅ TRAINING COMPLETE!
+2025-11-14 11:28:43 | INFO | __main__ | ================================================================================
+2025-11-14 11:28:43 | INFO | __main__ | 
+Models saved to: models
+2025-11-14 11:28:43 | INFO | __main__ | 
+Next steps:
+2025-11-14 11:28:43 | INFO | __main__ |   1. Review training report
+2025-11-14 11:28:43 | INFO | __main__ |   2. Run: python src/integrated_system_production.py --mode predict
+2025-11-14 11:28:43 | INFO | __main__ |   3. Backfill actuals: python src/integrated_system_production.py --mode backfill
+2025-11-14 11:28:43 | INFO | __main__ | ================================================================================
+
+2025-11-14 11:29:58 | INFO | __main__ | 
+2025-11-14 11:29:58 | INFO | __main__ | ================================================================================
+2025-11-14 11:29:58 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 11:29:58 | INFO | __main__ | ================================================================================
+2025-11-14 11:29:58 | INFO | __main__ | 
+2025-11-14 11:29:58 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 11:29:58 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 11:29:58 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 11:29:58 | INFO | __main__ | 
+2025-11-14 11:29:58 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 11:29:58 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 11:29:58 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 11:29:58 | INFO | __main__ | 
+2025-11-14 11:29:58 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 11:29:58 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 11:29:58 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 11:29:58 | INFO | __main__ | 
+2025-11-14 11:29:58 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 11:29:58 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 11:29:58 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 11:29:58 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 11:29:58 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 11:29:58 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 11:29:58 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 11:29:58 | INFO | __main__ | 
+2025-11-14 11:29:58 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 11:29:58 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 11:29:58 | INFO | __main__ | ================================================================================
+2025-11-14 11:29:58 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:29:58 | INFO | __main__ | DATA PREPARATION
+2025-11-14 11:29:58 | INFO | __main__ | ================================================================================
+2025-11-14 11:29:58 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-14 11:29:58 | INFO | __main__ | 
+[2/4] Building complete feature set (all available data)...
+2025-11-14 11:29:58 | INFO | __main__ |   Feature lookback window: 3 years
+2025-11-14 11:29:58 | INFO | __main__ |   Training will be filtered to end: 2022-12-31
+2025-11-14 11:30:02 | INFO | __main__ |   Features created: 235
+  Full date range: 2021-08-23 to 2025-11-12
+  Total samples: 1062
+2025-11-14 11:30:02 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-14 11:30:02 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 11:30:02 | INFO | __main__ | 
+[4/4] Filtering to training period (≤ 2022-12-31)...
+2025-11-14 11:30:02 | INFO | __main__ |   Filtered date range: 2021-08-23 to 2022-12-30
+  Training samples: 343 (was 1062)
+2025-11-14 11:30:02 | INFO | __main__ |   Cohort distribution:
+2025-11-14 11:30:02 | INFO | __main__ |     q1: 343 samples
+2025-11-14 11:30:02 | INFO | __main__ | 
+  Final dataframe shape: (343, 236)
+2025-11-14 11:30:02 | INFO | __main__ |   Columns: features (235) + vix + spx + calendar_cohort
+2025-11-14 11:30:02 | INFO | __main__ | 
+✅ Data preparation complete
+2025-11-14 11:30:02 | INFO | __main__ | ✅ Temporal hygiene validated: All data ≤ 2022-12-31
+2025-11-14 11:30:02 | INFO | __main__ | ================================================================================
+
+2025-11-14 11:30:02 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:30:02 | INFO | __main__ | MODEL TRAINING
+2025-11-14 11:30:02 | INFO | __main__ | ================================================================================
+2025-11-14 11:30:02 | INFO | __main__ | 
+Starting training...
+2025-11-14 11:30:02 | INFO | __main__ |   Models per cohort: 7 (5 quantiles, direction, confidence)
+2025-11-14 11:30:02 | INFO | __main__ |   Primary forecast: Median (50th percentile)
+2025-11-14 11:30:02 | INFO | __main__ |   Target: Log-transformed forward realized volatility
+
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 | REFACTORED QUANTILE REGRESSION TRAINING
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 |   Target creation:
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 |     Total samples: 343
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 |     Valid targets: 338
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 |     NaN targets: 5 (last 5 days)
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 | 
+Training 1 cohorts: ['q1']
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 | Cohort: q1 (343 samples)
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:30:02 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-14 11:30:07 | INFO | core.xgboost_trainer_v3 |     q10: MAE=0.5385
+2025-11-14 11:30:13 | INFO | core.xgboost_trainer_v3 |     q25: MAE=0.3941
+2025-11-14 11:30:20 | INFO | core.xgboost_trainer_v3 |     q50: MAE=0.3418
+2025-11-14 11:30:26 | INFO | core.xgboost_trainer_v3 |     q75: MAE=0.3275
+2025-11-14 11:30:30 | INFO | core.xgboost_trainer_v3 |     q90: MAE=0.3625
+2025-11-14 11:30:30 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-14 11:30:33 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.529
+2025-11-14 11:30:33 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-14 11:30:33 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-14 11:30:35 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.024
+2025-11-14 11:30:35 | INFO | core.xgboost_trainer_v3 | ✅ Saved: q1
+2025-11-14 11:30:35 | INFO | core.xgboost_trainer_v3 |   Saved metrics: models/training_metrics.json
+2025-11-14 11:30:35 | INFO | core.xgboost_trainer_v3 |   Saved plots: models/model_performance.png
+2025-11-14 11:30:35 | INFO | core.xgboost_trainer_v3 | 
+================================================================================
+2025-11-14 11:30:35 | INFO | core.xgboost_trainer_v3 | TRAINING COMPLETE
+2025-11-14 11:30:35 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:30:35 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:30:35 | INFO | __main__ | TRAINING SUMMARY
+2025-11-14 11:30:35 | INFO | __main__ | ================================================================================
+2025-11-14 11:30:35 | INFO | __main__ | 
+Cohorts trained: 1
+2025-11-14 11:30:35 | INFO | __main__ |   q1: 7 models - ['q10', 'q25', 'q50', 'q75', 'q90', 'direction', 'confidence']
+2025-11-14 11:30:35 | INFO | __main__ | 
+================================================================================
+
+2025-11-14 11:30:35 | INFO | __main__ | ✅ Training report saved: models/training_report_20251114_113035.json
+2025-11-14 11:30:35 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:30:35 | INFO | __main__ | MODEL VALIDATION
+2025-11-14 11:30:35 | INFO | __main__ | ================================================================================
+2025-11-14 11:30:35 | INFO | __main__ | ✅ Models loaded successfully (tested cohort: q1)
+2025-11-14 11:30:35 | INFO | __main__ | 
+Testing prediction capability...
+2025-11-14 11:30:35 | INFO | __main__ | ✅ Test prediction successful
+2025-11-14 11:30:35 | INFO | __main__ |    Median forecast: -5.64%
+2025-11-14 11:30:35 | INFO | __main__ |    Quantiles: ['q10', 'q25', 'q50', 'q75', 'q90']
+2025-11-14 11:30:35 | INFO | __main__ |    Direction prob: 0.02
+2025-11-14 11:30:35 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:30:35 | INFO | __main__ | ✅ TRAINING COMPLETE!
+2025-11-14 11:30:35 | INFO | __main__ | ================================================================================
+2025-11-14 11:30:35 | INFO | __main__ | 
+Models saved to: models
+2025-11-14 11:30:35 | INFO | __main__ | 
+Next steps:
+2025-11-14 11:30:35 | INFO | __main__ |   1. Review training report
+2025-11-14 11:30:35 | INFO | __main__ |   2. Run: python src/integrated_system_production.py --mode predict
+2025-11-14 11:30:35 | INFO | __main__ |   3. Backfill actuals: python src/integrated_system_production.py --mode backfill
+2025-11-14 11:30:35 | INFO | __main__ | ================================================================================
+
+2025-11-14 11:31:22 | INFO | __main__ | 
+2025-11-14 11:31:22 | INFO | __main__ | ================================================================================
+2025-11-14 11:31:22 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 11:31:22 | INFO | __main__ | ================================================================================
+2025-11-14 11:31:22 | INFO | __main__ | 
+2025-11-14 11:31:22 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 11:31:22 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 11:31:22 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 11:31:22 | INFO | __main__ | 
+2025-11-14 11:31:22 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 11:31:22 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 11:31:22 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 11:31:22 | INFO | __main__ | 
+2025-11-14 11:31:22 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 11:31:22 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 11:31:22 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 11:31:22 | INFO | __main__ | 
+2025-11-14 11:31:22 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 11:31:22 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 11:31:22 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 11:31:22 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 11:31:22 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 11:31:22 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 11:31:22 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 11:31:22 | INFO | __main__ | 
+2025-11-14 11:31:22 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 11:31:22 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 11:31:22 | INFO | __main__ | ================================================================================
+2025-11-14 11:31:22 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:31:22 | INFO | __main__ | DATA PREPARATION
+2025-11-14 11:31:22 | INFO | __main__ | ================================================================================
+2025-11-14 11:31:22 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-14 11:31:22 | INFO | __main__ | 
+[2/4] Building complete feature set (all available data)...
+2025-11-14 11:31:22 | INFO | __main__ |   Feature lookback window: 3 years
+2025-11-14 11:31:22 | INFO | __main__ |   Training will be filtered to end: 2022-12-31
+2025-11-14 11:31:26 | INFO | __main__ |   Features created: 235
+  Full date range: 2021-08-23 to 2025-11-12
+  Total samples: 1062
+2025-11-14 11:31:26 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-14 11:31:26 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 11:31:26 | INFO | __main__ | 
+[4/4] Filtering to training period (≤ 2022-12-31)...
+2025-11-14 11:31:26 | INFO | __main__ |   Filtered date range: 2021-08-23 to 2022-12-30
+  Training samples: 343 (was 1062)
+2025-11-14 11:31:26 | INFO | __main__ |   Cohort distribution:
+2025-11-14 11:31:26 | INFO | __main__ |     q1: 343 samples
+2025-11-14 11:31:26 | INFO | __main__ | 
+  Final dataframe shape: (343, 236)
+2025-11-14 11:31:26 | INFO | __main__ |   Columns: features (235) + vix + spx + calendar_cohort
+2025-11-14 11:31:26 | INFO | __main__ | 
+✅ Data preparation complete
+2025-11-14 11:31:26 | INFO | __main__ | ✅ Temporal hygiene validated: All data ≤ 2022-12-31
+2025-11-14 11:31:26 | INFO | __main__ | ================================================================================
+
+2025-11-14 11:31:26 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:31:26 | INFO | __main__ | MODEL TRAINING
+2025-11-14 11:31:26 | INFO | __main__ | ================================================================================
+2025-11-14 11:31:26 | INFO | __main__ | 
+Starting training...
+2025-11-14 11:31:26 | INFO | __main__ |   Models per cohort: 7 (5 quantiles, direction, confidence)
+2025-11-14 11:31:26 | INFO | __main__ |   Primary forecast: Median (50th percentile)
+2025-11-14 11:31:26 | INFO | __main__ |   Target: Log-transformed forward realized volatility
+
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 | REFACTORED QUANTILE REGRESSION TRAINING
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 |   Target creation:
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 |     Total samples: 343
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 |     Valid targets: 338
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 |     NaN targets: 5 (last 5 days)
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 | 
+Training 1 cohorts: ['q1']
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 | Cohort: q1 (343 samples)
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-14 11:31:26 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-14 11:31:31 | INFO | core.xgboost_trainer_v3 |     q10: MAE=0.5385
+2025-11-14 11:31:37 | INFO | core.xgboost_trainer_v3 |     q25: MAE=0.3941
+2025-11-14 11:31:44 | INFO | core.xgboost_trainer_v3 |     q50: MAE=0.3418
+2025-11-14 11:31:50 | INFO | core.xgboost_trainer_v3 |     q75: MAE=0.3275
+2025-11-14 11:31:55 | INFO | core.xgboost_trainer_v3 |     q90: MAE=0.3625
+2025-11-14 11:31:55 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-14 11:31:58 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.529
+2025-11-14 11:31:58 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-14 11:31:58 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-14 11:31:59 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.024
+2025-11-14 11:31:59 | INFO | core.xgboost_trainer_v3 | ✅ Saved: q1
+2025-11-14 11:31:59 | INFO | core.xgboost_trainer_v3 |   Saved metrics: models/training_metrics.json
+2025-11-14 11:32:00 | INFO | core.xgboost_trainer_v3 |   Saved plots: models/model_performance.png
+2025-11-14 11:32:00 | INFO | core.xgboost_trainer_v3 | 
+================================================================================
+2025-11-14 11:32:00 | INFO | core.xgboost_trainer_v3 | TRAINING COMPLETE
+2025-11-14 11:32:00 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 11:32:00 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:32:00 | INFO | __main__ | TRAINING SUMMARY
+2025-11-14 11:32:00 | INFO | __main__ | ================================================================================
+2025-11-14 11:32:00 | INFO | __main__ | 
+Cohorts trained: 1
+2025-11-14 11:32:00 | INFO | __main__ |   q1: 7 models - ['q10', 'q25', 'q50', 'q75', 'q90', 'direction', 'confidence']
+2025-11-14 11:32:00 | INFO | __main__ | 
+================================================================================
+
+2025-11-14 11:32:00 | INFO | __main__ | ✅ Training report saved: models/training_report_20251114_113200.json
+2025-11-14 11:32:00 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:32:00 | INFO | __main__ | MODEL VALIDATION
+2025-11-14 11:32:00 | INFO | __main__ | ================================================================================
+2025-11-14 11:32:00 | INFO | __main__ | ✅ Models loaded successfully (tested cohort: q1)
+2025-11-14 11:32:00 | INFO | __main__ | 
+Testing prediction capability...
+2025-11-14 11:32:00 | INFO | __main__ | ✅ Test prediction successful
+2025-11-14 11:32:00 | INFO | __main__ |    Median forecast: -5.64%
+2025-11-14 11:32:00 | INFO | __main__ |    Quantiles: ['q10', 'q25', 'q50', 'q75', 'q90']
+2025-11-14 11:32:00 | INFO | __main__ |    Direction prob: 0.02
+2025-11-14 11:32:00 | INFO | __main__ | 
+================================================================================
+2025-11-14 11:32:00 | INFO | __main__ | ✅ TRAINING COMPLETE!
+2025-11-14 11:32:00 | INFO | __main__ | ================================================================================
+2025-11-14 11:32:00 | INFO | __main__ | 
+Models saved to: models
+2025-11-14 11:32:00 | INFO | __main__ | 
+Next steps:
+2025-11-14 11:32:00 | INFO | __main__ |   1. Review training report
+2025-11-14 11:32:00 | INFO | __main__ |   2. Run: python src/integrated_system_production.py --mode predict
+2025-11-14 11:32:00 | INFO | __main__ |   3. Backfill actuals: python src/integrated_system_production.py --mode backfill
+2025-11-14 11:32:00 | INFO | __main__ | ================================================================================
+
+2025-11-14 12:26:40 | INFO | __main__ | 
+2025-11-14 12:26:40 | INFO | __main__ | ================================================================================
+2025-11-14 12:26:40 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 12:26:40 | INFO | __main__ | ================================================================================
+2025-11-14 12:26:40 | INFO | __main__ | 
+2025-11-14 12:26:40 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 12:26:40 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 12:26:40 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 12:26:40 | INFO | __main__ | 
+2025-11-14 12:26:40 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 12:26:40 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 12:26:40 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 12:26:40 | INFO | __main__ | 
+2025-11-14 12:26:40 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 12:26:40 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 12:26:40 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 12:26:40 | INFO | __main__ | 
+2025-11-14 12:26:40 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 12:26:40 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 12:26:40 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 12:26:40 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 12:26:40 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 12:26:40 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 12:26:40 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 12:26:40 | INFO | __main__ | 
+2025-11-14 12:26:40 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 12:26:40 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 12:26:40 | INFO | __main__ | ================================================================================
+2025-11-14 12:26:40 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:26:40 | INFO | __main__ | DATA PREPARATION
+2025-11-14 12:26:40 | INFO | __main__ | ================================================================================
+2025-11-14 12:26:40 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-14 12:26:40 | INFO | __main__ | 
+[2/4] Building complete feature set (anchored to training end)...
+2025-11-14 12:26:40 | INFO | __main__ |   Feature lookback window: 3 years
+2025-11-14 12:26:40 | INFO | __main__ |   Training end date: 2022-12-31
+2025-11-14 12:26:40 | ERROR | yfinance | $^GSPC: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:26:41 | ERROR | yfinance | $^VIX: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762754400, endDate = 1672466400")
+2025-11-14 12:26:41 | ERROR | yfinance | $CL=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:26:41 | ERROR | yfinance | $DX-Y.NYB: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:26:42 | ERROR | yfinance | $GC=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:26:44 | INFO | __main__ |   Features created: 235
+  Full date range: 2021-08-23 to 2025-11-12
+  Total samples: 1062
+2025-11-14 12:26:44 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-14 12:26:44 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 12:26:44 | INFO | __main__ | 
+[4/4] Validating temporal hygiene...
+2025-11-14 12:26:44 | WARNING | __main__ | ⚠️  Data extends beyond training end (2025-11-12 > 2022-12-31)
+2025-11-14 12:26:44 | INFO | __main__ |   Filtered to: 2022-12-30
+2025-11-14 12:26:44 | INFO | __main__ |   Final date range: 2021-08-23 to 2022-12-30
+  Training samples: 343
+2025-11-14 12:26:44 | INFO | __main__ |   Cohort distribution:
+2025-11-14 12:26:44 | INFO | __main__ |     q1: 343 samples
+2025-11-14 12:26:44 | INFO | __main__ | 
+  Final dataframe shape: (343, 236)
+2025-11-14 12:26:44 | INFO | __main__ |   Columns: features (235) + vix + spx + calendar_cohort
+2025-11-14 12:26:44 | ERROR | __main__ | 
+❌ Training failed with error: ❌ DATA LEAKAGE DETECTED! Latest training date 2025-11-12 exceeds training_end_date 2022-12-31
+Traceback (most recent call last):
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 427, in main
+    complete_df = prepare_training_data()
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 141, in prepare_training_data
+    raise ValueError(
+ValueError: ❌ DATA LEAKAGE DETECTED! Latest training date 2025-11-12 exceeds training_end_date 2022-12-31
+2025-11-14 12:33:52 | INFO | __main__ | 
+2025-11-14 12:33:52 | INFO | __main__ | ================================================================================
+2025-11-14 12:33:52 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 12:33:52 | INFO | __main__ | ================================================================================
+2025-11-14 12:33:52 | INFO | __main__ | 
+2025-11-14 12:33:52 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 12:33:52 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 12:33:52 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 12:33:52 | INFO | __main__ | 
+2025-11-14 12:33:52 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 12:33:52 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 12:33:52 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 12:33:52 | INFO | __main__ | 
+2025-11-14 12:33:52 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 12:33:52 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 12:33:52 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 12:33:52 | INFO | __main__ | 
+2025-11-14 12:33:52 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 12:33:52 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 12:33:52 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 12:33:52 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 12:33:52 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 12:33:52 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 12:33:52 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 12:33:52 | INFO | __main__ | 
+2025-11-14 12:33:52 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 12:33:52 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 12:33:52 | INFO | __main__ | ================================================================================
+2025-11-14 12:33:52 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:33:52 | INFO | __main__ | DATA PREPARATION
+2025-11-14 12:33:52 | INFO | __main__ | ================================================================================
+2025-11-14 12:33:52 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-14 12:33:52 | INFO | __main__ | 
+[2/4] Building feature set for training period...
+2025-11-14 12:33:52 | INFO | __main__ |   Target period: 3 years ending 2022-12-31
+2025-11-14 12:33:52 | INFO | __main__ |   This includes ~450 days warmup for technical indicators
+2025-11-14 12:33:55 | INFO | __main__ | 
+  Features created: 235
+  Date range: 2021-08-23 to 2022-12-30
+  Total samples: 343
+2025-11-14 12:33:55 | INFO | __main__ |   Usable training samples (after warmup): 31
+  Effective training period: 2022-11-16 to 2022-12-30
+2025-11-14 12:33:55 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-14 12:33:55 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 12:33:55 | INFO | __main__ | 
+[4/4] Validating temporal hygiene...
+2025-11-14 12:33:55 | INFO | __main__ |   Cohort distribution:
+2025-11-14 12:33:55 | INFO | __main__ |     q1: 343 samples
+2025-11-14 12:33:55 | INFO | __main__ | 
+  Final dataframe shape: (343, 236)
+2025-11-14 12:33:55 | INFO | __main__ |   Columns: features (235) + vix + spx + calendar_cohort
+2025-11-14 12:33:55 | INFO | __main__ | 
+✅ Data preparation complete
+2025-11-14 12:33:55 | INFO | __main__ | ✅ Temporal hygiene validated: All data ≤ 2022-12-31
+2025-11-14 12:33:55 | INFO | __main__ | ================================================================================
+
+2025-11-14 12:33:55 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:33:55 | INFO | __main__ | MODEL TRAINING
+2025-11-14 12:33:55 | INFO | __main__ | ================================================================================
+2025-11-14 12:33:55 | INFO | __main__ | 
+Starting training...
+2025-11-14 12:33:55 | INFO | __main__ |   Models per cohort: 7 (5 quantiles, direction, confidence)
+2025-11-14 12:33:55 | INFO | __main__ |   Primary forecast: Median (50th percentile)
+2025-11-14 12:33:55 | INFO | __main__ |   Target: Log-transformed forward realized volatility
+
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 | REFACTORED QUANTILE REGRESSION TRAINING
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 |   Target creation:
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 |     Total samples: 343
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 |     Valid targets: 338
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 |     NaN targets: 5 (last 5 days)
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 | 
+Training 1 cohorts: ['q1']
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 | Cohort: q1 (343 samples)
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-14 12:33:55 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-14 12:33:59 | INFO | core.xgboost_trainer_v3 |     q10: MAE=0.5356
+2025-11-14 12:34:05 | INFO | core.xgboost_trainer_v3 |     q25: MAE=0.4077
+2025-11-14 12:34:12 | INFO | core.xgboost_trainer_v3 |     q50: MAE=0.3412
+2025-11-14 12:34:18 | INFO | core.xgboost_trainer_v3 |     q75: MAE=0.3438
+2025-11-14 12:34:22 | INFO | core.xgboost_trainer_v3 |     q90: MAE=0.3678
+2025-11-14 12:34:22 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-14 12:34:25 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.500
+2025-11-14 12:34:25 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-14 12:34:25 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-14 12:34:27 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.024
+2025-11-14 12:34:27 | INFO | core.xgboost_trainer_v3 | ✅ Saved: q1
+2025-11-14 12:34:27 | INFO | core.xgboost_trainer_v3 |   Saved metrics: models/training_metrics.json
+2025-11-14 12:34:28 | INFO | core.xgboost_trainer_v3 |   Saved plots: models/model_performance.png
+2025-11-14 12:34:28 | INFO | core.xgboost_trainer_v3 | 
+================================================================================
+2025-11-14 12:34:28 | INFO | core.xgboost_trainer_v3 | TRAINING COMPLETE
+2025-11-14 12:34:28 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 12:34:28 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:34:28 | INFO | __main__ | TRAINING SUMMARY
+2025-11-14 12:34:28 | INFO | __main__ | ================================================================================
+2025-11-14 12:34:28 | INFO | __main__ | 
+Cohorts trained: 1
+2025-11-14 12:34:28 | INFO | __main__ |   q1: 7 models - ['q10', 'q25', 'q50', 'q75', 'q90', 'direction', 'confidence']
+2025-11-14 12:34:28 | INFO | __main__ | 
+================================================================================
+
+2025-11-14 12:34:28 | INFO | __main__ | ✅ Training report saved: models/training_report_20251114_123428.json
+2025-11-14 12:34:28 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:34:28 | INFO | __main__ | MODEL VALIDATION
+2025-11-14 12:34:28 | INFO | __main__ | ================================================================================
+2025-11-14 12:34:28 | INFO | __main__ | ✅ Models loaded successfully (tested cohort: q1)
+2025-11-14 12:34:28 | INFO | __main__ | 
+Testing prediction capability...
+2025-11-14 12:34:28 | INFO | __main__ | ✅ Test prediction successful
+2025-11-14 12:34:28 | INFO | __main__ |    Median forecast: -6.56%
+2025-11-14 12:34:28 | INFO | __main__ |    Quantiles: ['q10', 'q25', 'q50', 'q75', 'q90']
+2025-11-14 12:34:28 | INFO | __main__ |    Direction prob: 0.03
+2025-11-14 12:34:28 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:34:28 | INFO | __main__ | ✅ TRAINING COMPLETE!
+2025-11-14 12:34:28 | INFO | __main__ | ================================================================================
+2025-11-14 12:34:28 | INFO | __main__ | 
+Models saved to: models
+2025-11-14 12:34:28 | INFO | __main__ | 
+Next steps:
+2025-11-14 12:34:28 | INFO | __main__ |   1. Review training report
+2025-11-14 12:34:28 | INFO | __main__ |   2. Run: python src/integrated_system_production.py --mode predict
+2025-11-14 12:34:28 | INFO | __main__ |   3. Backfill actuals: python src/integrated_system_production.py --mode backfill
+2025-11-14 12:34:28 | INFO | __main__ | ================================================================================
+
+2025-11-14 12:39:38 | INFO | __main__ | 
+2025-11-14 12:39:38 | INFO | __main__ | ================================================================================
+2025-11-14 12:39:38 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 12:39:38 | INFO | __main__ | ================================================================================
+2025-11-14 12:39:38 | INFO | __main__ | 
+2025-11-14 12:39:38 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 12:39:38 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 12:39:38 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 12:39:38 | INFO | __main__ | 
+2025-11-14 12:39:38 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 12:39:38 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 12:39:38 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 12:39:38 | INFO | __main__ | 
+2025-11-14 12:39:38 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 12:39:38 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 12:39:38 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 12:39:38 | INFO | __main__ | 
+2025-11-14 12:39:38 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 12:39:38 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 12:39:38 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 12:39:38 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 12:39:38 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 12:39:38 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 12:39:38 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 12:39:38 | INFO | __main__ | 
+2025-11-14 12:39:38 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 12:39:38 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 12:39:38 | INFO | __main__ | ================================================================================
+2025-11-14 12:39:38 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:39:38 | INFO | __main__ | DATA PREPARATION
+2025-11-14 12:39:38 | INFO | __main__ | ================================================================================
+2025-11-14 12:39:38 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-14 12:39:38 | INFO | __main__ | 
+[2/4] Building feature set for training period...
+2025-11-14 12:39:38 | INFO | __main__ |   Target period: 3 years ending 2022-12-31
+2025-11-14 12:39:38 | INFO | __main__ |   This includes ~450 days warmup for technical indicators
+2025-11-14 12:39:39 | ERROR | yfinance | $^GSPC: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:39:39 | ERROR | yfinance | $^VIX: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762754400, endDate = 1672466400")
+2025-11-14 12:39:40 | ERROR | yfinance | $CL=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:39:40 | ERROR | yfinance | $DX-Y.NYB: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:39:41 | ERROR | yfinance | $GC=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:39:43 | INFO | __main__ | 
+  Features created: 235
+  Date range: 2021-08-23 to 2025-11-12
+  Total samples: 1062
+2025-11-14 12:39:43 | INFO | __main__ |   Usable training samples (after warmup): 750
+  Effective training period: 2022-11-16 to 2025-11-12
+2025-11-14 12:39:43 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-14 12:39:43 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 12:39:43 | INFO | __main__ | 
+[4/4] Validating temporal hygiene...
+2025-11-14 12:39:43 | ERROR | __main__ | 
+❌ Training failed with error: ❌ TEMPORAL ERROR: Data extends beyond training end date!
+   Latest: 2025-11-12
+   Expected: 2022-12-31
+   Check build_complete_features() implementation
+Traceback (most recent call last):
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 426, in main
+    complete_df = prepare_training_data()
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 127, in prepare_training_data
+    raise ValueError(
+ValueError: ❌ TEMPORAL ERROR: Data extends beyond training end date!
+   Latest: 2025-11-12
+   Expected: 2022-12-31
+   Check build_complete_features() implementation
+2025-11-14 12:40:03 | INFO | __main__ | 
+2025-11-14 12:40:03 | INFO | __main__ | ================================================================================
+2025-11-14 12:40:03 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 12:40:03 | INFO | __main__ | ================================================================================
+2025-11-14 12:40:03 | INFO | __main__ | 
+2025-11-14 12:40:03 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 12:40:03 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 12:40:03 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 12:40:03 | INFO | __main__ | 
+2025-11-14 12:40:03 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 12:40:03 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 12:40:03 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 12:40:03 | INFO | __main__ | 
+2025-11-14 12:40:03 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 12:40:03 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 12:40:03 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 12:40:03 | INFO | __main__ | 
+2025-11-14 12:40:03 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 12:40:03 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 12:40:03 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 12:40:03 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 12:40:03 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 12:40:03 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 12:40:03 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 12:40:03 | INFO | __main__ | 
+2025-11-14 12:40:03 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 12:40:03 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 12:40:03 | INFO | __main__ | ================================================================================
+2025-11-14 12:40:03 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:40:03 | INFO | __main__ | DATA PREPARATION
+2025-11-14 12:40:03 | INFO | __main__ | ================================================================================
+2025-11-14 12:40:03 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-14 12:40:03 | INFO | __main__ | 
+[2/4] Building feature set for training period...
+2025-11-14 12:40:03 | INFO | __main__ |   Target period: 3 years ending 2022-12-31
+2025-11-14 12:40:03 | INFO | __main__ |   This includes ~450 days warmup for technical indicators
+2025-11-14 12:40:03 | ERROR | yfinance | $^GSPC: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:40:04 | ERROR | yfinance | $^VIX: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762754400, endDate = 1672466400")
+2025-11-14 12:40:04 | ERROR | yfinance | $CL=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:40:04 | ERROR | yfinance | $DX-Y.NYB: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:40:05 | ERROR | yfinance | $GC=F: possibly delisted; no price data found  (1d 2025-11-10 -> 2022-12-31) (Yahoo error = "Invalid input - start date cannot be after end date. startDate = 1762750800, endDate = 1672462800")
+2025-11-14 12:40:07 | INFO | __main__ | 
+  Features created: 235
+  Date range: 2021-08-23 to 2025-11-12
+  Total samples: 1062
+2025-11-14 12:40:07 | INFO | __main__ |   Usable training samples (after warmup): 750
+  Effective training period: 2022-11-16 to 2025-11-12
+2025-11-14 12:40:07 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-14 12:40:07 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 12:40:07 | INFO | __main__ | 
+[4/4] Validating temporal hygiene...
+2025-11-14 12:40:07 | ERROR | __main__ | 
+❌ Training failed with error: ❌ TEMPORAL ERROR: Data extends beyond training end date!
+   Latest: 2025-11-12
+   Expected: 2022-12-31
+   Check build_complete_features() implementation
+Traceback (most recent call last):
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 426, in main
+    complete_df = prepare_training_data()
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/johnluo/Desktop/GitHub/SPX_Analysis/src/train_probabilistic_models.py", line 127, in prepare_training_data
+    raise ValueError(
+ValueError: ❌ TEMPORAL ERROR: Data extends beyond training end date!
+   Latest: 2025-11-12
+   Expected: 2022-12-31
+   Check build_complete_features() implementation
+2025-11-14 12:40:59 | INFO | __main__ | 
+2025-11-14 12:40:59 | INFO | __main__ | ================================================================================
+2025-11-14 12:40:59 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-14 12:40:59 | INFO | __main__ | ================================================================================
+2025-11-14 12:40:59 | INFO | __main__ | 
+2025-11-14 12:40:59 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-14 12:40:59 | INFO | __main__ |   ✅ Target type correct: log_realized_volatility
+2025-11-14 12:40:59 | INFO | __main__ |   ✅ Volatility bounds: [10.0, 90.0]
+2025-11-14 12:40:59 | INFO | __main__ | 
+2025-11-14 12:40:59 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-14 12:40:59 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-14 12:40:59 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-14 12:40:59 | INFO | __main__ | 
+2025-11-14 12:40:59 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-14 12:40:59 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-14 12:40:59 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-14 12:40:59 | INFO | __main__ | 
+2025-11-14 12:40:59 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-14 12:40:59 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-14 12:40:59 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-14 12:40:59 | INFO | __main__ |     - 1 direction classifier
+2025-11-14 12:40:59 | INFO | __main__ |     - 1 confidence scorer
+2025-11-14 12:40:59 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-14 12:40:59 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-14 12:40:59 | INFO | __main__ | 
+2025-11-14 12:40:59 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-14 12:40:59 | INFO | __main__ |    All checks successful - ready to train
+2025-11-14 12:40:59 | INFO | __main__ | ================================================================================
+2025-11-14 12:40:59 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:40:59 | INFO | __main__ | DATA PREPARATION
+2025-11-14 12:40:59 | INFO | __main__ | ================================================================================
+2025-11-14 12:40:59 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-14 12:40:59 | INFO | __main__ | 
+[2/4] Building feature set for training period...
+2025-11-14 12:40:59 | INFO | __main__ |   Target period: 3 years ending 2022-12-31
+2025-11-14 12:40:59 | INFO | __main__ |   This includes ~450 days warmup for technical indicators
+2025-11-14 12:41:03 | INFO | __main__ | 
+  Features created: 235
+  Date range: 2018-10-08 to 2022-12-30
+  Total samples: 1066
+2025-11-14 12:41:03 | INFO | __main__ |   Usable training samples (after warmup): 756
+  Effective training period: 2020-01-02 to 2022-12-30
+2025-11-14 12:41:03 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-14 12:41:03 | INFO | __main__ |   Assigning calendar cohorts...
+2025-11-14 12:41:03 | INFO | __main__ | 
+[4/4] Validating temporal hygiene...
+2025-11-14 12:41:03 | INFO | __main__ |   Cohort distribution:
+2025-11-14 12:41:03 | INFO | __main__ |     q1: 1066 samples
+2025-11-14 12:41:03 | INFO | __main__ | 
+  Final dataframe shape: (1066, 236)
+2025-11-14 12:41:03 | INFO | __main__ |   Columns: features (235) + vix + spx + calendar_cohort
+2025-11-14 12:41:03 | INFO | __main__ | 
+✅ Data preparation complete
+2025-11-14 12:41:03 | INFO | __main__ | ✅ Temporal hygiene validated: All data ≤ 2022-12-31
+2025-11-14 12:41:03 | INFO | __main__ | ================================================================================
+
+2025-11-14 12:41:03 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:41:03 | INFO | __main__ | MODEL TRAINING
+2025-11-14 12:41:03 | INFO | __main__ | ================================================================================
+2025-11-14 12:41:03 | INFO | __main__ | 
+Starting training...
+2025-11-14 12:41:03 | INFO | __main__ |   Models per cohort: 7 (5 quantiles, direction, confidence)
+2025-11-14 12:41:03 | INFO | __main__ |   Primary forecast: Median (50th percentile)
+2025-11-14 12:41:03 | INFO | __main__ |   Target: Log-transformed forward realized volatility
+
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 | REFACTORED QUANTILE REGRESSION TRAINING
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 |   Target creation:
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 |     Total samples: 1066
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 |     Valid targets: 1061
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 |     NaN targets: 5 (last 5 days)
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 | 
+Training 1 cohorts: ['q1']
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 | Cohort: q1 (1066 samples)
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-14 12:41:03 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-14 12:41:14 | INFO | core.xgboost_trainer_v3 |     q10: MAE=0.6215
+2025-11-14 12:41:28 | INFO | core.xgboost_trainer_v3 |     q25: MAE=0.4779
+2025-11-14 12:41:43 | INFO | core.xgboost_trainer_v3 |     q50: MAE=0.4007
+2025-11-14 12:41:56 | INFO | core.xgboost_trainer_v3 |     q75: MAE=0.3929
+2025-11-14 12:42:07 | INFO | core.xgboost_trainer_v3 |     q90: MAE=0.4465
+2025-11-14 12:42:07 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-14 12:42:14 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.562
+2025-11-14 12:42:14 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-14 12:42:14 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-14 12:42:17 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.027
+2025-11-14 12:42:17 | INFO | core.xgboost_trainer_v3 | ✅ Saved: q1
+2025-11-14 12:42:17 | INFO | core.xgboost_trainer_v3 |   Saved metrics: models/training_metrics.json
+2025-11-14 12:42:18 | INFO | core.xgboost_trainer_v3 |   Saved plots: models/model_performance.png
+2025-11-14 12:42:18 | INFO | core.xgboost_trainer_v3 | 
+================================================================================
+2025-11-14 12:42:18 | INFO | core.xgboost_trainer_v3 | TRAINING COMPLETE
+2025-11-14 12:42:18 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-14 12:42:18 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:42:18 | INFO | __main__ | TRAINING SUMMARY
+2025-11-14 12:42:18 | INFO | __main__ | ================================================================================
+2025-11-14 12:42:18 | INFO | __main__ | 
+Cohorts trained: 1
+2025-11-14 12:42:18 | INFO | __main__ |   q1: 7 models - ['q10', 'q25', 'q50', 'q75', 'q90', 'direction', 'confidence']
+2025-11-14 12:42:18 | INFO | __main__ | 
+================================================================================
+
+2025-11-14 12:42:18 | INFO | __main__ | ✅ Training report saved: models/training_report_20251114_124218.json
+2025-11-14 12:42:18 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:42:18 | INFO | __main__ | MODEL VALIDATION
+2025-11-14 12:42:18 | INFO | __main__ | ================================================================================
+2025-11-14 12:42:18 | INFO | __main__ | ✅ Models loaded successfully (tested cohort: q1)
+2025-11-14 12:42:18 | INFO | __main__ | 
+Testing prediction capability...
+2025-11-14 12:42:18 | INFO | __main__ | ✅ Test prediction successful
+2025-11-14 12:42:18 | INFO | __main__ |    Median forecast: -20.06%
+2025-11-14 12:42:18 | INFO | __main__ |    Quantiles: ['q10', 'q25', 'q50', 'q75', 'q90']
+2025-11-14 12:42:18 | INFO | __main__ |    Direction prob: 0.02
+2025-11-14 12:42:18 | INFO | __main__ | 
+================================================================================
+2025-11-14 12:42:18 | INFO | __main__ | ✅ TRAINING COMPLETE!
+2025-11-14 12:42:18 | INFO | __main__ | ================================================================================
+2025-11-14 12:42:18 | INFO | __main__ | 
+Models saved to: models
+2025-11-14 12:42:18 | INFO | __main__ | 
+Next steps:
+2025-11-14 12:42:18 | INFO | __main__ |   1. Review training report
+2025-11-14 12:42:18 | INFO | __main__ |   2. Run: python src/integrated_system_production.py --mode predict
+2025-11-14 12:42:18 | INFO | __main__ |   3. Backfill actuals: python src/integrated_system_production.py --mode backfill
+2025-11-14 12:42:18 | INFO | __main__ | ================================================================================
+

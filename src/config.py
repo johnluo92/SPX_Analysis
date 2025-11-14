@@ -985,6 +985,48 @@ CRISIS_PERIODS = {
 }
 
 # ============================================================================
+# FEATURE CONFIGURATION - Added for integrated_system_production.py
+# ============================================================================
+
+FEATURE_CONFIG = {
+    "feature_groups": {
+        "anomaly": ANOMALY_PREDICTION_FEATURE_GROUPS,
+        "regime": REGIME_CLASSIFICATION_FEATURE_GROUPS,
+        "range": RANGE_PREDICTION_FEATURE_GROUPS,
+    },
+    "base_features": {
+        "vix": VIX_BASE_FEATURES,
+        "spx": SPX_BASE_FEATURES,
+        "cross_asset": CROSS_ASSET_BASE_FEATURES,
+        "cboe": CBOE_BASE_FEATURES,
+        "futures": FUTURES_FEATURES,
+        "macro": MACRO_FEATURES,
+        "meta": META_FEATURES,
+    },
+    "calendar_features": CALENDAR_FEATURES,
+    "publication_lags": PUBLICATION_LAGS,
+    "temporal_safety": ENABLE_TEMPORAL_SAFETY,
+}
+
+# ============================================================================
+# FORECASTING CONFIGURATION - Added for integrated_system_production.py
+# ============================================================================
+
+FORECASTING_CONFIG = {
+    "horizon_days": TARGET_CONFIG["horizon_days"],
+    "target_type": TARGET_CONFIG["target_type"],
+    "quantiles": TARGET_CONFIG["quantiles"]["levels"],
+    "confidence_components": TARGET_CONFIG["confidence"]["components"],
+    "volatility_bounds": TARGET_CONFIG["volatility_bounds"],
+    "training_end_date": TRAINING_END_DATE,
+    "calibration_period": CALIBRATION_PERIOD,
+    "validation_period": VALIDATION_PERIOD,
+    "production_start_date": PRODUCTION_START_DATE,
+    "enable_training": ENABLE_TRAINING,
+    "random_state": RANDOM_STATE,
+}
+
+# ============================================================================
 # HYPERPARAMETER SEARCH SPACES
 # ============================================================================
 

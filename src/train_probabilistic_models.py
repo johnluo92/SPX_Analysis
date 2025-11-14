@@ -57,27 +57,32 @@ def prepare_training_data():
     V3 CHANGE: Returns single merged dataframe with features, VIX, SPX, and calendar_cohort.
     The trainer calculates realized volatility targets internally.
 
+    ARCHITECTURE:
+    1. FeatureEngineer builds features for the requested period (from config)
+    2. DataFetcher handles caching intelligently (historical vs live requests)
+    3. No filtering needed - everything is already scoped correctly
+
     Returns:
         Complete dataframe ready for trainer (with calendar_cohort)
     """
-
     logger.info("\n" + "=" * 80)
     logger.info("DATA PREPARATION")
     logger.info("=" * 80)
 
     # Initialize data fetcher and feature engineer
-    logger.info("\n[1/3] Initializing feature engineering pipeline...")
+    logger.info("\n[1/4] Initializing feature engineering pipeline...")
     data_fetcher = UnifiedDataFetcher()
     feature_engineer = FeatureEngineer(data_fetcher)
 
-    # Build complete features (fetches data internally)
-    logger.info("\n[2/3] Building complete feature set...")
-    logger.info(f"  Training window: {TRAINING_YEARS} years")
-    logger.info(f"  Training end date: {TRAINING_END_DATE}")
+    # Build complete features anchored to TRAINING_END_DATE from config
+    logger.info("\n[2/4] Building feature set for training period...")
+    logger.info(f"  Target period: {TRAINING_YEARS} years ending {TRAINING_END_DATE}")
+    logger.info(f"  This includes ~450 days warmup for technical indicators")
 
+    # Pass TRAINING_END_DATE directly - fetcher will handle historical request correctly
     result = feature_engineer.build_complete_features(
         years=TRAINING_YEARS,
-        end_date=TRAINING_END_DATE,  # Use configured training end date
+        end_date=TRAINING_END_DATE,  # ← Config-driven!
     )
 
     features_df = result["features"]
@@ -85,13 +90,21 @@ def prepare_training_data():
     vix = result["vix"]
 
     logger.info(
-        f"  Features created: {len(features_df.columns)}\n"
+        f"\n  Features created: {len(features_df.columns)}\n"
         f"  Date range: {features_df.index[0].date()} to {features_df.index[-1].date()}\n"
         f"  Total samples: {len(features_df)}"
     )
 
-    # [3/3] Merge everything into single dataframe for trainer
-    logger.info("\n[3/3] Merging features with price data...")
+    # Calculate actual training period (after warmup)
+    warmup_end = features_df.index[0] + pd.Timedelta(days=450)
+    training_samples = features_df[features_df.index >= warmup_end]
+    logger.info(
+        f"  Usable training samples (after warmup): {len(training_samples)}\n"
+        f"  Effective training period: {training_samples.index[0].date()} to {training_samples.index[-1].date()}"
+    )
+
+    # [3/4] Merge everything into single dataframe
+    logger.info("\n[3/4] Merging features with price data...")
 
     # Create complete dataframe
     complete_df = features_df.copy()
@@ -104,6 +117,21 @@ def prepare_training_data():
         lambda d: _get_calendar_cohort(d)
     )
 
+    # [4/4] Final validation
+    logger.info(f"\n[4/4] Validating temporal hygiene...")
+    training_end = pd.to_datetime(TRAINING_END_DATE)
+    latest_date = complete_df.index.max()
+
+    # Sanity check: should never happen with proper config
+    if latest_date > training_end:
+        raise ValueError(
+            f"❌ TEMPORAL ERROR: Data extends beyond training end date!\n"
+            f"   Latest: {latest_date.date()}\n"
+            f"   Expected: {training_end.date()}\n"
+            f"   Check build_complete_features() implementation"
+        )
+
+    # Log cohort distribution
     cohort_counts = complete_df["calendar_cohort"].value_counts().sort_index()
     logger.info(f"  Cohort distribution:")
     for cohort, count in cohort_counts.items():
@@ -115,6 +143,7 @@ def prepare_training_data():
     )
 
     logger.info("\n✅ Data preparation complete")
+    logger.info(f"✅ Temporal hygiene validated: All data ≤ {training_end.date()}")
     logger.info("=" * 80 + "\n")
 
     return complete_df

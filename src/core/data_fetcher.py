@@ -367,11 +367,79 @@ class UnifiedDataFetcher:
         end_date: str = None,
         incremental: bool = True,
     ) -> Optional[pd.DataFrame]:
+        """
+        Fetch Yahoo Finance data with intelligent caching.
+
+        Key behaviors:
+        - Historical requests (end_date > 7 days ago): Only use cache if it covers full range
+        - Live requests (end_date = None or recent): Incrementally update cache
+        """
         cache_path = (
             self.cache_dir
             / f"yahoo_{symbol.replace('^', '').replace('=', '_')}.parquet"
         )
 
+        # Parse end_date to determine request type
+        if end_date:
+            end_dt = pd.to_datetime(end_date)
+            is_historical_request = end_dt < (datetime.now() - timedelta(days=7))
+        else:
+            end_dt = None
+            is_historical_request = False
+
+        # HISTORICAL REQUEST PATH: Use cache only if it covers the full range
+        if is_historical_request and cache_path.exists():
+            try:
+                cached_df = pd.read_parquet(cache_path)
+                if not cached_df.empty:
+                    start_dt = (
+                        pd.to_datetime(start_date) if start_date else cached_df.index[0]
+                    )
+
+                    # Check if cache covers the requested range
+                    cache_start = cached_df.index[0]
+                    cache_end = cached_df.index[-1]
+
+                    # Cache is usable if it starts before/at requested start and ends after/at requested end
+                    cache_covers_range = (cache_start <= start_dt) and (
+                        cache_end >= end_dt
+                    )
+
+                    if cache_covers_range:
+                        # Filter to requested date range
+                        filtered_df = cached_df[
+                            (cached_df.index >= start_dt) & (cached_df.index <= end_dt)
+                        ]
+
+                        if not filtered_df.empty:
+                            self.logger.info(
+                                f"Yahoo:{symbol}: Historical data ({start_dt.date()} to {end_dt.date()})"
+                            )
+                            return filtered_df
+                    else:
+                        # Cache doesn't cover full range - need to fetch
+                        self.logger.info(
+                            f"Yahoo:{symbol}: Cache incomplete "
+                            f"(has {cache_start.date()} to {cache_end.date()}, "
+                            f"need {start_dt.date()} to {end_dt.date()})"
+                        )
+                        # Fall through to fetch logic
+
+            except Exception as e:
+                self.logger.warning(f"Yahoo:{symbol}: Cache read failed - {e}")
+
+        # LIVE/UPDATE REQUEST PATH: Fetch new data
+        fetch_start = start_date or "2000-01-01"
+
+        # For historical requests with incomplete cache, disable incremental mode
+        # We need to fetch the full range requested
+        if is_historical_request:
+            incremental = False
+            self.logger.info(
+                f"Yahoo:{symbol}: Fetching full historical range ({fetch_start} to {end_date})"
+            )
+
+        # For incremental updates, only fetch from last cached date
         if incremental and cache_path.exists():
             last_date = self._get_last_date_from_cache(cache_path)
             if last_date:
@@ -381,6 +449,7 @@ class UnifiedDataFetcher:
                 cache_mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
                 hours_since_update = (now - cache_mtime).total_seconds() / 3600
 
+                # Return cache if it's fresh enough
                 if business_days_diff == 0 and hours_since_update < 1:
                     try:
                         cached_df = pd.read_parquet(cache_path)
@@ -402,18 +471,26 @@ class UnifiedDataFetcher:
                     except:
                         pass
 
-                start_date = (last_dt - timedelta(days=2)).strftime("%Y-%m-%d")
+                # Fetch from 2 days before last date to ensure no gaps
+                fetch_start = (last_dt - timedelta(days=2)).strftime("%Y-%m-%d")
                 self.logger.info(
-                    f"Yahoo:{symbol}: Fetching from {start_date} ({business_days_diff} bdays behind)"
+                    f"Yahoo:{symbol}: Fetching from {fetch_start} ({business_days_diff} bdays behind)"
                 )
 
         try:
             ticker = yf.Ticker(symbol)
-            if end_date is None:
-                end_date = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d")
+
+            # For live requests, default to slightly in the future to catch today's data
+            fetch_end = (
+                end_date
+                if end_date
+                else (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d")
+            )
 
             df = ticker.history(
-                start=start_date or "2000-01-01", end=end_date, auto_adjust=True
+                start=fetch_start,
+                end=fetch_end,
+                auto_adjust=True,
             )
 
             if df.empty:
@@ -438,14 +515,22 @@ class UnifiedDataFetcher:
                         pass
                 return None
 
+            # Merge with cache for incremental updates
             if incremental and cache_path.exists():
                 df = self._merge_with_cache(df, cache_path)
 
+            # Save updated cache
             df.to_parquet(cache_path)
             last_date_str = df.index[-1].strftime("%Y-%m-%d")
             self.logger.info(
                 f"Yahoo:{symbol}: {len(df)} rows (latest: {last_date_str})"
             )
+
+            # If this was a historical request, filter before returning
+            if is_historical_request:
+                start_dt = pd.to_datetime(start_date) if start_date else df.index[0]
+                df = df[(df.index >= start_dt) & (df.index <= end_dt)]
+
             return df
 
         except Exception as e:
@@ -456,6 +541,17 @@ class UnifiedDataFetcher:
                         self.logger.warning(
                             f"Yahoo:{symbol}: Fetch failed, using cache - {str(e)[:100]}"
                         )
+                        # Filter to requested range if historical
+                        if is_historical_request:
+                            start_dt = (
+                                pd.to_datetime(start_date)
+                                if start_date
+                                else cached_df.index[0]
+                            )
+                            cached_df = cached_df[
+                                (cached_df.index >= start_dt)
+                                & (cached_df.index <= end_dt)
+                            ]
                         return cached_df
                 except:
                     pass

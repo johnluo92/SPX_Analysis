@@ -150,6 +150,23 @@ class ProbabilisticVIXForecaster:
             0.5 * df["feature_quality"].fillna(0.5) + 0.5 * regime_stability
         ).clip(0, 1)
 
+        # VALIDATION: Log how many samples have valid targets
+        valid_target_count = df["target_log_rv"].notna().sum()
+        total_count = len(df)
+
+        logger.info(f"  Target creation:")
+        logger.info(f"    Total samples: {total_count}")
+        logger.info(f"    Valid targets: {valid_target_count}")
+        logger.info(
+            f"    NaN targets: {total_count - valid_target_count} (last {self.horizon} days)"
+        )
+
+        if valid_target_count < 100:
+            raise ValueError(
+                f"Insufficient valid targets ({valid_target_count}). "
+                f"Need at least 100 samples with forward-looking realized volatility."
+            )
+
         return df
 
     def _train_cohort_models(self, cohort: str, df: pd.DataFrame) -> Dict:
