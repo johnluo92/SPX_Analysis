@@ -177,8 +177,10 @@ class IntegratedForecastingSystem:
         """
         Generate probabilistic VIX forecast for given date.
 
+        **FIXED VERSION** - Handles both live and historical dates correctly.
+
         Args:
-            date: Target observation date (None = most recent)
+            date: Target observation date (None = most recent, or specify historical date)
             store_prediction: If True, save forecast to database
 
         Returns:
@@ -188,33 +190,65 @@ class IntegratedForecastingSystem:
         logger.info("GENERATING PROBABILISTIC FORECAST")
         logger.info("=" * 80)
 
-        # 1. Get features (uses cache if available)
-        df = self._get_features()
+        # ============================================================
+        # FIX: Determine if we need historical or live features
+        # ============================================================
+        if date is not None:
+            target_date = pd.Timestamp(date)
+            logger.info(f"📅 Forecast date: {target_date.strftime('%Y-%m-%d')}")
 
-        # 2. Select observation date
-        if date is None:
-            date = df.index[-1]
-            logger.info(f"📅 Using latest date: {date.strftime('%Y-%m-%d')}")
+            # For historical dates, build features with that end_date
+            logger.info("🔧 Building features (historical mode)...")
+            feature_data = self.feature_engine.build_complete_features(
+                years=TRAINING_YEARS, end_date=target_date.strftime("%Y-%m-%d")
+            )
+            df = feature_data["features"]
+
+            # Apply nuclear dtype fix
+            metadata_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
+            numeric_cols = [c for c in df.columns if c not in metadata_cols]
+
+            logger.info(
+                f"   Applying nuclear dtype fix to {len(numeric_cols)} columns..."
+            )
+            for col in numeric_cols:
+                if df[col].dtype == object:
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+                df[col] = df[col].astype(np.float64)
+
+            logger.info("✅ Features validated and cached")
+            logger.info(f"   Shape: {df.shape}")
+            logger.info(f"   All {len(numeric_cols)} numeric cols are float64")
+
         else:
-            date = pd.Timestamp(date)
-            logger.info(f"📅 Forecast date: {date.strftime('%Y-%m-%d')}")
+            # For live forecasts, use cached features if available
+            df = self._get_features()
+            target_date = df.index[-1]
+            logger.info(f"📅 Using latest date: {target_date.strftime('%Y-%m-%d')}")
 
-        if date not in df.index:
-            raise ValueError(f"Date {date} not in feature data")
+        # Verify date exists in features
+        if target_date not in df.index:
+            available_range = f"{df.index[0].date()} to {df.index[-1].date()}"
+            raise ValueError(
+                f"Date {target_date.date()} not in feature data. "
+                f"Available range: {available_range}"
+            )
 
-        observation = df.loc[date]
+        observation = df.loc[target_date]
 
         # 3. Check data quality
         logger.info("🔍 Checking data quality...")
         feature_dict = observation.to_dict()
-        quality_score = self.validator.compute_feature_quality(feature_dict, date)
+        quality_score = self.validator.compute_feature_quality(
+            feature_dict, target_date
+        )
         usable, quality_msg = self.validator.check_quality_threshold(quality_score)
 
         logger.info(f"   Quality Score: {quality_score:.2f}")
         logger.info(f"   Status: {quality_msg}")
 
         if not usable:
-            report = self.validator.get_quality_report(feature_dict, date)
+            report = self.validator.get_quality_report(feature_dict, target_date)
             logger.error("❌ Data quality insufficient:")
             for issue in report["issues"]:
                 logger.error(f"   • {issue}")
@@ -236,36 +270,33 @@ class IntegratedForecastingSystem:
         # 6. Prepare features for prediction
         logger.info("🎯 Preparing features for prediction...")
 
-        # NUCLEAR FIX: Extract as numpy array and rebuild DataFrame
-        # This bypasses pandas' dtype metadata bugs
         feature_values = observation[self.forecaster.feature_names]
+        feature_array = pd.to_numeric(feature_values, errors="coerce").values
 
-        # Convert to numpy array with explicit float64 dtype
-        X_array = np.array([feature_values.values], dtype=np.float64)
-
-        # Create clean DataFrame
-        X_df = pd.DataFrame(X_array, columns=self.forecaster.feature_names)
-
-        # Fill any NaNs
+        X_df = pd.DataFrame(
+            feature_array.reshape(1, -1),
+            columns=self.forecaster.feature_names,
+            dtype=np.float64,
+        )
         X_df = X_df.fillna(0.0)
 
         # Validation
-        assert X_df.shape == (1, len(self.forecaster.feature_names)), (
-            f"Shape mismatch: {X_df.shape}"
-        )
-        assert all(X_df.dtypes == np.float64), (
-            f"Not all float64: {X_df.dtypes.value_counts()}"
-        )
+        non_numeric = X_df.select_dtypes(include=["object"]).columns.tolist()
+        if non_numeric:
+            logger.error(f"❌ Non-numeric columns detected: {non_numeric}")
+            raise ValueError(
+                f"Feature DataFrame contains {len(non_numeric)} object columns"
+            )
 
-        logger.info(f"✅ Features prepared: shape={X_df.shape}, all float64")
+        logger.info(
+            f"✅ Features prepared: shape={X_df.shape}, dtype={X_df.dtypes.unique()[0]}"
+        )
 
         # 7. Generate distribution
         logger.info("🎯 Generating probabilistic forecast...")
 
-        current_vix = float(observation["vix"])
-
         try:
-            distribution = self.forecaster.predict(X_df, cohort, current_vix)
+            distribution = self.forecaster.predict(X_df, cohort)
         except Exception as e:
             logger.error(f"❌ Prediction failed: {e}")
             raise
@@ -282,19 +313,16 @@ class IntegratedForecastingSystem:
         )
 
         # 8. Add metadata
-        forecast_date = date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+        forecast_date = target_date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
         distribution["metadata"] = {
-            "observation_date": date.strftime("%Y-%m-%d"),
+            "observation_date": target_date.strftime("%Y-%m-%d"),
             "forecast_date": forecast_date.strftime("%Y-%m-%d"),
             "horizon_days": TARGET_CONFIG["horizon_days"],
             "feature_quality": float(quality_score),
             "cohort_weight": float(cohort_weight),
-            "current_vix": float(current_vix),
+            "current_vix": float(observation["vix"]),
             "features_used": len(self.forecaster.feature_names),
         }
-
-        # Add cohort to top level for compatibility
-        distribution["cohort"] = cohort
 
         # 9. Log forecast summary
         self._log_forecast_summary(distribution)
@@ -307,7 +335,9 @@ class IntegratedForecastingSystem:
 
         # 11. Update state
         self.last_forecast = distribution
-        self.forecast_history.append({"date": date, "distribution": distribution})
+        self.forecast_history.append(
+            {"date": target_date, "distribution": distribution}
+        )
 
         logger.info("=" * 80)
         logger.info("✅ FORECAST COMPLETE")
@@ -431,43 +461,161 @@ class IntegratedForecastingSystem:
         logger.info("=" * 80 + "\n")
 
     def generate_forecast_batch(
-        self,
-        start_date: str,
-        end_date: str,
+        self, start_date: str, end_date: str, frequency: str = "daily"
     ):
-        logger.info("\n" + "=" * 80)
-        logger.info("BATCH FORECAST GENERATION")
-        logger.info("=" * 80)
+        """
+        Generate forecasts for date range and store in database.
 
+        **OPTIMIZED VERSION** - Builds features ONCE, reuses for all forecasts.
+
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            frequency: 'daily' or 'weekly'
+
+        Returns:
+            list: Forecast distributions for each date
+        """
+        logger.info(f"\n{'=' * 80}")
+        logger.info(f"BATCH FORECASTING: {start_date} to {end_date}")
+        logger.info(f"{'=' * 80}")
+
+        # ============================================================
+        # FIX: Build features with end_date context, not live mode
+        # ============================================================
+        logger.info("🔧 Building features for batch...")
+        feature_data = self.feature_engine.build_complete_features(
+            years=TRAINING_YEARS,
+            end_date=end_date,  # THIS IS THE KEY FIX
+        )
+        df = feature_data["features"]
+
+        # Apply nuclear dtype fix
+        metadata_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
+        numeric_cols = [c for c in df.columns if c not in metadata_cols]
+
+        logger.info(f"   Applying nuclear dtype fix to {len(numeric_cols)} columns...")
+        for col in numeric_cols:
+            if df[col].dtype == object:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+            df[col] = df[col].astype(np.float64)
+
+        # Verify
+        object_cols = df.select_dtypes(include=["object"]).columns.tolist()
+        unexpected = [c for c in object_cols if c not in metadata_cols]
+        if unexpected:
+            logger.error(f"❌ {len(unexpected)} non-numeric columns remain")
+            raise ValueError(f"DataFrame still has object columns: {unexpected[:5]}")
+
+        logger.info("✅ Features validated and cached")
+        logger.info(f"   Shape: {df.shape}")
+        logger.info(f"   All {len(numeric_cols)} numeric cols are float64")
+
+        # Filter to date range
         start = pd.Timestamp(start_date)
         end = pd.Timestamp(end_date)
+        date_range = df[(df.index >= start) & (df.index <= end)].index
 
-        logger.info(f"\nDate range: {start.date()} to {end.date()}")
+        logger.info(f"📅 Forecasting {len(date_range)} dates")
+        logger.info(f"   Range: {date_range[0].date()} to {date_range[-1].date()}")
 
-        # Generate business days
-        dates = pd.date_range(start, end, freq="B")
+        forecasts = []
+        commit_interval = 50  # Commit every 50 forecasts
 
-        logger.info(f"Forecasting {len(dates)} dates...\n")
+        for i, date in enumerate(date_range):
+            try:
+                # Extract observation from EXISTING df (no rebuild!)
+                observation = df.loc[date]
 
-        successful = 0
-        failed = 0
+                # Quick quality check
+                feature_dict = observation.to_dict()
+                quality_score = self.validator.compute_feature_quality(
+                    feature_dict, date
+                )
+                usable, _ = self.validator.check_quality_threshold(quality_score)
 
-        for date in dates:
-            logger.info(f"\nProcessing {date.date()}...")
+                if not usable:
+                    logger.warning(
+                        f"   Skipped {date.date()}: low quality ({quality_score:.2f})"
+                    )
+                    continue
 
-            result = self.generate_forecast(date=date)
+                # Get cohort
+                cohort = observation.get("calendar_cohort", "mid_cycle")
+                cohort_weight = observation.get("cohort_weight", 1.0)
 
-            if result:
-                successful += 1
-            else:
-                failed += 1
+                if cohort not in self.forecaster.models:
+                    cohort = "mid_cycle"
 
-        logger.info("\n" + "=" * 80)
-        logger.info("BATCH GENERATION COMPLETE")
+                # Prepare features
+                feature_values = observation[self.forecaster.feature_names]
+                feature_array = pd.to_numeric(feature_values, errors="coerce").values
+                X_df = pd.DataFrame(
+                    feature_array.reshape(1, -1),
+                    columns=self.forecaster.feature_names,
+                    dtype=np.float64,
+                ).fillna(0.0)
+
+                # Generate forecast
+                distribution = self.forecaster.predict(X_df, cohort)
+
+                # Apply calibration
+                if self.calibrator:
+                    distribution = self.calibrator.calibrate(distribution)
+
+                distribution["confidence_score"] *= 2 - cohort_weight
+                distribution["confidence_score"] = np.clip(
+                    distribution["confidence_score"], 0, 1
+                )
+
+                # Add metadata
+                forecast_date = date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+                distribution["metadata"] = {
+                    "observation_date": date.strftime("%Y-%m-%d"),
+                    "forecast_date": forecast_date.strftime("%Y-%m-%d"),
+                    "horizon_days": TARGET_CONFIG["horizon_days"],
+                    "feature_quality": float(quality_score),
+                    "cohort_weight": float(cohort_weight),
+                    "current_vix": float(observation["vix"]),
+                    "features_used": len(self.forecaster.feature_names),
+                }
+
+                # Store
+                prediction_id = self._store_prediction(distribution, observation)
+                distribution["prediction_id"] = prediction_id
+
+                forecasts.append(distribution)
+
+                # Progress + periodic commits
+                if (i + 1) % commit_interval == 0:
+                    logger.info(f"   Progress: {i + 1}/{len(date_range)} forecasts")
+                    self.prediction_db.commit()
+                    logger.info(f"   ✅ Committed batch of {commit_interval}")
+
+            except Exception as e:
+                logger.warning(f"   Failed {date.date()}: {e}")
+                continue
+
+        # Final commit
+        if len(forecasts) % commit_interval != 0:
+            self.prediction_db.commit()
+            logger.info(f"   ✅ Committed final batch")
+
         logger.info("=" * 80)
-        logger.info(f"Successful: {successful}")
-        logger.info(f"Failed: {failed}")
-        logger.info("=" * 80 + "\n")
+        logger.info(f"✅ Generated {len(forecasts)} forecasts")
+        logger.info("=" * 80)
+
+        # Verify no uncommitted writes
+        status = self.prediction_db.get_commit_status()
+        if status["pending_writes"] > 0:
+            logger.error(f"🚨 WARNING: {status['pending_writes']} uncommitted writes!")
+            raise RuntimeError(
+                f"Lost {status['pending_writes']} forecasts - commit failed!"
+            )
+        else:
+            logger.info("✅ All forecasts committed to database")
+
+        return forecasts
 
     # ========================================================================
     # ANOMALY DETECTION METHODS (Backward Compatibility)
