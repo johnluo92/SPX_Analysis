@@ -1,566 +1,510 @@
-"""
-XGBoost Feature Selector V3 - Log-Transformed Realized Volatility System
+"""XGBoost Feature Selector V2 - VIX % Change Forecasting (Regression)"""
 
-CRITICAL CHANGES FROM V2:
-1. Target calculation changed from VIX % change to forward-looking realized volatility
-2. Realized volatility calculated from SPX returns over forecast horizon
-3. Log transformation applied to target for better distribution
-4. Feature importance evaluated against log(RV) target
-5. All features maintain strict temporal hygiene (no future leakage)
-
-Author: VIX Forecasting System
-Last Updated: 2025-11-13
-Version: 3.0 (Log-RV Feature Selection)
-"""
-
-import json
-import logging
-from datetime import datetime
+import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 import xgboost as xgb
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+warnings.filterwarnings("ignore")
+
+CRITICAL_FORWARD_INDICATORS = [
+    "VX1-VX2",
+    "VX2-VX1_RATIO",
+    "yield_10y2y",
+    "yield_10y3m",
+    "VXTLT",
+    "vxtlt_vix_ratio",
+    "SKEW",
+    "skew_vs_vix",
+]
+
+DEFAULT_CANDIDATE_SIZES = [30, 40, 50, 60, 75, 100]
+DEFAULT_MIN_STABILITY = 0.3
+DEFAULT_MAX_CORRELATION = 0.95
+DEFAULT_N_SPLITS = 5
+DEFAULT_TEST_SIZE = 252
 
 
-class XGBoostFeatureSelector:
-    """
-    Feature selection using XGBoost feature importance for log-RV forecasting.
+class IntelligentFeatureSelector:
+    """Stability-based feature selection for VIX % change forecasting."""
 
-    KEY V3 METHODOLOGY:
-    - Target: Log-transformed forward-looking realized volatility
-    - Forward window: Returns from t to t+horizon (e.g., 21 days)
-    - Realized vol: Annualized std of SPX returns over forward window
-    - Log transform: log(realized_vol) for better distribution
-    - Temporal hygiene: Features at time t, target from t to t+horizon
-
-    This ensures we're selecting features that predict FUTURE volatility,
-    not features that explain PAST VIX changes.
-    """
-
-    def __init__(
-        self,
-        horizon: int = 21,
-        min_importance: float = 0.001,
-        top_n: int = 50,
-        cv_folds: int = 3,
-    ):
-        """
-        Initialize feature selector.
-
-        Args:
-            horizon: Forecast horizon in trading days (default 21)
-            min_importance: Minimum feature importance threshold
-            top_n: Maximum number of features to select
-            cv_folds: Number of cross-validation folds
-        """
-        self.horizon = horizon
-        self.min_importance = min_importance
-        self.top_n = top_n
-        self.cv_folds = cv_folds
-
+    def __init__(self, output_dir: str = "./models"):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(exist_ok=True, parents=True)
+        self.baseline_trainer = None
+        self.feature_importance_df = None
+        self.stability_scores = None
+        self.validation_results = []
         self.selected_features = None
-        self.importance_scores = None
-        self.selection_metadata = None
+        self.optimal_size = None
 
-        logger.info(
-            f"Initialized XGBoost Feature Selector V3:\n"
-            f"  Horizon: {horizon} days\n"
-            f"  Target: Log-transformed forward realized volatility\n"
-            f"  Min importance: {min_importance}\n"
-            f"  Top N: {top_n}"
-        )
-
-    def _calculate_forward_realized_volatility(
+    def run_full_pipeline(
         self,
-        spx_returns: pd.Series,
-        dates: pd.DatetimeIndex,
-    ) -> pd.Series:
-        """
-        Calculate forward-looking realized volatility for each date.
+        features: pd.DataFrame,
+        vix: pd.Series,
+        spx: pd.Series,
+        horizons: List[int] = [5],
+        candidate_sizes: List[int] = None,
+        min_stability: float = DEFAULT_MIN_STABILITY,
+        max_correlation: float = DEFAULT_MAX_CORRELATION,
+        preserve_forward_indicators: bool = True,
+        verbose: bool = True,
+    ) -> Dict:
+        if verbose:
+            print(f"\n{'=' * 80}")
+            print("INTELLIGENT FEATURE SELECTION - VIX % CHANGE FORECASTING")
+            print(f"{'=' * 80}")
+            print(f"Starting features: {len(features.columns)}")
+            print(f"Horizons: {horizons}")
+            print(f"Min stability: {min_stability}")
+            print(f"Max correlation: {max_correlation}")
+            print(f"Target: Forward VIX % Change (continuous regression)")
 
-        CRITICAL METHODOLOGY:
-        1. For each date t, look FORWARD horizon days
-        2. Compute realized volatility from returns between t and t+horizon
-        3. Annualize the volatility (multiply by sqrt(252))
-        4. Apply log transformation for better statistical properties
+        if verbose:
+            print(f"\n{'=' * 80}")
+            print("[STEP 1/5] Training baseline + measuring feature stability...")
+            print(f"{'=' * 80}")
 
-        This is the ACTUAL target we're trying to predict:
-        "What will the realized volatility of SPX be over the next 21 days?"
+        self.baseline_trainer, baseline_metrics, stability_scores = (
+            self._train_baseline_with_stability(features, vix, spx, horizons, verbose)
+        )
+        self.stability_scores = stability_scores
 
-        Args:
-            spx_returns: Series of SPX daily returns
-            dates: DatetimeIndex of dates to calculate RV for
+        if verbose:
+            print(f"\n{'=' * 80}")
+            print("[STEP 2/5] Ranking features by stability-weighted importance...")
+            print(f"{'=' * 80}")
 
-        Returns:
-            Series of log-transformed realized volatility, indexed by date
-
-        Example:
-            Date t=2020-01-15:
-            - Look at returns from 2020-01-15 to 2020-02-15 (21 days)
-            - Calculate std of those returns
-            - Annualize: std * sqrt(252)
-            - Transform: log(annualized_std)
-            - This becomes the target for features observed on 2020-01-15
-        """
-
-        logger.info(
-            f"Calculating forward-looking realized volatility:\n"
-            f"  Window: {self.horizon} trading days\n"
-            f"  Method: Annualized std of forward returns\n"
-            f"  Transform: Natural log"
+        self.feature_importance_df = self._rank_features_with_stability(
+            stability_scores, min_stability, verbose
         )
 
-        realized_vols = pd.Series(index=dates, dtype=float)
+        if verbose:
+            print(f"\n{'=' * 80}")
+            print("[STEP 3/5] Removing multicollinear features...")
+            print(f"{'=' * 80}")
 
-        # Ensure returns are sorted by date
-        spx_returns = spx_returns.sort_index()
-
-        valid_count = 0
-        insufficient_data = 0
-
-        for date in dates:
-            if date not in spx_returns.index:
-                continue
-
-            # Get position of this date in the returns series
-            try:
-                date_pos = spx_returns.index.get_loc(date)
-            except KeyError:
-                continue
-
-            # Define forward window: from date (inclusive) to date+horizon
-            # We need horizon+1 days to get horizon returns
-            end_pos = date_pos + self.horizon + 1
-
-            # Check if we have enough future data
-            if end_pos > len(spx_returns):
-                insufficient_data += 1
-                continue
-
-            # Extract forward returns
-            forward_returns = spx_returns.iloc[date_pos:end_pos]
-
-            # Need at least horizon/2 valid returns
-            if forward_returns.notna().sum() < self.horizon / 2:
-                insufficient_data += 1
-                continue
-
-            # Calculate realized volatility
-            # Drop NaN returns before calculating std
-            valid_returns = forward_returns.dropna()
-
-            if len(valid_returns) < 10:  # Minimum sample size
-                insufficient_data += 1
-                continue
-
-            # Realized vol = std of returns * sqrt(252) for annualization
-            realized_vol = valid_returns.std() * np.sqrt(252)
-
-            # Apply log transformation
-            # Note: RV is always positive, so log is well-defined
-            # Typical RV values range from 10-80%, so log(RV) ≈ 2.3 to 4.4
-            log_rv = np.log(realized_vol * 100)  # Convert to percentage first
-
-            realized_vols[date] = log_rv
-            valid_count += 1
-
-        # Remove NaN values
-        realized_vols = realized_vols.dropna()
-
-        logger.info(
-            f"Forward RV calculation complete:\n"
-            f"  Valid calculations: {valid_count}\n"
-            f"  Insufficient data: {insufficient_data}\n"
-            f"  Log(RV) range: [{realized_vols.min():.2f}, {realized_vols.max():.2f}]\n"
-            f"  Log(RV) mean: {realized_vols.mean():.2f}\n"
-            f"  Log(RV) std: {realized_vols.std():.2f}"
+        filtered_features = self._remove_multicollinearity(
+            self.feature_importance_df, features, max_correlation, verbose
         )
 
-        return realized_vols
-
-    def select_features(
-        self,
-        features_df: pd.DataFrame,
-        spx_returns: pd.Series,
-        feature_categories: Optional[Dict[str, List[str]]] = None,
-    ) -> Tuple[List[str], Dict]:
-        """
-        Select features using XGBoost importance on log-RV target.
-
-        METHODOLOGY:
-        1. Calculate forward-looking log(RV) as target
-        2. Align features with targets (strict temporal matching)
-        3. Train XGBoost models via cross-validation
-        4. Aggregate feature importance across folds
-        5. Select top features above importance threshold
-
-        Args:
-            features_df: DataFrame with features (rows=dates, cols=features)
-            spx_returns: Series of SPX daily returns for RV calculation
-            feature_categories: Optional dict grouping features by category
-
-        Returns:
-            Tuple of (selected_features, metadata_dict)
-        """
-
-        logger.info("\n" + "=" * 80)
-        logger.info("FEATURE SELECTION - LOG-RV TARGET")
-        logger.info("=" * 80)
-
-        # ================================================================
-        # STEP 1: Calculate forward-looking log(RV) targets
-        # ================================================================
-
-        logger.info("\nStep 1: Calculating forward-looking realized volatility...")
-
-        target = self._calculate_forward_realized_volatility(
-            spx_returns=spx_returns,
-            dates=features_df.index,
-        )
-
-        if len(target) == 0:
-            logger.error("❌ No valid targets calculated")
-            return [], {}
-
-        # ================================================================
-        # STEP 2: Align features with targets
-        # ================================================================
-
-        logger.info("\nStep 2: Aligning features with targets...")
-
-        # Find dates that exist in both features and target
-        common_dates = features_df.index.intersection(target.index)
-
-        if len(common_dates) < 100:
-            logger.error(
-                f"❌ Insufficient aligned data: {len(common_dates)} samples\n"
-                f"   Need at least 100 samples for reliable feature selection"
+        if verbose:
+            print(f"\n{'=' * 80}")
+            print(
+                "[STEP 4/5] Recursive feature addition (finding performance cliff)..."
             )
-            return [], {}
+            print(f"{'=' * 80}")
 
-        # Subset to common dates
-        X = features_df.loc[common_dates].copy()
-        y = target.loc[common_dates].copy()
+        if candidate_sizes is None:
+            candidate_sizes = DEFAULT_CANDIDATE_SIZES
 
-        # Handle any remaining NaN in features
-        # Forward-fill then backward-fill, then drop any remaining NaN
-        X = X.fillna(method="ffill").fillna(method="bfill")
-
-        # Drop columns that are still all NaN
-        X = X.dropna(axis=1, how="all")
-
-        # Drop rows with any NaN
-        valid_mask = ~(X.isna().any(axis=1) | y.isna())
-        X = X[valid_mask]
-        y = y[valid_mask]
-
-        logger.info(
-            f"Aligned dataset:\n"
-            f"  Samples: {len(X)}\n"
-            f"  Features: {len(X.columns)}\n"
-            f"  Target range: [{y.min():.2f}, {y.max():.2f}]\n"
-            f"  Date range: {X.index[0].date()} to {X.index[-1].date()}"
+        optimal_features, optimal_size = self._recursive_feature_addition(
+            filtered_features, features, vix, spx, horizons, candidate_sizes, verbose
         )
 
-        # ================================================================
-        # STEP 3: Cross-validated feature importance
-        # ================================================================
+        self.optimal_size = optimal_size
+        self.selected_features = optimal_features
 
-        logger.info(
-            f"\nStep 3: Computing feature importance via {self.cv_folds}-fold CV..."
-        )
+        if preserve_forward_indicators:
+            if verbose:
+                print(f"\n{'=' * 80}")
+                print("[STEP 5/5] Preserving critical forward indicators...")
+                print(f"{'=' * 80}")
 
-        # TimeSeriesSplit for temporal validation
-        tscv = TimeSeriesSplit(n_splits=self.cv_folds)
-
-        # Aggregate importance across folds
-        importance_accumulator = np.zeros(len(X.columns))
-        fold_performances = []
-
-        for fold_idx, (train_idx, val_idx) in enumerate(tscv.split(X)):
-            X_train = X.iloc[train_idx]
-            y_train = y.iloc[train_idx]
-            X_val = X.iloc[val_idx]
-            y_val = y.iloc[val_idx]
-
-            # Train XGBoost model
-            model = xgb.XGBRegressor(
-                objective="reg:squarederror",
-                n_estimators=100,
-                max_depth=6,
-                learning_rate=0.1,
-                subsample=0.8,
-                colsample_bytree=0.8,
-                random_state=42 + fold_idx,
-                n_jobs=-1,
+            self.selected_features = self._preserve_forward_indicators(
+                self.selected_features, features.columns.tolist(), verbose
             )
 
-            model.fit(X_train, y_train, verbose=False)
+        self._save_results(filtered_features, verbose)
 
-            # Get feature importance (gain)
-            importance = model.feature_importances_
-            importance_accumulator += importance
-
-            # Evaluate performance
-            train_pred = model.predict(X_train)
-            val_pred = model.predict(X_val)
-
-            train_mae = np.mean(np.abs(train_pred - y_train))
-            val_mae = np.mean(np.abs(val_pred - y_val))
-
-            fold_performances.append(
-                {
-                    "fold": fold_idx + 1,
-                    "train_mae": train_mae,
-                    "val_mae": val_mae,
-                    "train_samples": len(X_train),
-                    "val_samples": len(X_val),
-                }
-            )
-
-            logger.info(
-                f"  Fold {fold_idx + 1}/{self.cv_folds}: "
-                f"Train MAE={train_mae:.4f}, Val MAE={val_mae:.4f}"
-            )
-
-        # Average importance across folds
-        avg_importance = importance_accumulator / self.cv_folds
-
-        # Create importance scores dict
-        self.importance_scores = dict(zip(X.columns, avg_importance))
-
-        # ================================================================
-        # STEP 4: Select features
-        # ================================================================
-
-        logger.info("\nStep 4: Selecting features...")
-
-        # Sort by importance
-        sorted_features = sorted(
-            self.importance_scores.items(), key=lambda x: x[1], reverse=True
-        )
-
-        # Apply filters
-        selected = []
-        for feature, score in sorted_features:
-            # Stop if we have enough features
-            if len(selected) >= self.top_n:
-                break
-
-            # Filter by minimum importance
-            if score < self.min_importance:
-                continue
-
-            selected.append(feature)
-
-        self.selected_features = selected
-
-        logger.info(
-            f"\nSelected {len(selected)} features:\n"
-            f"  Top importance: {sorted_features[0][1]:.4f}\n"
-            f"  Min importance: {sorted_features[len(selected) - 1][1]:.4f}\n"
-            f"  Threshold: {self.min_importance}"
-        )
-
-        # ================================================================
-        # STEP 5: Analyze by category
-        # ================================================================
-
-        category_analysis = {}
-        if feature_categories:
-            logger.info("\nFeature selection by category:")
-            for category, cat_features in feature_categories.items():
-                selected_in_cat = [f for f in selected if f in cat_features]
-                total_in_cat = len([f for f in cat_features if f in X.columns])
-
-                if total_in_cat > 0:
-                    pct = 100 * len(selected_in_cat) / total_in_cat
-                    logger.info(
-                        f"  {category}: {len(selected_in_cat)}/{total_in_cat} ({pct:.1f}%)"
-                    )
-
-                    category_analysis[category] = {
-                        "selected": len(selected_in_cat),
-                        "total": total_in_cat,
-                        "features": selected_in_cat,
-                    }
-
-        # ================================================================
-        # STEP 6: Build metadata
-        # ================================================================
-
-        self.selection_metadata = {
-            "timestamp": datetime.now().isoformat(),
-            "target": "log_realized_volatility",
-            "horizon": self.horizon,
-            "samples": len(X),
-            "total_features": len(X.columns),
-            "selected_features": len(selected),
-            "min_importance": self.min_importance,
-            "top_n": self.top_n,
-            "cv_folds": self.cv_folds,
-            "fold_performances": fold_performances,
-            "avg_train_mae": np.mean([f["train_mae"] for f in fold_performances]),
-            "avg_val_mae": np.mean([f["val_mae"] for f in fold_performances]),
-            "target_statistics": {
-                "mean": float(y.mean()),
-                "std": float(y.std()),
-                "min": float(y.min()),
-                "max": float(y.max()),
-            },
-            "category_analysis": category_analysis,
-            "top_20_features": [
-                {"feature": f, "importance": float(s)} for f, s in sorted_features[:20]
-            ],
+        return {
+            "selected_features": self.selected_features,
+            "optimal_size": self.optimal_size,
+            "feature_importance": self.feature_importance_df,
+            "stability_scores": self.stability_scores,
+            "validation_results": self.validation_results,
         }
 
-        # ================================================================
-        # STEP 7: Display top features
-        # ================================================================
+    def _train_baseline_with_stability(
+        self,
+        features: pd.DataFrame,
+        vix: pd.Series,
+        spx: pd.Series,
+        horizons: List[int],
+        verbose: bool,
+    ) -> Tuple:
+        features_clean = features.copy()
+        if "vix_regime" in features_clean.columns:
+            features_clean = features_clean.drop(columns=["vix_regime"])
+            if verbose:
+                print("   WARNING: Removed vix_regime from features (data leakage)")
 
-        logger.info("\n" + "=" * 80)
-        logger.info("TOP 20 SELECTED FEATURES")
-        logger.info("=" * 80)
+        default_horizon = horizons[0]
+        vix_future = vix.shift(-default_horizon)
+        y_pct_change = ((vix_future / vix) - 1) * 100
+        y_pct_change = y_pct_change.clip(-50, 200)
 
-        for rank, (feature, score) in enumerate(sorted_features[:20], 1):
-            logger.info(f"{rank:2d}. {feature:50s} {score:.6f}")
+        common_idx = features_clean.index.intersection(vix.index).intersection(
+            y_pct_change.dropna().index
+        )
+        X = features_clean.loc[common_idx]
+        y_aligned = y_pct_change.loc[common_idx]
 
-        logger.info("\n" + "=" * 80)
-        logger.info("FEATURE SELECTION COMPLETE")
-        logger.info("=" * 80)
+        if verbose:
+            print(f"   Raw data: {len(features)} rows")
+            print(f"   After alignment: {len(X)} samples")
+            print(f"   Date range: {X.index.min().date()} → {X.index.max().date()}")
+            print(
+                f"   Target: Forward VIX % Change ({default_horizon}-day, continuous)"
+            )
+            print(f"      Mean: {y_aligned.mean():.2f}%")
+            print(f"      Std: {y_aligned.std():.2f}%")
+            print(f"      Min: {y_aligned.min():.2f}%")
+            print(f"      Max: {y_aligned.max():.2f}%")
+            print(f"      Median: {y_aligned.median():.2f}%")
 
-        return self.selected_features, self.selection_metadata
+        if len(X) < 1000:
+            raise ValueError(f"Only {len(X)} samples after cleaning - check your data!")
 
-    def save_results(self, output_dir: str = "data_cache"):
-        """
-        Save feature selection results to disk.
+        if verbose:
+            print("   Computing per-fold feature importance for stability...")
 
-        Saves:
-        1. selected_features.json - List of selected feature names
-        2. feature_importance.json - Full importance scores
-        3. selection_metadata.json - Detailed selection statistics
-        """
+        tscv = TimeSeriesSplit(n_splits=DEFAULT_N_SPLITS, test_size=DEFAULT_TEST_SIZE)
 
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        if self.selected_features is None:
-            logger.error("❌ No features selected yet")
-            return
-
-        # Save selected features list
-        features_file = output_path / "selected_features.json"
-        with open(features_file, "w") as f:
-            json.dump(self.selected_features, f, indent=2)
-        logger.info(f"✅ Saved selected features: {features_file}")
-
-        # Save full importance scores
-        importance_file = output_path / "feature_importance.json"
-        with open(importance_file, "w") as f:
-            json.dump(self.importance_scores, f, indent=2)
-        logger.info(f"✅ Saved importance scores: {importance_file}")
-
-        # Save metadata
-        metadata_file = output_path / "selection_metadata.json"
-        with open(metadata_file, "w") as f:
-            json.dump(self.selection_metadata, f, indent=2)
-        logger.info(f"✅ Saved metadata: {metadata_file}")
-
-    def load_results(self, input_dir: str = "data_cache"):
-        """Load previously saved feature selection results."""
-
-        input_path = Path(input_dir)
-
-        features_file = input_path / "selected_features.json"
-        if features_file.exists():
-            with open(features_file, "r") as f:
-                self.selected_features = json.load(f)
-            logger.info(f"✅ Loaded {len(self.selected_features)} selected features")
-
-        importance_file = input_path / "feature_importance.json"
-        if importance_file.exists():
-            with open(importance_file, "r") as f:
-                self.importance_scores = json.load(f)
-            logger.info(f"✅ Loaded importance scores")
-
-        metadata_file = input_path / "selection_metadata.json"
-        if metadata_file.exists():
-            with open(metadata_file, "r") as f:
-                self.selection_metadata = json.load(f)
-            logger.info(f"✅ Loaded selection metadata")
-
-
-# ============================================================
-# TESTING
-# ============================================================
-
-
-def test_feature_selector():
-    """Test feature selector with synthetic data."""
-
-    print("\n" + "=" * 80)
-    print("TESTING FEATURE SELECTOR V3")
-    print("=" * 80)
-
-    # Create synthetic data
-    np.random.seed(42)
-    dates = pd.date_range("2020-01-01", "2023-12-31", freq="D")
-
-    # Synthetic SPX returns (with volatility clustering)
-    spx_returns = pd.Series(np.random.randn(len(dates)) * 0.01, index=dates)
-
-    # Synthetic features
-    n_features = 100
-    features_df = pd.DataFrame(
-        np.random.randn(len(dates), n_features),
-        index=dates,
-        columns=[f"feature_{i}" for i in range(n_features)],
-    )
-
-    # Add some predictive features (correlated with future volatility)
-    for i in range(5):
-        # Feature that's correlated with forward volatility
-        future_vol = spx_returns.rolling(21).std().shift(-21)
-        features_df[f"predictive_{i}"] = (
-            future_vol + np.random.randn(len(dates)) * 0.001
+        all_features = X.columns.tolist()
+        importance_matrix = pd.DataFrame(
+            0.0, index=all_features, columns=[f"fold_{i}" for i in range(1, 6)]
         )
 
-    # Initialize selector
-    selector = XGBoostFeatureSelector(
-        horizon=21,
-        min_importance=0.001,
-        top_n=50,
+        for fold_idx, (train_idx, val_idx) in enumerate(tscv.split(X), 1):
+            X_train = X.iloc[train_idx]
+            y_train = y_aligned.iloc[train_idx]
+
+            model = xgb.XGBRegressor(
+                objective="reg:squarederror",
+                max_depth=6,
+                learning_rate=0.03,
+                n_estimators=300,
+                random_state=42,
+                n_jobs=-1,
+                verbosity=0,
+                enable_categorical=False,
+            )
+            model.fit(X_train, y_train, verbose=False)
+
+            importance_dict = model.get_booster().get_score(importance_type="gain")
+
+            importance_dict_mapped = {}
+            for key, value in importance_dict.items():
+                if key.startswith("f") and key[1:].isdigit():
+                    idx = int(key[1:])
+                    if idx < len(all_features):
+                        importance_dict_mapped[all_features[idx]] = value
+                else:
+                    importance_dict_mapped[key] = value
+
+            if importance_dict_mapped:
+                total_importance = sum(importance_dict_mapped.values())
+                importance_dict_mapped = {
+                    k: v / total_importance for k, v in importance_dict_mapped.items()
+                }
+
+            for feature, importance in importance_dict_mapped.items():
+                if feature in importance_matrix.index:
+                    importance_matrix.loc[feature, f"fold_{fold_idx}"] = importance
+
+        mean_importance = importance_matrix.mean(axis=1)
+        std_importance = importance_matrix.std(axis=1)
+
+        stability = pd.Series(0.0, index=all_features, name="stability")
+        non_zero_mask = mean_importance > 1e-8
+
+        if non_zero_mask.any():
+            cv = std_importance[non_zero_mask] / mean_importance[non_zero_mask]
+            stability[non_zero_mask] = (1 - cv).clip(0, 1)
+
+        if verbose:
+            print(f"   OK: Stability computed for {len(stability)} features")
+            print(
+                f"      Features with non-zero importance: {(mean_importance > 0).sum()}"
+            )
+            print(
+                f"      Mean stability (non-zero features): {stability[stability > 0].mean():.3f}"
+            )
+            print(f"      High stability features (>0.7): {(stability > 0.7).sum()}")
+            print(
+                f"      Medium stability features (0.3-0.7): {((stability >= 0.3) & (stability <= 0.7)).sum()}"
+            )
+            print(f"      Low stability features (<0.3): {(stability < 0.3).sum()}")
+
+            used_features = mean_importance[mean_importance > 0].sort_values(
+                ascending=False
+            )
+            print(f"\n   Features used by XGBoost (with mean importance):")
+            for i, (feat, imp) in enumerate(used_features.head(15).items(), 1):
+                stab = stability[feat]
+                print(f"      {i:2d}. {feat:40s} | Imp: {imp:.4f} | Stab: {stab:.3f}")
+
+        baseline_metrics = {
+            "target_mean": y_aligned.mean(),
+            "target_std": y_aligned.std(),
+        }
+
+        return None, baseline_metrics, stability
+
+    def _rank_features_with_stability(
+        self, stability_scores: pd.Series, min_stability: float, verbose: bool
+    ) -> pd.DataFrame:
+        importance_df = pd.DataFrame(
+            {
+                "feature": stability_scores.index,
+                "importance": stability_scores.values,
+                "stability": stability_scores.values,
+            }
+        )
+
+        importance_df["weighted_importance"] = (
+            importance_df["importance"] * importance_df["stability"]
+        )
+        importance_df = importance_df.sort_values(
+            "weighted_importance", ascending=False
+        )
+
+        high_stability = importance_df[importance_df["stability"] >= min_stability]
+        top_by_importance = importance_df.nlargest(100, "weighted_importance")
+
+        combined_filtered = pd.concat(
+            [high_stability, top_by_importance]
+        ).drop_duplicates()
+        combined_filtered = combined_filtered.sort_values(
+            "weighted_importance", ascending=False
+        )
+
+        if verbose:
+            print(f"   Total features with importance: {len(importance_df)}")
+            print(
+                f"   High stability (>= {min_stability}): {len(high_stability)} features"
+            )
+            print(f"   Top by weighted importance: {len(top_by_importance)} features")
+            print(f"   Combined (deduplicated): {len(combined_filtered)} features")
+
+            print(f"\n   Top 20 features by stability-weighted importance:")
+            for i, row in enumerate(combined_filtered.head(20).itertuples(), 1):
+                print(
+                    f"      {i:2d}. {row.feature:30s} | Imp: {row.importance:.4f} | Stab: {row.stability:.3f} | Weight: {row.weighted_importance:.4f}"
+                )
+
+        return combined_filtered
+
+    def _remove_multicollinearity(
+        self,
+        feature_importance_df: pd.DataFrame,
+        features: pd.DataFrame,
+        max_correlation: float,
+        verbose: bool,
+    ) -> pd.DataFrame:
+        ranked_features = feature_importance_df["feature"].tolist()
+        features_subset = features[ranked_features]
+        corr_matrix = features_subset.corr().abs()
+
+        to_remove = set()
+        removed_pairs = []
+
+        for i, feat1 in enumerate(ranked_features):
+            if feat1 in to_remove:
+                continue
+            for feat2 in ranked_features[i + 1 :]:
+                if feat2 in to_remove:
+                    continue
+                if corr_matrix.loc[feat1, feat2] > max_correlation:
+                    to_remove.add(feat2)
+                    removed_pairs.append((feat1, feat2, corr_matrix.loc[feat1, feat2]))
+
+        filtered_df = feature_importance_df[
+            ~feature_importance_df["feature"].isin(to_remove)
+        ]
+
+        if verbose:
+            if removed_pairs:
+                print(f"   Removing {len(to_remove)} multicollinear features:")
+                for feat1, feat2, corr in removed_pairs[:10]:
+                    print(
+                        f"      {feat1:30s} ↔ {feat2:30s} (r={corr:.3f}) → Remove {feat2}"
+                    )
+                if len(removed_pairs) > 10:
+                    print(f"      ... and {len(removed_pairs) - 10} more pairs")
+            else:
+                print(
+                    f"   No multicollinear features found (threshold={max_correlation})"
+                )
+
+            print(f"   After multicollinearity removal: {len(filtered_df)} features")
+
+        return filtered_df
+
+    def _recursive_feature_addition(
+        self,
+        feature_importance_df: pd.DataFrame,
+        features: pd.DataFrame,
+        vix: pd.Series,
+        spx: pd.Series,
+        horizons: List[int],
+        candidate_sizes: List[int],
+        verbose: bool,
+    ) -> Tuple[List[str], int]:
+        ranked_features = feature_importance_df["feature"].tolist()
+        default_horizon = horizons[0]
+        results = []
+
+        for size in candidate_sizes:
+            if size > len(ranked_features):
+                if verbose:
+                    print(
+                        f"   Skipping size={size} (exceeds {len(ranked_features)} available features)"
+                    )
+                continue
+
+            subset_features = ranked_features[:size]
+            X_subset = features[subset_features]
+
+            if "vix_regime" in X_subset.columns:
+                X_subset = X_subset.drop(columns=["vix_regime"])
+                if verbose and size == candidate_sizes[0]:
+                    print("   WARNING: Removed vix_regime from features (data leakage)")
+
+            vix_future = vix.shift(-default_horizon)
+            y = ((vix_future / vix) - 1) * 100
+            y = y.clip(-50, 200)
+
+            common_idx = X_subset.index.intersection(vix.index).intersection(
+                y.dropna().index
+            )
+            X_aligned = X_subset.loc[common_idx]
+            y_aligned = y.loc[common_idx]
+
+            tscv = TimeSeriesSplit(
+                n_splits=DEFAULT_N_SPLITS, test_size=DEFAULT_TEST_SIZE
+            )
+            cv_scores = []
+
+            for train_idx, test_idx in tscv.split(X_aligned):
+                X_train, X_test = X_aligned.iloc[train_idx], X_aligned.iloc[test_idx]
+                y_train, y_test = y_aligned.iloc[train_idx], y_aligned.iloc[test_idx]
+
+                model = xgb.XGBRegressor(
+                    objective="reg:squarederror",
+                    max_depth=6,
+                    learning_rate=0.05,
+                    n_estimators=300,
+                    random_state=42,
+                    n_jobs=-1,
+                    verbosity=0,
+                )
+                model.fit(X_train, y_train, verbose=False)
+
+                y_pred = model.predict(X_test)
+                rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+                cv_scores.append(rmse)
+
+            mean_rmse = np.mean(cv_scores)
+            std_rmse = np.std(cv_scores)
+
+            results.append({"size": size, "rmse": mean_rmse, "std": std_rmse})
+
+            if verbose:
+                print(f"   Size {size:3d}: RMSE = {mean_rmse:.2f}% ± {std_rmse:.2f}%")
+
+        best_result = min(results, key=lambda x: x["rmse"])
+        optimal_size = best_result["size"]
+        optimal_features = ranked_features[:optimal_size]
+
+        self.validation_results = results
+
+        if verbose:
+            print(f"\n   OK: Optimal size: {optimal_size} features")
+            print(f"      RMSE: {best_result['rmse']:.2f}% ± {best_result['std']:.2f}%")
+
+        return optimal_features, optimal_size
+
+    def _preserve_forward_indicators(
+        self, selected_features: List[str], all_features: List[str], verbose: bool
+    ) -> List[str]:
+        missing_indicators = [
+            f
+            for f in CRITICAL_FORWARD_INDICATORS
+            if f in all_features and f not in selected_features
+        ]
+
+        if missing_indicators:
+            selected_features = selected_features + missing_indicators
+            if verbose:
+                print(
+                    f"   Adding {len(missing_indicators)} critical forward indicators:"
+                )
+                for indicator in missing_indicators:
+                    print(f"      • {indicator}")
+
+        return selected_features
+
+    def _save_results(self, filtered_features: pd.DataFrame, verbose: bool):
+        with open(self.output_dir / "selected_features_v2.txt", "w") as f:
+            for feat in self.selected_features:
+                f.write(f"{feat}\n")
+
+        self.feature_importance_df.to_csv(
+            self.output_dir / "feature_importance_with_stability.csv", index=False
+        )
+        self.stability_scores.to_csv(self.output_dir / "feature_stability_scores.csv")
+
+        if verbose:
+            print(f"\n   OK: Saved: {self.output_dir / 'selected_features_v2.txt'}")
+            print(
+                f"   OK: Saved: {self.output_dir / 'feature_importance_with_stability.csv'}"
+            )
+            print(f"   OK: Saved: {self.output_dir / 'feature_stability_scores.csv'}")
+
+        print(f"\n{'=' * 80}")
+        print("FEATURE SELECTION COMPLETE")
+        print(f"{'=' * 80}")
+        print(f"Final feature count: {len(self.selected_features)}")
+        initial_count = len(filtered_features) + len(
+            [
+                f
+                for f in CRITICAL_FORWARD_INDICATORS
+                if f not in filtered_features["feature"].tolist()
+            ]
+        )
+        reduction_pct = (1 - len(self.selected_features) / initial_count) * 100
+        print(
+            f"Reduction: {initial_count} → {len(self.selected_features)} ({reduction_pct:.1f}% reduction)"
+        )
+
+
+def run_intelligent_feature_selection(
+    integrated_system,
+    horizons: List[int] = [5],
+    min_stability: float = DEFAULT_MIN_STABILITY,
+    max_correlation: float = DEFAULT_MAX_CORRELATION,
+    preserve_forward_indicators: bool = True,
+    verbose: bool = True,
+) -> Dict:
+    if not integrated_system.trained:
+        raise ValueError("Train integrated system first")
+
+    selector = IntelligentFeatureSelector()
+
+    return selector.run_full_pipeline(
+        features=integrated_system.orchestrator.features,
+        vix=integrated_system.orchestrator.vix_ml,
+        spx=integrated_system.orchestrator.spx_ml,
+        horizons=horizons,
+        min_stability=min_stability,
+        max_correlation=max_correlation,
+        preserve_forward_indicators=preserve_forward_indicators,
+        verbose=verbose,
     )
-
-    # Run selection
-    selected, metadata = selector.select_features(
-        features_df=features_df,
-        spx_returns=spx_returns,
-    )
-
-    # Verify results
-    print(f"\n✅ Selected {len(selected)} features")
-    print(f"✅ Avg validation MAE: {metadata['avg_val_mae']:.4f}")
-
-    # Check if predictive features were selected
-    predictive_selected = [f for f in selected if "predictive" in f]
-    print(f"✅ Predictive features selected: {len(predictive_selected)}/5")
-
-    # Save results
-    selector.save_results(output_dir="/home/claude/test_output")
-    print(f"✅ Results saved to /home/claude/test_output")
-
-    print("\n" + "=" * 80)
-    print("TEST COMPLETE")
-    print("=" * 80)
-
-
-if __name__ == "__main__":
-    test_feature_selector()

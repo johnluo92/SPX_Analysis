@@ -1,283 +1,244 @@
 """
-Prediction Database Module - Log-Transformed Realized Volatility System V3
+Prediction Database for Probabilistic Forecasting System
 
-CRITICAL CHANGES FROM V2:
-1. Schema updated: median_forecast is now PRIMARY forecast metric
-2. point_estimate maintained for BACKWARD COMPATIBILITY (populated with median value)
-3. New error metrics: median_error (primary), point_error (backward compat)
-4. Quantile storage: q10, q25, q50, q75, q90
-5. All storage operations handle median_forecast correctly
-
-Author: VIX Forecasting System
-Last Updated: 2025-11-13
-Version: 3.0 (Log-RV Quantile Regression)
+Stores all forecasts with full distribution + metadata for backtesting.
 """
 
+import atexit
+import json
 import logging
 import sqlite3
-from contextlib import contextmanager
-from datetime import datetime, timedelta
+import warnings
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+from config import PREDICTION_DB_CONFIG
+
 logger = logging.getLogger(__name__)
+
+
+class CommitTracker:
+    """Tracks uncommitted writes and screams if data isn't committed."""
+
+    def __init__(self):
+        self.pending_writes = 0
+        self.last_commit_time = None
+        self.writes_log = []
+
+    def track_write(self, operation: str):
+        """Log a write operation."""
+        self.pending_writes += 1
+        self.writes_log.append(f"{datetime.now():%H:%M:%S} - {operation}")
+
+        # Warn every 10 writes
+        if self.pending_writes % 10 == 0:
+            logger.warning(
+                f"⚠️  {self.pending_writes} uncommitted writes! Call commit() soon!"
+            )
+
+    def verify_clean_exit(self):
+        """Called on exit - SCREAMS if uncommitted data exists."""
+        if self.pending_writes > 0:
+            logger.error("=" * 80)
+            logger.error("🚨 CRITICAL: UNCOMMITTED DATA DETECTED!")
+            logger.error("=" * 80)
+            logger.error(f"   Pending writes: {self.pending_writes}")
+            logger.error(f"   Last 5 operations:")
+            for op in self.writes_log[-5:]:
+                logger.error(f"      • {op}")
+            logger.error("")
+            logger.error("   DATA WAS NOT SAVED!")
+            logger.error("   You must call commit() before exit")
+            logger.error("=" * 80)
 
 
 class PredictionDatabase:
     """
-    Manages storage and retrieval of VIX forecasts and actuals.
+    SQLite database for storing and retrieving probabilistic forecasts.
 
-    SCHEMA PHILOSOPHY V3:
-    - median_forecast: Primary forecast from q50 quantile model
-    - point_estimate: Backward compatibility (equals median_forecast)
-    - q10-q90: Full quantile distribution
-    - median_error: Primary error metric |actual - median_forecast|
-    - point_error: Backward compatibility (equals median_error)
+    Schema:
+        - predictions: Main table with forecasts
+        - actuals: Realized VIX values (joined by forecast_date)
 
-    This dual approach ensures:
-    1. New code uses median_forecast (better statistics)
-    2. Old code continues to work (point_estimate exists)
-    3. Easy migration path (both fields identical)
+    Example:
+        >>> db = PredictionDatabase()
+        >>> db.store_prediction(forecast_record)
+        >>> db.commit()  # REQUIRED!
+        >>> db.backfill_actuals(vix_data)
+        >>> metrics = db.compute_quantile_coverage()
     """
 
-    def __init__(self, db_path: str = "data_cache/predictions.db"):
-        """Initialize database connection and ensure schema exists."""
+    def __init__(self, db_path=None):
+        """
+        Initialize prediction database.
+
+        Args:
+            db_path: Path to SQLite database (defaults to config)
+        """
+        if db_path is None:
+            db_path = PREDICTION_DB_CONFIG["db_path"]
+
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Create connection with optimized settings
-        self.conn = sqlite3.connect(
-            str(self.db_path), check_same_thread=False, timeout=30.0
-        )
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA synchronous=NORMAL")
-        self.conn.execute("PRAGMA foreign_keys=ON")
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row  # Dict-like access
 
+        # Create/migrate schema (handles old schemas automatically)
         self._create_schema()
-        logger.info(f"Database initialized: {self.db_path}")
+
+        # CRITICAL: Track in-memory keys during batch operations
+        self._pending_keys = set()
+
+        # SAFETY: Track uncommitted writes
+        self._commit_tracker = CommitTracker()
+        atexit.register(self._commit_tracker.verify_clean_exit)
+
+        logger.info(f"📂 Prediction database: {self.db_path}")
+        logger.info("⚠️  Safety mode enabled - must call commit() to persist writes")
 
     def _create_schema(self):
-        """
-        Create database schema optimized for log-RV quantile forecasting.
+        """Create database tables with UNIQUE constraint to prevent duplicates."""
 
-        KEY DESIGN DECISIONS:
-        1. median_forecast NOT NULL - this is the primary forecast
-        2. point_estimate nullable - backward compat, auto-populated with median
-        3. UNIQUE(forecast_date, horizon) - prevents duplicate forecasts
-        4. created_at DEFAULT CURRENT_TIMESTAMP - audit trail
-        """
+        # Check if table exists and has wrong schema
+        cursor = self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='forecasts'"
+        )
+        table_exists = cursor.fetchone() is not None
 
-        create_forecasts_table = """
+        if table_exists:
+            # Check if direction_probability column exists (wrong schema)
+            cursor = self.conn.execute("PRAGMA table_info(forecasts)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if "direction_probability" in columns:
+                logger.warning(
+                    "⚠️  Detected old schema with direction_probability, recreating table..."
+                )
+
+                # Backup data if any exists
+                cursor = self.conn.execute("SELECT COUNT(*) FROM forecasts")
+                count = cursor.fetchone()[0]
+
+                if count > 0:
+                    logger.info(f"   Backing up {count} existing records...")
+                    self.conn.execute("""
+                        CREATE TABLE forecasts_backup AS
+                        SELECT * FROM forecasts
+                    """)
+
+                # Drop old table
+                self.conn.execute("DROP TABLE forecasts")
+                logger.info("   Dropped old table")
+
+        # Create table with correct schema (no direction_probability)
+        create_sql = """
         CREATE TABLE IF NOT EXISTS forecasts (
-            -- Primary Key
             prediction_id TEXT PRIMARY KEY,
-
-            -- Temporal Context
             timestamp DATETIME NOT NULL,
             forecast_date DATE NOT NULL,
             horizon INTEGER NOT NULL,
 
-            -- Calendar Context
+            -- Context
             calendar_cohort TEXT,
             cohort_weight REAL,
 
-            -- PRIMARY FORECAST (NEW IN V3)
-            median_forecast REAL NOT NULL,  -- From q50 quantile model
-
-            -- Quantile Distribution (TRUE quantile regression)
+            -- Predictions
+            point_estimate REAL NOT NULL,
             q10 REAL,
             q25 REAL,
-            q50 REAL,  -- Should equal median_forecast
+            q50 REAL,
             q75 REAL,
             q90 REAL,
-
-            -- Backward Compatibility (AUTO-POPULATED)
-            point_estimate REAL,  -- Populated with median_forecast value
-
-            -- Regime Probabilities
             prob_low REAL,
             prob_normal REAL,
             prob_elevated REAL,
             prob_crisis REAL,
-
-            -- Directional Forecast
-            direction_probability REAL,  -- P(VIX increases)
             confidence_score REAL,
 
-            -- Feature Metadata
+            -- Metadata
             feature_quality REAL,
-            regime_stability REAL,
             num_features_used INTEGER,
-            missing_features TEXT,
-
-            -- Current Market State
             current_vix REAL,
             features_used TEXT,
-
-            -- System Metadata
             model_version TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-            -- Actuals (filled after forecast period)
+            -- Actuals (filled later)
             actual_vix_change REAL,
             actual_regime TEXT,
+            point_error REAL,
+            quantile_coverage TEXT,
 
-            -- ERROR METRICS (NEW IN V3)
-            median_error REAL,  -- |actual - median_forecast|
-            point_error REAL,   -- Backward compat (equals median_error)
-            quantile_coverage TEXT,  -- JSON of which quantiles covered actual
-
-            -- Prevent duplicate forecasts for same date/horizon
+            -- UNIQUE constraint prevents duplicates
             UNIQUE(forecast_date, horizon)
         )
         """
 
-        # Create indices for common queries
-        create_indices = [
+        self.conn.execute(create_sql)
+
+        # Restore data if backup exists
+        cursor = self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='forecasts_backup'"
+        )
+        if cursor.fetchone() is not None:
+            logger.info("   Restoring backed up data...")
+
+            # Get all columns except direction_probability
+            cursor = self.conn.execute("PRAGMA table_info(forecasts)")
+            new_columns = [row[1] for row in cursor.fetchall()]
+
+            # Insert data back (SQLite will ignore missing columns)
+            try:
+                self.conn.execute(f"""
+                    INSERT OR IGNORE INTO forecasts ({", ".join(new_columns)})
+                    SELECT {", ".join(new_columns)}
+                    FROM forecasts_backup
+                """)
+
+                cursor = self.conn.execute("SELECT COUNT(*) FROM forecasts")
+                restored = cursor.fetchone()[0]
+                logger.info(f"   Restored {restored} records")
+
+            except sqlite3.OperationalError as e:
+                logger.warning(f"   Could not restore all data: {e}")
+
+            # Drop backup table
+            self.conn.execute("DROP TABLE forecasts_backup")
+
+        # Create indexes for fast queries
+        indexes = [
             "CREATE INDEX IF NOT EXISTS idx_forecast_date ON forecasts(forecast_date)",
-            "CREATE INDEX IF NOT EXISTS idx_timestamp ON forecasts(timestamp)",
             "CREATE INDEX IF NOT EXISTS idx_cohort ON forecasts(calendar_cohort)",
-            "CREATE INDEX IF NOT EXISTS idx_actuals ON forecasts(actual_vix_change)",
+            "CREATE INDEX IF NOT EXISTS idx_has_actual ON forecasts(actual_vix_change) WHERE actual_vix_change IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_created_at ON forecasts(created_at)",
         ]
 
-        try:
-            self.conn.execute(create_forecasts_table)
-            for idx_sql in create_indices:
-                self.conn.execute(idx_sql)
-            self.conn.commit()
-            logger.info("✅ Database schema created/verified")
+        for index_sql in indexes:
+            try:
+                self.conn.execute(index_sql)
+            except sqlite3.OperationalError:
+                pass  # Index already exists
 
-        except sqlite3.Error as e:
-            logger.error(f"❌ Schema creation failed: {e}")
-            raise
-
-    @contextmanager
-    def transaction(self):
-        """Context manager for atomic transactions."""
-        try:
-            yield self.conn
-            self.conn.commit()
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"Transaction rolled back: {e}")
-            raise
+        self.conn.commit()
+        logger.info("✅ Database schema initialized")
 
     def store_prediction(self, record: Dict) -> Optional[str]:
         """
-        Store a single prediction with proper median_forecast handling.
-
-        CRITICAL V3 CHANGES:
-        1. Extracts median_forecast from quantiles if not present
-        2. Auto-populates point_estimate = median_forecast
-        3. Ensures q50 = median_forecast (consistency check)
-        4. Validates quantile ordering
+        Store a single prediction with atomic duplicate prevention.
 
         Args:
-            record: Dictionary with prediction data
+            record: Dict with prediction data
 
         Returns:
-            prediction_id if successful, None if failed
-
-        Example record structure:
-            {
-                'prediction_id': 'pred_20250113_21d',
-                'timestamp': pd.Timestamp('2025-01-13'),
-                'forecast_date': pd.Timestamp('2025-01-13'),
-                'horizon': 21,
-                'median_forecast': 2.5,  # PRIMARY
-                'quantiles': {'q10': -1.0, 'q25': 1.0, 'q50': 2.5, ...},
-                'direction_probability': 0.65,
-                ...
-            }
+            prediction_id if stored successfully, None if duplicate/error
         """
-
-        # Deep copy to avoid mutating input
+        # Convert timestamps to ISO strings
         record = record.copy()
-
-        # ============================================================
-        # STEP 1: Extract and validate median_forecast
-        # ============================================================
-
-        if "median_forecast" not in record:
-            # Try to extract from quantiles
-            if "quantiles" in record and isinstance(record["quantiles"], dict):
-                if "q50" in record["quantiles"]:
-                    record["median_forecast"] = record["quantiles"]["q50"]
-                    logger.debug("Extracted median_forecast from quantiles['q50']")
-                else:
-                    logger.error("❌ No median_forecast or q50 in quantiles")
-                    return None
-            else:
-                logger.error("❌ No median_forecast found and no quantiles dict")
-                return None
-
-        # Validate median_forecast is numeric
-        try:
-            median_value = float(record["median_forecast"])
-            record["median_forecast"] = median_value
-        except (ValueError, TypeError):
-            logger.error(f"❌ Invalid median_forecast: {record['median_forecast']}")
-            return None
-
-        # ============================================================
-        # STEP 2: Populate point_estimate for backward compatibility
-        # ============================================================
-
-        record["point_estimate"] = record["median_forecast"]
-
-        # ============================================================
-        # STEP 3: Extract quantiles from nested dict if present
-        # ============================================================
-
-        if "quantiles" in record and isinstance(record["quantiles"], dict):
-            quantiles = record["quantiles"]
-
-            # Extract each quantile
-            for q in ["q10", "q25", "q50", "q75", "q90"]:
-                if q in quantiles:
-                    record[q] = quantiles[q]
-
-            # Remove nested dict (we've extracted values to top level)
-            del record["quantiles"]
-
-        # ============================================================
-        # STEP 4: Consistency check - q50 should equal median_forecast
-        # ============================================================
-
-        if "q50" in record:
-            if abs(record["q50"] - record["median_forecast"]) > 0.01:
-                logger.warning(
-                    f"⚠️  q50 ({record['q50']:.4f}) != median_forecast "
-                    f"({record['median_forecast']:.4f})"
-                )
-                # Use median_forecast as source of truth
-                record["q50"] = record["median_forecast"]
-        else:
-            # If q50 wasn't provided, set it equal to median_forecast
-            record["q50"] = record["median_forecast"]
-
-        # ============================================================
-        # STEP 5: Validate quantile ordering (if we have multiple quantiles)
-        # ============================================================
-
-        quantile_keys = ["q10", "q25", "q50", "q75", "q90"]
-        present_quantiles = {q: record[q] for q in quantile_keys if q in record}
-
-        if len(present_quantiles) >= 2:
-            values = list(present_quantiles.values())
-            if values != sorted(values):
-                logger.error(f"❌ Quantiles not properly ordered: {present_quantiles}")
-                return None
-
-        # ============================================================
-        # STEP 6: Convert timestamps to ISO strings
-        # ============================================================
-
         for key in ["timestamp", "forecast_date", "created_at"]:
             if key in record and isinstance(record[key], pd.Timestamp):
                 record[key] = record[key].isoformat()
@@ -286,529 +247,605 @@ class PredictionDatabase:
         if "created_at" not in record:
             record["created_at"] = datetime.now().isoformat()
 
-        # ============================================================
-        # STEP 7: Convert lists/dicts to JSON strings
-        # ============================================================
+        # CRITICAL FIX: Remove deprecated fields that don't exist in schema
+        deprecated_fields = ["direction_probability"]
+        for field in deprecated_fields:
+            if field in record:
+                logger.debug(f"   Removing deprecated field: {field}")
+                record.pop(field)
 
-        if "missing_features" in record and isinstance(
-            record["missing_features"], list
-        ):
-            record["missing_features"] = ",".join(record["missing_features"])
+        # CRITICAL FIX: Add to pending keys FIRST (atomic operation)
+        key = (record["forecast_date"], record["horizon"])
 
-        if "features_used" in record and isinstance(record["features_used"], list):
-            record["features_used"] = ",".join(record["features_used"])
-
-        # ============================================================
-        # STEP 8: Build INSERT statement dynamically
-        # ============================================================
-
-        # Filter to only include columns that exist in schema
-        schema_columns = self._get_schema_columns()
-        filtered_record = {k: v for k, v in record.items() if k in schema_columns}
-
-        columns = list(filtered_record.keys())
-        placeholders = ", ".join(["?" for _ in columns])
-        columns_str = ", ".join(columns)
-
-        insert_sql = f"""
-        INSERT OR REPLACE INTO forecasts ({columns_str})
-        VALUES ({placeholders})
-        """
-
-        # ============================================================
-        # STEP 9: Execute with transaction
-        # ============================================================
-
-        try:
-            with self.transaction():
-                self.conn.execute(insert_sql, list(filtered_record.values()))
-
-            logger.debug(
-                f"✅ Stored prediction: {record['prediction_id']} "
-                f"(median={record['median_forecast']:.2f}%)"
+        if key in self._pending_keys:
+            logger.warning(
+                f"⚠️  Prediction already pending for {record['forecast_date']} "
+                f"(horizon={record['horizon']}). Skipping."
             )
+            return None
+
+        # Claim this key immediately to prevent race conditions
+        self._pending_keys.add(key)
+
+        # Check database for existing records
+        try:
+            cursor = self.conn.execute(
+                """
+                SELECT prediction_id FROM forecasts
+                WHERE forecast_date = ? AND horizon = ?
+                """,
+                (record["forecast_date"], record["horizon"]),
+            )
+
+            existing = cursor.fetchone()
+
+            if existing:
+                logger.warning(
+                    f"⚠️  Prediction already exists for {record['forecast_date']} "
+                    f"(horizon={record['horizon']}). Skipping."
+                )
+                # Clean up pending key since we're not inserting
+                self._pending_keys.discard(key)
+                return None
+
+            # Build INSERT statement
+            columns = list(record.keys())
+            placeholders = ", ".join(["?" for _ in columns])
+
+            insert_sql = f"""
+            INSERT INTO forecasts
+            ({", ".join(columns)})
+            VALUES ({placeholders})
+            """
+
+            values = [record[col] for col in columns]
+
+            # Execute insert
+            self.conn.execute(insert_sql, values)
+
+            # SAFETY: Track write
+            self._commit_tracker.track_write(
+                f"INSERT forecast_date={record['forecast_date']}"
+            )
+
+            logger.debug(f"💾 Stored prediction: {record['prediction_id']}")
             return record["prediction_id"]
 
         except sqlite3.IntegrityError as e:
-            logger.error(f"❌ Duplicate or constraint violation: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"❌ Failed to store prediction: {e}")
+            logger.warning(f"⚠️  Database integrity error (duplicate): {e}")
+            self.conn.rollback()
+            # Clean up pending key on error
+            self._pending_keys.discard(key)
             return None
 
-    def _get_schema_columns(self) -> set:
-        """Get set of column names from database schema."""
-        cursor = self.conn.execute("PRAGMA table_info(forecasts)")
-        columns = {row[1] for row in cursor.fetchall()}
-        return columns
+        except Exception as e:
+            logger.error(f"❌ Failed to store prediction: {e}")
+            logger.error(
+                f"   Record: {record.get('forecast_date')}, horizon={record.get('horizon')}"
+            )
+            logger.error(f"   Available keys: {list(record.keys())}")
+            self.conn.rollback()
+            # Clean up pending key on error
+            self._pending_keys.discard(key)
+            raise
+
+    def commit(self):
+        """
+        Commit pending transactions with verification.
+
+        CRITICAL: Call this after batch operations to persist data and reset tracking.
+        """
+        if self._commit_tracker.pending_writes == 0:
+            logger.info("ℹ️  No pending writes to commit")
+            return
+
+        writes_to_commit = self._commit_tracker.pending_writes
+
+        try:
+            # Commit
+            self.conn.commit()
+            self._pending_keys.clear()
+
+            # Verify commit succeeded
+            cursor = self.conn.execute("SELECT COUNT(*) FROM forecasts")
+            total = cursor.fetchone()[0]
+
+            logger.info("=" * 80)
+            logger.info("✅ COMMIT SUCCESSFUL")
+            logger.info("=" * 80)
+            logger.info(f"   Writes committed: {writes_to_commit}")
+            logger.info(f"   Total forecasts: {total}")
+            logger.info(f"   Timestamp: {datetime.now():%Y-%m-%d %H:%M:%S}")
+            logger.info("=" * 80)
+
+            # Reset tracker
+            self._commit_tracker.pending_writes = 0
+            self._commit_tracker.writes_log = []
+            self._commit_tracker.last_commit_time = datetime.now()
+
+        except Exception as e:
+            logger.error("=" * 80)
+            logger.error("🚨 COMMIT FAILED!")
+            logger.error("=" * 80)
+            logger.error(f"   Error: {e}")
+            logger.error(f"   Attempted writes: {writes_to_commit}")
+            logger.error("   Rolling back...")
+
+            self.conn.rollback()
+            self._commit_tracker.pending_writes = 0
+            self._commit_tracker.writes_log = []
+
+            logger.error("=" * 80)
+
+            raise RuntimeError(f"Database commit failed: {e}")
+
+    def get_commit_status(self) -> dict:
+        """Get current commit status."""
+        return {
+            "pending_writes": self._commit_tracker.pending_writes,
+            "last_commit": self._commit_tracker.last_commit_time.isoformat()
+            if self._commit_tracker.last_commit_time
+            else None,
+            "recent_operations": self._commit_tracker.writes_log[-10:],
+        }
 
     def get_predictions(
         self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_date: str = None,
+        end_date: str = None,
+        cohort: str = None,
         with_actuals: bool = False,
-        cohort: Optional[str] = None,
     ) -> pd.DataFrame:
         """
-        Retrieve predictions with optional filtering.
+        Query predictions from database.
 
         Args:
-            start_date: Filter to predictions on/after this date
-            end_date: Filter to predictions on/before this date
-            with_actuals: If True, only return predictions with actual values
-            cohort: Filter to specific calendar cohort
+            start_date: Filter by forecast_date >= start_date
+            end_date: Filter by forecast_date <= end_date
+            cohort: Filter by calendar_cohort
+            with_actuals: If True, only return predictions with actuals
 
         Returns:
-            DataFrame with predictions, sorted by forecast_date descending
+            DataFrame with predictions (deduplicated)
         """
-
-        # Build WHERE clauses
-        conditions = []
+        query = "SELECT DISTINCT * FROM forecasts WHERE 1=1"
         params = []
 
         if start_date:
-            conditions.append("forecast_date >= ?")
+            query += " AND forecast_date >= ?"
             params.append(start_date)
 
         if end_date:
-            conditions.append("forecast_date <= ?")
+            query += " AND forecast_date <= ?"
             params.append(end_date)
 
-        if with_actuals:
-            conditions.append("actual_vix_change IS NOT NULL")
-
         if cohort:
-            conditions.append("calendar_cohort = ?")
+            query += " AND calendar_cohort = ?"
             params.append(cohort)
 
-        where_clause = " AND ".join(conditions) if conditions else "1=1"
+        if with_actuals:
+            query += " AND actual_vix_change IS NOT NULL"
 
-        query = f"""
-        SELECT * FROM forecasts
-        WHERE {where_clause}
-        ORDER BY forecast_date DESC
-        """
+        query += " ORDER BY forecast_date"
 
         try:
-            df = pd.read_sql_query(query, self.conn, params=params)
+            df = pd.read_sql_query(
+                query,
+                self.conn,
+                params=params,
+                parse_dates=["forecast_date", "timestamp"],
+            )
 
-            # Convert date columns
-            if len(df) > 0:
-                df["forecast_date"] = pd.to_datetime(df["forecast_date"])
-                df["timestamp"] = pd.to_datetime(df["timestamp"])
-                if "created_at" in df.columns:
-                    df["created_at"] = pd.to_datetime(df["created_at"])
+            # Safety: drop any duplicates that made it through
+            before_count = len(df)
+            df = df.drop_duplicates(subset=["forecast_date", "horizon"], keep="first")
+            after_count = len(df)
+
+            if before_count != after_count:
+                logger.warning(
+                    f"⚠️  Removed {before_count - after_count} duplicate rows from query results"
+                )
 
             return df
 
         except Exception as e:
-            logger.error(f"❌ Failed to retrieve predictions: {e}")
-            return pd.DataFrame()
+            logger.error(f"❌ Failed to query predictions: {e}")
+            raise
 
-    def backfill_actuals(self, vix_series: pd.Series, horizon: int = 21):
+    def migrate_schema(self):
         """
-        Backfill actual outcomes and compute errors for past predictions.
-
-        CRITICAL V3 CHANGES:
-        1. Computes median_error as |actual - median_forecast|
-        2. Sets point_error = median_error for backward compatibility
-        3. Computes quantile_coverage to validate quantile models
-
-        The quantile coverage tells us if our quantile models are well-calibrated:
-        - q10 should be exceeded by ~10% of actuals
-        - q25 should be exceeded by ~25% of actuals
-        - q50 should be exceeded by ~50% of actuals (median)
-        - etc.
-
-        Args:
-            vix_series: Series with VIX values indexed by date
-            horizon: Forecast horizon in days (default 21)
+        Migrate existing database to remove direction_probability column.
+        Safe to run multiple times.
         """
+        logger.info("🔧 Checking database schema...")
 
-        logger.info("Starting actuals backfill...")
+        try:
+            # Check if direction_probability exists
+            cursor = self.conn.execute("PRAGMA table_info(forecasts)")
+            columns = [row[1] for row in cursor.fetchall()]
 
-        # Get all predictions without actuals
-        query = """
-        SELECT prediction_id, forecast_date, horizon,
-               median_forecast, point_estimate,
-               q10, q25, q50, q75, q90,
-               current_vix
-        FROM forecasts
-        WHERE actual_vix_change IS NULL
-        ORDER BY forecast_date
-        """
-
-        predictions = pd.read_sql_query(query, self.conn)
-
-        if len(predictions) == 0:
-            logger.info("No predictions need backfilling")
-            return
-
-        predictions["forecast_date"] = pd.to_datetime(predictions["forecast_date"])
-
-        updated_count = 0
-        errors = []
-
-        for idx, pred in predictions.iterrows():
-            forecast_date = pred["forecast_date"]
-            pred_horizon = pred["horizon"]
-
-            # Calculate target date
-            target_date = forecast_date + pd.Timedelta(days=pred_horizon)
-
-            # Get actual VIX at target date
-            if target_date not in vix_series.index:
-                continue
-
-            actual_vix = vix_series[target_date]
-            current_vix = pred["current_vix"]
-
-            if pd.isna(actual_vix) or pd.isna(current_vix):
-                continue
-
-            # ============================================================
-            # COMPUTE ACTUAL VIX CHANGE
-            # ============================================================
-
-            actual_change = ((actual_vix - current_vix) / current_vix) * 100
-
-            # ============================================================
-            # COMPUTE MEDIAN ERROR (PRIMARY METRIC)
-            # ============================================================
-
-            median_forecast = pred["median_forecast"]
-            median_error = abs(actual_change - median_forecast)
-
-            # ============================================================
-            # BACKWARD COMPATIBILITY: point_error = median_error
-            # ============================================================
-
-            point_error = median_error
-
-            # ============================================================
-            # COMPUTE QUANTILE COVERAGE
-            # ============================================================
-
-            coverage = {}
-            for q in ["q10", "q25", "q50", "q75", "q90"]:
-                if pd.notna(pred[q]):
-                    # Check if actual is below this quantile
-                    coverage[q] = actual_change <= pred[q]
-
-            # Convert to JSON string
-            import json
-
-            coverage_str = json.dumps(coverage) if coverage else None
-
-            # ============================================================
-            # DETERMINE REGIME
-            # ============================================================
-
-            if actual_vix < 15:
-                regime = "low"
-            elif actual_vix < 25:
-                regime = "normal"
-            elif actual_vix < 40:
-                regime = "elevated"
-            else:
-                regime = "crisis"
-
-            # ============================================================
-            # UPDATE DATABASE
-            # ============================================================
-
-            update_sql = """
-            UPDATE forecasts
-            SET actual_vix_change = ?,
-                actual_regime = ?,
-                median_error = ?,
-                point_error = ?,
-                quantile_coverage = ?
-            WHERE prediction_id = ?
-            """
-
-            try:
-                self.conn.execute(
-                    update_sql,
-                    (
-                        actual_change,
-                        regime,
-                        median_error,
-                        point_error,
-                        coverage_str,
-                        pred["prediction_id"],
-                    ),
+            if "direction_probability" in columns:
+                logger.info(
+                    "⚠️  Found deprecated 'direction_probability' column, migrating..."
                 )
-                updated_count += 1
-                errors.append(median_error)
 
-            except Exception as e:
-                logger.error(f"Failed to update {pred['prediction_id']}: {e}")
+                # Get all data
+                cursor = self.conn.execute("SELECT * FROM forecasts")
+                rows = cursor.fetchall()
+
+                if len(rows) > 0:
+                    logger.info(f"   Backing up {len(rows)} records...")
+
+                    # Get column names (excluding direction_probability)
+                    old_columns = [desc[0] for desc in cursor.description]
+                    new_columns = [
+                        col for col in old_columns if col != "direction_probability"
+                    ]
+
+                    # Drop old table
+                    self.conn.execute("DROP TABLE forecasts")
+
+                    # Recreate with new schema
+                    self._create_schema()
+
+                    # Reinsert data (excluding direction_probability)
+                    placeholders = ", ".join(["?" for _ in new_columns])
+                    insert_sql = f"INSERT INTO forecasts ({', '.join(new_columns)}) VALUES ({placeholders})"
+
+                    for row in rows:
+                        # Convert row to dict
+                        row_dict = dict(zip(old_columns, row))
+                        # Extract values for new columns only
+                        values = [row_dict[col] for col in new_columns]
+                        self.conn.execute(insert_sql, values)
+
+                    self.conn.commit()
+                    logger.info(f"✅ Migration complete: {len(rows)} records preserved")
+                else:
+                    # Empty table, just recreate
+                    self.conn.execute("DROP TABLE forecasts")
+                    self._create_schema()
+                    logger.info("✅ Migration complete: recreated empty table")
+            else:
+                logger.info("✅ Schema is up to date")
+
+        except Exception as e:
+            logger.error(f"❌ Migration failed: {e}")
+            self.conn.rollback()
+            raise
+
+    def remove_all_duplicates(self):
+        """
+        One-time cleanup: Remove all duplicate predictions, keeping the earliest.
+        Run this once to clean existing data.
+        """
+        logger.info("🔍 Scanning for duplicate predictions...")
+
+        # Find duplicates
+        cursor = self.conn.execute("""
+            SELECT forecast_date, horizon, COUNT(*) as count
+            FROM forecasts
+            GROUP BY forecast_date, horizon
+            HAVING count > 1
+        """)
+
+        duplicates = cursor.fetchall()
+
+        if len(duplicates) == 0:
+            logger.info("✅ No duplicates found")
+            return 0
+
+        logger.info(f"⚠️  Found {len(duplicates)} duplicate date-horizon pairs")
+
+        total_removed = 0
+        for dup in duplicates:
+            forecast_date, horizon, count = (
+                dup["forecast_date"],
+                dup["horizon"],
+                dup["count"],
+            )
+
+            # Keep the earliest prediction (by timestamp), delete rest
+            cursor = self.conn.execute(
+                """
+                DELETE FROM forecasts
+                WHERE forecast_date = ? AND horizon = ?
+                AND prediction_id NOT IN (
+                    SELECT prediction_id FROM forecasts
+                    WHERE forecast_date = ? AND horizon = ?
+                    ORDER BY timestamp ASC
+                    LIMIT 1
+                )
+            """,
+                (forecast_date, horizon, forecast_date, horizon),
+            )
+
+            removed = cursor.rowcount
+            total_removed += removed
+            logger.debug(
+                f"   Removed {removed} duplicates for {forecast_date} (horizon={horizon})"
+            )
 
         self.conn.commit()
+        logger.info(f"✅ Removed {total_removed} duplicate predictions")
 
-        # ============================================================
-        # REPORT STATISTICS
-        # ============================================================
+        return total_removed
 
-        if updated_count > 0:
-            logger.info(f"✅ Backfilled {updated_count} predictions")
-            logger.info(f"   Mean median error: {np.mean(errors):.2f}%")
-            logger.info(f"   Median error: {np.median(errors):.2f}%")
-            logger.info(f"   Std error: {np.std(errors):.2f}%")
+    def get_database_stats(self) -> Dict:
+        """Get statistics about the database state."""
+        try:
+            cursor = self.conn.execute("SELECT COUNT(*) as total FROM forecasts")
+            total = cursor.fetchone()["total"]
 
-            # Check quantile coverage
-            self._report_quantile_coverage()
-        else:
-            logger.info("No predictions were updated")
+            cursor = self.conn.execute("""
+                SELECT COUNT(*) as with_actuals
+                FROM forecasts
+                WHERE actual_vix_change IS NOT NULL
+            """)
+            with_actuals = cursor.fetchone()["with_actuals"]
 
-    def _report_quantile_coverage(self):
-        """
-        Report how well quantile forecasts are calibrated.
+            cursor = self.conn.execute("""
+                SELECT forecast_date, horizon, COUNT(*) as count
+                FROM forecasts
+                GROUP BY forecast_date, horizon
+                HAVING count > 1
+            """)
+            duplicates = len(cursor.fetchall())
 
-        Expected coverage:
-        - q10 should be exceeded by ~90% of actuals
-        - q25 should be exceeded by ~75% of actuals
-        - q50 should be exceeded by ~50% of actuals
-        - q75 should be exceeded by ~25% of actuals
-        - q90 should be exceeded by ~10% of actuals
-        """
+            cursor = self.conn.execute("""
+                SELECT MIN(forecast_date) as earliest, MAX(forecast_date) as latest
+                FROM forecasts
+            """)
+            dates = cursor.fetchone()
 
+            return {
+                "total_predictions": total,
+                "with_actuals": with_actuals,
+                "pending_actuals": total - with_actuals,
+                "duplicate_pairs": duplicates,
+                "date_range": {
+                    "earliest": dates["earliest"],
+                    "latest": dates["latest"],
+                },
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to get database stats: {e}")
+            return {"error": str(e)}
+
+    def backfill_actuals(self, fetcher=None):
+        """Populate actual outcomes for forecasts whose target dates have passed."""
+        if fetcher is None:
+            from core.data_fetcher import UnifiedDataFetcher
+
+            fetcher = UnifiedDataFetcher()
+
+        logger.info("🔄 Backfilling actual outcomes...")
+
+        # Get VIX data
+        vix_data = fetcher.fetch_yahoo("^VIX", start_date="2009-01-01")["Close"]
+
+        # Convert index to date strings for matching
+        vix_dates = set(vix_data.index.strftime("%Y-%m-%d"))
+
+        # Find predictions needing actuals
         query = """
-        SELECT q10, q25, q50, q75, q90, actual_vix_change
-        FROM forecasts
-        WHERE actual_vix_change IS NOT NULL
-        AND q10 IS NOT NULL
-        AND q90 IS NOT NULL
+            SELECT prediction_id, forecast_date, horizon, current_vix,
+                   q10, q25, q50, q75, q90
+            FROM forecasts
+            WHERE actual_vix_change IS NULL
         """
+        cursor = self.conn.cursor()
+        cursor.execute(query)
+        rows = cursor.fetchall()
 
-        df = pd.read_sql_query(query, self.conn)
+        logger.info(f"   Found {len(rows)} predictions to backfill")
+
+        updated = 0
+        skipped = 0
+        for row in rows:
+            pred_id, forecast_date, horizon, current_vix, q10, q25, q50, q75, q90 = row
+
+            # Calculate target date using BUSINESS DAYS
+            try:
+                target_date_attempt = pd.bdate_range(
+                    start=pd.Timestamp(forecast_date), periods=horizon + 1
+                )[-1]
+            except Exception as e:
+                logger.warning(
+                    f"   Failed to calculate business days for {forecast_date}: {e}"
+                )
+                skipped += 1
+                continue
+
+            # Find nearest actual VIX date (within 3 days forward to handle holidays)
+            found_date = None
+            for offset in range(4):  # Check up to 3 days forward
+                check_date = (target_date_attempt + pd.Timedelta(days=offset)).strftime(
+                    "%Y-%m-%d"
+                )
+                if check_date in vix_dates:
+                    found_date = check_date
+                    break
+
+            if found_date is None:
+                skipped += 1
+                continue
+
+            target_date = found_date
+
+            # Get actual VIX value at target date
+            actual_vix = vix_data.loc[pd.Timestamp(target_date)]
+            actual_change = ((actual_vix - current_vix) / current_vix) * 100
+
+            # Classify regime
+            if actual_change < -5:
+                regime = "Low"
+            elif actual_change < 10:
+                regime = "Normal"
+            elif actual_change < 25:
+                regime = "Elevated"
+            else:
+                regime = "Crisis"
+
+            # Get point estimate
+            cursor.execute(
+                "SELECT point_estimate FROM forecasts WHERE prediction_id = ?",
+                (pred_id,),
+            )
+            point_est = cursor.fetchone()[0]
+            point_error = abs(actual_change - point_est)
+
+            # **CRITICAL FIX: Compute quantile coverage**
+            quantile_coverage = {
+                "q10": 1 if actual_change <= q10 else 0,
+                "q25": 1 if actual_change <= q25 else 0,
+                "q50": 1 if actual_change <= q50 else 0,
+                "q75": 1 if actual_change <= q75 else 0,
+                "q90": 1 if actual_change <= q90 else 0,
+            }
+            coverage_json = json.dumps(quantile_coverage)
+
+            # Update database with ALL fields
+            cursor.execute(
+                """
+                UPDATE forecasts
+                SET actual_vix_change = ?,
+                    actual_regime = ?,
+                    point_error = ?,
+                    quantile_coverage = ?
+                WHERE prediction_id = ?
+                """,
+                (actual_change, regime, point_error, coverage_json, pred_id),
+            )
+            updated += 1
+
+        self.conn.commit()
+        logger.info(f"✅ Backfilled {updated} predictions")
+        if skipped > 0:
+            logger.info(
+                f"⚠️  Skipped {skipped} predictions (target date not yet available)"
+            )
+
+    def compute_quantile_coverage(self, cohort: str = None) -> Dict:
+        """
+        Compute empirical quantile coverage rates.
+
+        For well-calibrated forecasts:
+            - 10% of actuals should be <= q10
+            - 25% of actuals should be <= q25
+            - etc.
+
+        Args:
+            cohort: Compute for specific cohort (None = all)
+
+        Returns:
+            dict: {q10: 0.11, q25: 0.27, q50: 0.48, q75: 0.76, q90: 0.89}
+                  (ideal would be {q10: 0.10, q25: 0.25, ...})
+        """
+        df = self.get_predictions(cohort=cohort, with_actuals=True)
 
         if len(df) == 0:
-            logger.info("Not enough data for quantile coverage analysis")
-            return
+            logger.warning("No predictions with actuals")
+            return {}
 
-        logger.info("\nQuantile Coverage Analysis:")
-        logger.info("-" * 50)
+        coverage = {}
+        for q in [10, 25, 50, 75, 90]:
+            col = f"q{q}"
+            covered = (df["actual_vix_change"] <= df[col]).mean()
+            coverage[col] = float(covered)
 
-        for q_name, target_pct in [
-            ("q10", 10),
-            ("q25", 25),
-            ("q50", 50),
-            ("q75", 75),
-            ("q90", 90),
-        ]:
-            if q_name in df.columns:
-                # What percentage of actuals are below this quantile?
-                actual_coverage = (df["actual_vix_change"] <= df[q_name]).mean() * 100
-                error = actual_coverage - target_pct
+        return coverage
 
-                logger.info(
-                    f"   {q_name}: {actual_coverage:.1f}% "
-                    f"(target: {target_pct}%, error: {error:+.1f}%)"
-                )
+    def compute_regime_brier_score(self, cohort: str = None) -> float:
+        """
+        Compute Brier score for regime probabilities.
+
+        Brier score = mean((predicted_prob - actual_indicator)^2)
+        Lower is better. Perfect score = 0.
+
+        Args:
+            cohort: Compute for specific cohort (None = all)
+
+        Returns:
+            float: Brier score
+        """
+        df = self.get_predictions(cohort=cohort, with_actuals=True)
+
+        if len(df) == 0:
+            return np.nan
+
+        brier_scores = []
+
+        for _, row in df.iterrows():
+            # One-hot encode actual regime
+            actual_onehot = {"low": 0, "normal": 0, "elevated": 0, "crisis": 0}
+            if row["actual_regime"]:
+                actual_onehot[row["actual_regime"].lower()] = 1
+
+            # Compute squared errors
+            brier = (
+                (row["prob_low"] - actual_onehot["low"]) ** 2
+                + (row["prob_normal"] - actual_onehot["normal"]) ** 2
+                + (row["prob_elevated"] - actual_onehot["elevated"]) ** 2
+                + (row["prob_crisis"] - actual_onehot["crisis"]) ** 2
+            )
+
+            brier_scores.append(brier)
+
+        return float(np.mean(brier_scores))
 
     def get_performance_summary(self) -> Dict:
         """
-        Generate comprehensive performance summary for V3 system.
+        Generate comprehensive performance metrics.
 
-        Returns dict with:
-        - Overall statistics
-        - Quantile coverage
-        - Direction accuracy
-        - Performance by cohort
+        Returns:
+            dict: Summary statistics
         """
-
-        query = """
-        SELECT
-            forecast_date,
-            calendar_cohort,
-            median_forecast,
-            median_error,
-            q10, q25, q50, q75, q90,
-            actual_vix_change,
-            direction_probability,
-            confidence_score
-        FROM forecasts
-        WHERE actual_vix_change IS NOT NULL
-        ORDER BY forecast_date
-        """
-
-        df = pd.read_sql_query(query, self.conn)
+        df = self.get_predictions(with_actuals=True)
 
         if len(df) == 0:
-            return {"error": "No predictions with actuals available"}
+            return {"error": "No predictions with actuals"}
 
-        # Overall statistics
         summary = {
-            "total_predictions": len(df),
-            "median_error": {
-                "mean": float(df["median_error"].mean()),
-                "median": float(df["median_error"].median()),
-                "std": float(df["median_error"].std()),
-                "min": float(df["median_error"].min()),
-                "max": float(df["median_error"].max()),
+            "n_predictions": len(df),
+            "date_range": {
+                "start": df["forecast_date"].min().isoformat(),
+                "end": df["forecast_date"].max().isoformat(),
             },
+            "point_estimate": {
+                "mae": float(df["point_error"].mean()),
+                "rmse": float(
+                    np.sqrt(
+                        (df["actual_vix_change"] - df["point_estimate"]) ** 2
+                    ).mean()
+                ),
+            },
+            "quantile_coverage": self.compute_quantile_coverage(),
+            "regime_brier_score": self.compute_regime_brier_score(),
+            "confidence_correlation": float(
+                df[["confidence_score", "point_error"]].corr().iloc[0, 1]
+            ),
         }
 
-        # Quantile coverage
-        coverage = {}
-        for q_name, target in [
-            ("q10", 0.10),
-            ("q25", 0.25),
-            ("q50", 0.50),
-            ("q75", 0.75),
-            ("q90", 0.90),
-        ]:
-            if q_name in df.columns and df[q_name].notna().any():
-                actual_cov = (df["actual_vix_change"] <= df[q_name]).mean()
-                coverage[q_name] = {
-                    "actual": float(actual_cov),
-                    "target": float(target),
-                    "error": float(actual_cov - target),
-                }
-
-        summary["quantile_coverage"] = coverage
-
-        # Direction accuracy
-        if "direction_probability" in df.columns:
-            df_dir = df.dropna(subset=["direction_probability"])
-            if len(df_dir) > 0:
-                predicted_up = df_dir["direction_probability"] > 0.5
-                actual_up = df_dir["actual_vix_change"] > 0
-                accuracy = (predicted_up == actual_up).mean()
-                summary["direction_accuracy"] = float(accuracy)
-
-        # Performance by cohort
-        if "calendar_cohort" in df.columns:
-            cohort_stats = {}
-            for cohort in df["calendar_cohort"].unique():
-                if pd.isna(cohort):
-                    continue
-                cohort_df = df[df["calendar_cohort"] == cohort]
-                cohort_stats[cohort] = {
-                    "count": len(cohort_df),
-                    "mean_error": float(cohort_df["median_error"].mean()),
-                    "median_error": float(cohort_df["median_error"].median()),
-                }
-            summary["by_cohort"] = cohort_stats
+        # Per-cohort breakdown
+        summary["by_cohort"] = {}
+        for cohort in df["calendar_cohort"].unique():
+            summary["by_cohort"][cohort] = {
+                "n": int((df["calendar_cohort"] == cohort).sum()),
+                "mae": float(df[df["calendar_cohort"] == cohort]["point_error"].mean()),
+                "quantile_coverage": self.compute_quantile_coverage(cohort),
+                "brier_score": self.compute_regime_brier_score(cohort),
+            }
 
         return summary
 
+    def export_to_csv(self, filename: str = "predictions_export.csv"):
+        """Export all predictions to CSV for external analysis."""
+        df = self.get_predictions()
+        df.to_csv(filename, index=False)
+        logger.info(f"📄 Exported {len(df)} predictions to {filename}")
+
     def close(self):
         """Close database connection."""
-        if hasattr(self, "conn"):
-            self.conn.close()
-            logger.info("Database connection closed")
-
-    def __del__(self):
-        """Ensure connection is closed on deletion."""
-        self.close()
-
-
-# ============================================================
-# TESTING AND VALIDATION
-# ============================================================
-
-
-def validate_schema():
-    """Validate that database schema matches V3 requirements."""
-    db = PredictionDatabase()
-
-    required_columns = [
-        "median_forecast",
-        "median_error",
-        "point_estimate",
-        "point_error",
-        "q10",
-        "q25",
-        "q50",
-        "q75",
-        "q90",
-    ]
-
-    schema_columns = db._get_schema_columns()
-
-    missing = [col for col in required_columns if col not in schema_columns]
-
-    if missing:
-        logger.error(f"❌ Missing required columns: {missing}")
-        return False
-    else:
-        logger.info("✅ Schema validation passed")
-        return True
-
-
-if __name__ == "__main__":
-    """
-    Test database operations and schema validation.
-    """
-
-    print("=" * 80)
-    print("PREDICTION DATABASE V3 - VALIDATION")
-    print("=" * 80)
-
-    # Test 1: Schema validation
-    print("\n1. Validating schema...")
-    if validate_schema():
-        print("   ✅ Schema correct")
-    else:
-        print("   ❌ Schema validation failed")
-        exit(1)
-
-    # Test 2: Store test prediction
-    print("\n2. Testing prediction storage...")
-    db = PredictionDatabase()
-
-    test_record = {
-        "prediction_id": f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        "timestamp": pd.Timestamp.now(),
-        "forecast_date": pd.Timestamp.now(),
-        "horizon": 21,
-        "calendar_cohort": "mid_month",
-        "cohort_weight": 1.0,
-        "median_forecast": 2.5,
-        "quantiles": {
-            "q10": -1.0,
-            "q25": 1.0,
-            "q50": 2.5,
-            "q75": 4.0,
-            "q90": 6.0,
-        },
-        "direction_probability": 0.65,
-        "confidence_score": 0.75,
-        "current_vix": 15.0,
-        "model_version": "v3.0",
-    }
-
-    pred_id = db.store_prediction(test_record)
-
-    if pred_id:
-        print(f"   ✅ Test prediction stored: {pred_id}")
-
-        # Verify median = point
-        query = "SELECT median_forecast, point_estimate FROM forecasts WHERE prediction_id = ?"
-        result = pd.read_sql_query(query, db.conn, params=[pred_id])
-
-        if len(result) > 0:
-            med = result.iloc[0]["median_forecast"]
-            pt = result.iloc[0]["point_estimate"]
-            if abs(med - pt) < 0.001:
-                print(f"   ✅ Backward compatibility: median={med:.2f}, point={pt:.2f}")
-            else:
-                print(f"   ❌ Mismatch: median={med:.2f}, point={pt:.2f}")
-    else:
-        print("   ❌ Failed to store test prediction")
-
-    # Test 3: Retrieve predictions
-    print("\n3. Testing prediction retrieval...")
-    df = db.get_predictions()
-    print(f"   Retrieved {len(df)} predictions")
-
-    if len(df) > 0:
-        print(f"   Columns: {list(df.columns)}")
-        print(f"   ✅ Retrieval successful")
-
-    print("\n" + "=" * 80)
-    print("VALIDATION COMPLETE")
-    print("=" * 80)
+        self.conn.close()
+        logger.info("🔒 Database connection closed")
