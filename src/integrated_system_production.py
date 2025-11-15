@@ -291,8 +291,32 @@ class IntegratedForecastingSystem:
 
         # 7.5 Apply calibration if available
         if self.calibrator:
-            distribution = self.calibrator.calibrate(distribution)
-            logger.info("🎯 Applied forecast calibration")
+            # Extract values needed for calibration
+            raw_median = distribution["median_forecast"]
+            current_vix = float(observation["vix"])
+            cohort = observation.get("calendar_cohort", None)
+
+            # Get calibration adjustment
+            calib_result = self.calibrator.calibrate(
+                raw_forecast=raw_median, current_vix=current_vix, cohort=cohort
+            )
+
+            # Apply adjustment to ALL quantiles (shift entire distribution)
+            adjustment = calib_result["adjustment"]
+            distribution["median_forecast"] = calib_result["calibrated_forecast"]
+            distribution["q10"] += adjustment
+            distribution["q25"] += adjustment
+            distribution["q50"] += adjustment  # Same as median_forecast
+            distribution["q75"] += adjustment
+            distribution["q90"] += adjustment
+            distribution["point_estimate"] = distribution[
+                "median_forecast"
+            ]  # Backward compat
+
+            logger.info(
+                f"🎯 Applied calibration: {raw_median:+.2f}% → {calib_result['calibrated_forecast']:+.2f}% (Δ{adjustment:+.2f}%)"
+            )
+            logger.info(f"   Method: {calib_result['method']}")
 
         # Adjust confidence by cohort weight
         distribution["confidence_score"] *= 2 - cohort_weight
@@ -430,19 +454,33 @@ class IntegratedForecastingSystem:
         self,
         distribution: Dict,
         observation: pd.Series,
-        observation_date: pd.Timestamp,  # ✅ RENAMED from forecast_date
-    ) -> int:
+        observation_date: pd.Timestamp,
+    ) -> str:
+        """
+        Store prediction in database with proper prediction_id generation.
+
+        Returns:
+            prediction_id: Unique identifier for this prediction
+        """
         # Calculate the actual forecast target date
         target_date = observation_date + pd.Timedelta(
             days=TARGET_CONFIG["horizon_days"]
         )
 
+        # ✅ FIX: Generate prediction_id BEFORE creating the record
+        prediction_id = (
+            f"pred_{target_date.strftime('%Y%m%d')}_h{TARGET_CONFIG['horizon_days']}"
+        )
+
         prediction = {
-            "forecast_date": target_date,  # ✅ This is correct now
-            "observation_date": observation_date,  # ✅ This is the input date
+            "prediction_id": prediction_id,  # ✅ ADD: Primary key
+            "timestamp": datetime.now(),  # ✅ ADD: Current timestamp
+            "forecast_date": target_date,
+            "observation_date": observation_date,
             "horizon": TARGET_CONFIG["horizon_days"],
             "current_vix": float(observation["vix"]),
-            "cohort": observation["calendar_cohort"],
+            "calendar_cohort": observation["calendar_cohort"],
+            "cohort_weight": float(observation.get("cohort_weight", 1.0)),  # ✅ ADD
             # V3: Median as primary
             "median_forecast": distribution["median_forecast"],
             # Backward compatibility
@@ -456,15 +494,24 @@ class IntegratedForecastingSystem:
             # Direction and confidence
             "prob_up": distribution["prob_up"],
             "prob_down": distribution["prob_down"],
+            "direction_probability": distribution.get(
+                "direction_probability", distribution["prob_up"]
+            ),  # ✅ ADD
             "confidence_score": distribution["confidence_score"],
             # Metadata
             "feature_quality": float(distribution["metadata"]["feature_quality"]),
-            "cohort_weight": float(distribution["metadata"]["cohort_weight"]),
+            "num_features_used": len(self.forecaster.feature_names),  # ✅ ADD
+            "features_used": ",".join(
+                self.forecaster.feature_names[:10]
+            ),  # ✅ ADD: First 10 features
+            "model_version": "v3.1_log_rv",  # ✅ ADD
         }
 
-        prediction_id = self.prediction_db.store_prediction(prediction)
+        # Store in database
+        stored_id = self.prediction_db.store_prediction(prediction)
 
-        return prediction_id
+        # Return the ID (will be None if duplicate/error, otherwise the prediction_id)
+        return stored_id if stored_id else prediction_id
 
     def backfill_actuals(self):
         """Backfill actual outcomes for all predictions."""
@@ -585,7 +632,22 @@ class IntegratedForecastingSystem:
 
                 # Apply calibration
                 if self.calibrator:
-                    distribution = self.calibrator.calibrate(distribution)
+                    raw_median = distribution["median_forecast"]
+                    calib_result = self.calibrator.calibrate(
+                        raw_forecast=raw_median, current_vix=current_vix, cohort=cohort
+                    )
+
+                    # Apply adjustment to entire distribution
+                    adjustment = calib_result["adjustment"]
+                    distribution["median_forecast"] = calib_result[
+                        "calibrated_forecast"
+                    ]
+                    distribution["q10"] += adjustment
+                    distribution["q25"] += adjustment
+                    distribution["q50"] += adjustment
+                    distribution["q75"] += adjustment
+                    distribution["q90"] += adjustment
+                    distribution["point_estimate"] = distribution["median_forecast"]
 
                 distribution["confidence_score"] *= 2 - cohort_weight
                 distribution["confidence_score"] = np.clip(

@@ -1,103 +1,137 @@
 {
   "overall": {
-    "n_forecasts": 622,
-    "mae": 11.686031145624096,
-    "rmse": 20.77303862777736,
-    "mape": 68.76566321939343,
-    "median_abs_error": 7.3272200002520576,
-    "bias": 11.686031145624096,
-    "forecast_width_mean": 2.510225080385852,
-    "forecast_iqr_mean": 1.3006159565916406
+    "n_forecasts": 707,
+    "mae": 17.087899896751836,
+    "rmse": 26.024320888497886,
+    "mape": 101.38465399583639,
+    "median_abs_error": 12.271194034534851,
+    "bias": 9.851653456354763,
+    "forecast_width_mean": 62.438678088984034,
+    "forecast_iqr_mean": 23.167905542751964
   },
   "quantile_calibration": {
     "q10": {
-      "observed": 0.5241157556270096,
       "expected": 0.1,
-      "diff": 0.42411575562700965,
+      "observed": 0.05091937765205092,
+      "diff": -0.049080622347949084,
+      "stderr": 0.011282661216669022,
+      "z_score": -4.350092713537945,
+      "p_value": 1.3607998441855784e-05,
       "calibrated": false
     },
     "q25": {
-      "observed": 0.5321543408360129,
       "expected": 0.25,
-      "diff": 0.2821543408360129,
+      "observed": 0.13154172560113153,
+      "diff": -0.11845827439886847,
+      "stderr": 0.016285118726548024,
+      "z_score": -7.27401969785812,
+      "p_value": 3.490541189421492e-13,
       "calibrated": false
     },
     "q50": {
-      "observed": 0.5562700964630225,
       "expected": 0.5,
-      "diff": 0.0562700964630225,
-      "calibrated": true
+      "observed": 0.355021216407355,
+      "diff": -0.144978783592645,
+      "stderr": 0.01880443536111504,
+      "z_score": -7.709818498057165,
+      "p_value": 1.2656542480726785e-14,
+      "calibrated": false
     },
     "q75": {
-      "observed": 0.5836012861736335,
       "expected": 0.75,
-      "diff": -0.1663987138263665,
+      "observed": 0.5714285714285714,
+      "diff": -0.1785714285714286,
+      "stderr": 0.016285118726548024,
+      "z_score": -10.965313275875674,
+      "p_value": 0.0,
       "calibrated": false
     },
     "q90": {
-      "observed": 0.612540192926045,
       "expected": 0.9,
-      "diff": -0.287459807073955,
-      "calibrated": false
+      "observed": 0.8783592644978784,
+      "diff": -0.021640735502121644,
+      "stderr": 0.011282661216669022,
+      "z_score": -1.918052406833734,
+      "p_value": 0.055104366356375056,
+      "calibrated": true
     },
     "interval_80": {
-      "coverage": 0.08842443729903537
+      "coverage": 0.8274398868458275,
+      "expected": 0.8
     },
     "interval_50": {
-      "coverage": 0.05144694533762058
+      "coverage": 0.43988684582743987,
+      "expected": 0.5
     }
   },
   "by_cohort": {
     "mid_cycle": {
-      "n": 622,
-      "mae": 11.686031145624096,
-      "rmse": 20.77303862777736,
-      "forecast_width": 2.510225080385852,
-      "q50_coverage": 0.5562700964630225
+      "n": 388,
+      "mae": 17.325196513788924,
+      "bias": 11.248454101814778
+    },
+    "earnings_heavy": {
+      "n": 120,
+      "mae": 17.897436897932895,
+      "bias": 10.773534404721893
+    },
+    "monthly_opex_minus_5": {
+      "n": 58,
+      "mae": 19.17784685860071,
+      "bias": 10.45909110746815
+    },
+    "monthly_opex_minus_1": {
+      "n": 63,
+      "mae": 14.296861099168998,
+      "bias": 7.77688753931007
+    },
+    "fomc_minus_3": {
+      "n": 48,
+      "mae": 16.73745248230236,
+      "bias": 3.524020911902183
+    },
+    "fomc_week": {
+      "n": 16,
+      "mae": 10.933173117123896,
+      "bias": 3.2722079537750783
+    },
+    "futures_rollover": {
+      "n": 14,
+      "mae": 15.709335416465235,
+      "bias": -0.7274897620955217
     }
   },
   "by_regime": {
     "Low": {
-      "n": 212,
-      "mae": 10.648684369751784,
-      "mean_forecast_width": 2.510960167714884
+      "n": 241,
+      "mae": 13.273530271217112,
+      "bias": -3.508508133585065
     },
     "Normal": {
-      "n": 265,
-      "mae": 7.316616513604522,
-      "mean_forecast_width": 2.514133333333333
+      "n": 297,
+      "mae": 11.880118921476877,
+      "bias": 8.321813845548798
     },
     "Elevated": {
-      "n": 99,
-      "mae": 11.653490114792772,
-      "mean_forecast_width": 2.502859708193041
+      "n": 118,
+      "mae": 19.68769033966054,
+      "bias": 19.56278889684049
     },
     "Crisis": {
-      "n": 46,
-      "mae": 41.708508450459284,
-      "mean_forecast_width": 2.5001739130434784
+      "n": 51,
+      "mae": 59.425130429051876,
+      "bias": 59.425130429051876
     }
   },
   "confidence_analysis": {
-    "by_bin": {
-      "Low": {
-        "mean_abs_error": 13.356199157170945,
-        "count": 468
-      },
-      "Medium": {
-        "mean_abs_error": 7.684736898237444,
-        "count": 34
-      },
-      "Very High": {
-        "mean_abs_error": 6.306075937350931,
-        "count": 120
-      }
-    },
-    "correlation": -0.1562645878275511,
-    "is_useful": true
+    "correlation": -0.04278807252441015,
+    "p_value": 0.2558647199392329,
+    "is_useful": false,
+    "interpretation": "Confidence not predictive \u26a0\ufe0f"
   },
   "time_series": {
-    "has_trend": true,
-    "recent_mae": 38.28444633663236
+    "rolling_mae_mean": 17.185125826007283,
+    "rolling_mae_std": 10.454199802990361,
+    "trend": "worsening"
   }
 }

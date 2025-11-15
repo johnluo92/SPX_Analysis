@@ -8,7 +8,6 @@ Stores all forecasts with full distribution + metadata for backtesting.
 2. Fixed schema migration to handle direction_probability properly
 3. Improved duplicate prevention with atomic key tracking
 4. ADDED observation_date column to schema
-5. FIXED indentation error in _create_schema method
 """
 
 import atexit
@@ -119,49 +118,48 @@ class PredictionDatabase:
         if not table_exists:
             # Create new table with correct schema
             create_sql = """
-                CREATE TABLE forecasts (
-                    prediction_id TEXT PRIMARY KEY,
-                    timestamp DATETIME NOT NULL,
-                    observation_date DATE NOT NULL,
-                    forecast_date DATE NOT NULL,
-                    horizon INTEGER NOT NULL,
+            CREATE TABLE forecasts (
+                prediction_id TEXT PRIMARY KEY,
+                timestamp DATETIME NOT NULL,
+                observation_date DATE NOT NULL,
+                forecast_date DATE NOT NULL,
+                horizon INTEGER NOT NULL,
 
-                    -- Context
-                    calendar_cohort TEXT,
-                    cohort_weight REAL,
+                -- Context
+                calendar_cohort TEXT,
+                cohort_weight REAL,
 
-                    -- Predictions (V3 UPDATED)
-                    median_forecast REAL NOT NULL,
-                    point_estimate REAL NOT NULL,
-                    q10 REAL,
-                    q25 REAL,
-                    q50 REAL,
-                    q75 REAL,
-                    q90 REAL,
+                -- Predictions
+                point_estimate REAL NOT NULL,
+                q10 REAL,
+                q25 REAL,
+                q50 REAL,
+                q75 REAL,
+                q90 REAL,
+                prob_low REAL,
+                prob_normal REAL,
+                prob_elevated REAL,
+                prob_crisis REAL,
+                direction_probability REAL,
+                confidence_score REAL,
 
-                    -- Direction (V3 SIMPLIFIED)
-                    prob_up REAL,
-                    prob_down REAL,
-                    direction_probability REAL,
-                    confidence_score REAL,
+                -- Metadata
+                feature_quality REAL,
+                num_features_used INTEGER,
+                current_vix REAL,
+                features_used TEXT,
+                model_version TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-                    -- Metadata
-                    feature_quality REAL,
-                    num_features_used INTEGER,
-                    current_vix REAL,
-                    features_used TEXT,
-                    model_version TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                -- Actuals (filled later)
+                actual_vix_change REAL,
+                actual_regime TEXT,
+                point_error REAL,
+                quantile_coverage TEXT,
 
-                    -- Actuals (filled later)
-                    actual_vix_change REAL,
-                    actual_regime TEXT,
-                    point_error REAL,
-                    quantile_coverage TEXT,
-
-                    -- UNIQUE constraint prevents duplicates
-                    UNIQUE(forecast_date, horizon)
-                )
+                -- UNIQUE constraint prevents duplicates
+                UNIQUE(forecast_date, horizon)
+            )
             """
 
             self.conn.execute(create_sql)
