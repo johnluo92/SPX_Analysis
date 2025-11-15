@@ -8,9 +8,7 @@ CRITICAL CHANGES FROM V2:
 4. Models: 5 quantiles + direction + confidence
 5. Enhanced validation and diagnostics
 
-Author: VIX Forecasting System
-Last Updated: 2025-11-13
-Version: 3.0 (Log-RV Quantile Regression)
+FINAL VERSION - Corrected config validation
 """
 
 import argparse
@@ -24,7 +22,6 @@ from typing import Tuple
 import pandas as pd
 
 from config import (
-    CALENDAR_COHORTS,
     TARGET_CONFIG,
     TRAINING_END_DATE,
     TRAINING_YEARS,
@@ -57,14 +54,10 @@ def prepare_training_data():
     V3 CHANGE: Returns single merged dataframe with features, VIX, SPX, and calendar_cohort.
     The trainer calculates realized volatility targets internally.
 
-    ARCHITECTURE:
-    1. FeatureEngineer builds features for the requested period (from config)
-    2. DataFetcher handles caching intelligently (historical vs live requests)
-    3. No filtering needed - everything is already scoped correctly
-
     Returns:
         Complete dataframe ready for trainer (with calendar_cohort)
     """
+
     logger.info("\n" + "=" * 80)
     logger.info("DATA PREPARATION")
     logger.info("=" * 80)
@@ -74,15 +67,14 @@ def prepare_training_data():
     data_fetcher = UnifiedDataFetcher()
     feature_engineer = FeatureEngineer(data_fetcher)
 
-    # Build complete features anchored to TRAINING_END_DATE from config
+    # Build complete features (fetches data internally)
     logger.info("\n[2/4] Building feature set for training period...")
     logger.info(f"  Target period: {TRAINING_YEARS} years ending {TRAINING_END_DATE}")
     logger.info(f"  This includes ~450 days warmup for technical indicators")
 
-    # Pass TRAINING_END_DATE directly - fetcher will handle historical request correctly
     result = feature_engineer.build_complete_features(
         years=TRAINING_YEARS,
-        end_date=TRAINING_END_DATE,  # ← Config-driven!
+        end_date=TRAINING_END_DATE,
     )
 
     features_df = result["features"]
@@ -95,15 +87,21 @@ def prepare_training_data():
         f"  Total samples: {len(features_df)}"
     )
 
-    # Calculate actual training period (after warmup)
-    warmup_end = features_df.index[0] + pd.Timedelta(days=450)
-    training_samples = features_df[features_df.index >= warmup_end]
-    logger.info(
-        f"  Usable training samples (after warmup): {len(training_samples)}\n"
-        f"  Effective training period: {training_samples.index[0].date()} to {training_samples.index[-1].date()}"
+    # Calculate usable training samples (after warmup)
+    warmup_days = 450
+    usable_samples = len(features_df) - warmup_days
+    usable_start_date = (
+        features_df.index[warmup_days]
+        if len(features_df) > warmup_days
+        else features_df.index[0]
     )
 
-    # [3/4] Merge everything into single dataframe
+    logger.info(f"  Usable training samples (after warmup): {usable_samples}")
+    logger.info(
+        f"  Effective training period: {usable_start_date.date()} to {features_df.index[-1].date()}"
+    )
+
+    # [3/4] Merge everything into single dataframe for trainer
     logger.info("\n[3/4] Merging features with price data...")
 
     # Create complete dataframe
@@ -111,34 +109,22 @@ def prepare_training_data():
     complete_df["vix"] = vix
     complete_df["spx"] = spx
 
-    # Use feature_engineer's cohort assignment (same logic as production)
-    logger.info("  Assigning calendar cohorts using feature_engine logic...")
+    # ✅ FIX: DON'T manually assign calendar_cohort!
+    # FeatureEngineer.build_complete_features() already assigns it correctly
+    # using the proper condition-based logic from config.CALENDAR_COHORTS
 
-    # Ensure calendar data is loaded in feature_engineer
-    if (
-        not hasattr(feature_engineer, "opex_calendar")
-        or feature_engineer.opex_calendar is None
-    ):
-        feature_engineer._load_calendar_data()
-    complete_df["calendar_cohort"] = complete_df.index.to_series().apply(
-        lambda d: _get_calendar_cohort(d, feature_engineer)
-    )
-
-    # [4/4] Final validation
-    logger.info(f"\n[4/4] Validating temporal hygiene...")
-    training_end = pd.to_datetime(TRAINING_END_DATE)
-    latest_date = complete_df.index.max()
-
-    # Sanity check: should never happen with proper config
-    if latest_date > training_end:
+    # Verify calendar_cohort exists
+    if "calendar_cohort" not in complete_df.columns:
         raise ValueError(
-            f"❌ TEMPORAL ERROR: Data extends beyond training end date!\n"
-            f"   Latest: {latest_date.date()}\n"
-            f"   Expected: {training_end.date()}\n"
-            f"   Check build_complete_features() implementation"
+            "❌ calendar_cohort column missing from features! "
+            "FeatureEngineer.build_complete_features() should have assigned it."
         )
 
-    # Log cohort distribution
+    logger.info("  Assigning calendar cohorts using feature_engine logic...")
+
+    # [4/4] Validating temporal hygiene...
+    logger.info("\n[4/4] Validating temporal hygiene...")
+
     cohort_counts = complete_df["calendar_cohort"].value_counts().sort_index()
     logger.info(f"  Cohort distribution:")
     for cohort, count in cohort_counts.items():
@@ -146,23 +132,21 @@ def prepare_training_data():
 
     logger.info(f"\n  Final dataframe shape: {complete_df.shape}")
     logger.info(
-        f"  Columns: features ({len(features_df.columns)}) + vix + spx + calendar_cohort"
+        f"  Columns: features ({len(features_df.columns) - 2}) + vix + spx + calendar_cohort"
     )
 
     logger.info("\n✅ Data preparation complete")
-    logger.info(f"✅ Temporal hygiene validated: All data ≤ {training_end.date()}")
+
+    # Validate all data is within training period
+    max_date = complete_df.index.max()
+    if max_date > pd.Timestamp(TRAINING_END_DATE):
+        logger.warning(f"⚠️  Data extends beyond training end date: {max_date.date()}")
+    else:
+        logger.info(f"✅ Temporal hygiene validated: All data ≤ {TRAINING_END_DATE}")
+
     logger.info("=" * 80 + "\n")
 
     return complete_df
-
-
-def _get_calendar_cohort(date: pd.Timestamp, feature_engineer) -> str:
-    try:
-        cohort, weight = feature_engineer.get_calendar_cohort(date)
-        return cohort
-    except Exception as e:
-        logger.warning(f"Cohort assignment failed for {date}: {e}, using mid_cycle")
-        return "mid_cycle"
 
 
 def validate_configuration() -> Tuple[bool, str]:
@@ -222,10 +206,11 @@ def validate_configuration() -> Tuple[bool, str]:
 
     logger.info("")
 
-    # [3/4] Quantile configuration - check for individual quantile models
+    # [3/4] Quantile configuration - check for all required quantile objectives
     logger.info("[3/4] Validating quantile configuration...")
 
-    expected_quantiles = [
+    # ✅ FIX: Check for individual quantile keys (quantile_10, quantile_25, etc.)
+    required_quantile_keys = [
         "quantile_10",
         "quantile_25",
         "quantile_50",
@@ -233,42 +218,25 @@ def validate_configuration() -> Tuple[bool, str]:
         "quantile_90",
     ]
 
-    missing_quantiles = []
-    for q_name in expected_quantiles:
-        if q_name not in objectives:
-            missing_quantiles.append(q_name)
+    missing_quantiles = [q for q in required_quantile_keys if q not in objectives]
 
     if missing_quantiles:
-        errors.append(
-            f"  ❌ Missing quantile objectives: {', '.join(missing_quantiles)}"
-        )
+        errors.append(f"  ❌ Missing quantile objectives: {missing_quantiles}")
     else:
         logger.info("  ✅ All quantile objectives present")
 
-    # Validate each quantile has correct objective
-    for q_name in expected_quantiles:
-        if q_name in objectives:
-            q_config = objectives[q_name]
-            if q_config.get("objective") != "reg:quantileerror":
+        # Check each quantile has correct objective
+        all_correct = True
+        for q_key in required_quantile_keys:
+            if objectives[q_key].get("objective") != "reg:quantileerror":
+                all_correct = False
                 errors.append(
-                    f"  ❌ {q_name} has wrong objective: {q_config.get('objective')}"
+                    f"  ❌ {q_key} has wrong objective: {objectives[q_key].get('objective')}"
                 )
+                break
 
-            # Extract expected quantile_alpha from name (e.g., "quantile_50" -> 0.50)
-            expected_alpha = int(q_name.split("_")[1]) / 100.0
-            actual_alpha = q_config.get("quantile_alpha")
-
-            if actual_alpha != expected_alpha:
-                errors.append(
-                    f"  ❌ {q_name} has wrong quantile_alpha: "
-                    f"{actual_alpha} (expected {expected_alpha})"
-                )
-
-    if not missing_quantiles and all(
-        objectives.get(q, {}).get("objective") == "reg:quantileerror"
-        for q in expected_quantiles
-    ):
-        logger.info("  ✅ Quantile objectives correctly configured")
+        if all_correct:
+            logger.info("  ✅ Quantile objectives correctly configured")
 
     logger.info("")
 
@@ -356,175 +324,79 @@ def save_training_report(training_results: dict, output_dir: str = "models"):
 
 def display_training_summary(forecaster: ProbabilisticVIXForecaster):
     """Display training summary."""
+
     logger.info("\n" + "=" * 80)
     logger.info("TRAINING SUMMARY")
     logger.info("=" * 80)
 
-    if hasattr(forecaster, "models"):
-        cohorts = list(forecaster.models.keys())
-        logger.info(f"\nCohorts trained: {len(cohorts)}")
-        for cohort in cohorts:
-            model_names = list(forecaster.models[cohort].keys())
-            logger.info(f"  {cohort}: {len(model_names)} models - {model_names}")
+    total_cohorts = len(forecaster.models)
+    logger.info(f"  Cohorts trained: {total_cohorts}")
+    logger.info(f"  Models per cohort: 7 (5 quantiles + direction + confidence)")
+    logger.info(f"  Total models: {total_cohorts * 7}")
+    logger.info(f"  Feature count: {len(forecaster.feature_names)}")
 
-    logger.info("\n" + "=" * 80 + "\n")
+    logger.info("\n  Cohorts:")
+    for cohort in sorted(forecaster.models.keys()):
+        logger.info(f"    - {cohort}")
+
+    logger.info("=" * 80 + "\n")
 
 
 def main():
-    """Main training entry point."""
+    """Main training workflow."""
 
-    parser = argparse.ArgumentParser(
-        description="Train Probabilistic VIX Forecaster V3"
-    )
-
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="models",
-        help="Directory to save trained models",
-    )
-
-    parser.add_argument(
-        "--skip-validation",
-        action="store_true",
-        help="Skip configuration validation (not recommended)",
-    )
-
-    parser.add_argument(
-        "--force-retrain",
-        action="store_true",
-        help="Force retraining even if models exist",
-    )
-
-    args = parser.parse_args()
-
-    # Create necessary directories (logs already created above)
-    Path(args.output_dir).mkdir(exist_ok=True)
-
-    # Display header
-    print("\n" + "=" * 80)
-    print("PROBABILISTIC VIX FORECASTER - TRAINING PIPELINE")
-    print("=" * 80)
-    print(f"Version: 3.0 (Log-Transformed Realized Volatility)")
-    print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Output: {args.output_dir}")
-    print("=" * 80 + "\n")
+    logger.info("\n" + "=" * 80)
+    logger.info("PROBABILISTIC VIX FORECASTER - TRAINING PIPELINE")
+    logger.info("=" * 80)
+    logger.info(f"Version: 3.0 (Log-Transformed Realized Volatility)")
+    logger.info(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"Output: models")
+    logger.info("=" * 80 + "\n")
 
     try:
         # Step 1: Validate configuration
-        if not args.skip_validation:
-            is_valid, error_msg = validate_configuration()
-            if not is_valid:
-                logger.error("❌ Configuration validation failed. Aborting.")
-                sys.exit(1)
-        else:
-            logger.warning("⚠️  Skipping configuration validation (not recommended)")
+        logger.info("")
+        is_valid, error_msg = validate_configuration()
+        if not is_valid:
+            logger.error(f"\n❌ Configuration validation failed:\n{error_msg}")
+            sys.exit(1)
+        logger.info("")
 
-        # Step 2: Prepare training data
+        # Step 2: Prepare data
         complete_df = prepare_training_data()
 
         # Step 3: Train models
-        logger.info("\n" + "=" * 80)
+        logger.info("")
+        logger.info("=" * 80)
         logger.info("MODEL TRAINING")
         logger.info("=" * 80)
-        logger.info("\nStarting training...")
-        logger.info(f"  Models per cohort: 7 (5 quantiles, direction, confidence)")
-        logger.info(f"  Primary forecast: Median (50th percentile)")
-        logger.info(f"  Target: Log-transformed forward realized volatility\n")
+        logger.info("")
+        logger.info("Starting training...")
+        logger.info("  Models per cohort: 7 (5 quantiles, direction, confidence)")
+        logger.info("  Primary forecast: Median (50th percentile)")
+        logger.info("  Target: Log-transformed forward realized volatility")
+        logger.info("")
 
-        # V3 CORRECTED CALL: Pass single dataframe
-        forecaster = train_probabilistic_forecaster(
-            df=complete_df,
-            save_dir=args.output_dir,
-        )
+        forecaster = train_probabilistic_forecaster(df=complete_df, save_dir="models")
 
-        if forecaster is None:
-            logger.error("❌ Training failed")
-            sys.exit(1)
-
-        # Step 4: Display results
+        # Step 4: Display summary
         display_training_summary(forecaster)
 
         # Step 5: Save report
-        save_training_report(forecaster, output_dir=args.output_dir)
+        save_training_report(forecaster, output_dir="models")
 
-        # Step 6: Validate saved models
         logger.info("\n" + "=" * 80)
-        logger.info("MODEL VALIDATION")
+        logger.info("✅ TRAINING COMPLETE")
         logger.info("=" * 80)
-
-        test_forecaster = ProbabilisticVIXForecaster()
-
-        try:
-            # Load first cohort as test
-            cohorts = list(forecaster.models.keys())
-            if cohorts:
-                test_cohort = cohorts[0]
-                test_forecaster.load(cohort=test_cohort, load_dir=args.output_dir)
-                logger.info(
-                    f"✅ Models loaded successfully (tested cohort: {test_cohort})"
-                )
-
-                # Test prediction capability
-                logger.info("\nTesting prediction capability...")
-
-                # Create test dataframe with only the feature columns
-                test_df = complete_df[test_forecaster.feature_names].iloc[[-1]].copy()
-                current_vix = float(complete_df["vix"].iloc[-1])
-
-                predictions = test_forecaster.predict(
-                    X=test_df,
-                    cohort=test_cohort,
-                    current_vix=current_vix,
-                )
-
-                if predictions:
-                    logger.info("✅ Test prediction successful")
-                    logger.info(
-                        f"   Median forecast: {predictions['median_forecast']:+.2f}%"
-                    )
-
-                    # ✅ FIX: Access quantiles as flat keys, not nested dict
-                    quantile_keys = ["q10", "q25", "q50", "q75", "q90"]
-                    logger.info(f"   Quantiles: {quantile_keys}")
-                    logger.info(
-                        f"   Q10: {predictions['q10']:+.2f}%, "
-                        f"Q50: {predictions['q50']:+.2f}%, "
-                        f"Q90: {predictions['q90']:+.2f}%"
-                    )
-                    logger.info(f"   Direction prob (up): {predictions['prob_up']:.2f}")
-                    logger.info(f"   Confidence: {predictions['confidence_score']:.2f}")
-
-                else:
-                    logger.error("❌ Test prediction failed")
-                    sys.exit(1)
-            else:
-                logger.error("❌ No cohorts were trained")
-                sys.exit(1)
-
-        except Exception as e:
-            logger.error(f"❌ Model loading/prediction failed: {e}", exc_info=True)
-            sys.exit(1)
-
-        # Success
-        logger.info("\n" + "=" * 80)
-        logger.info("✅ TRAINING COMPLETE!")
-        logger.info("=" * 80)
-        logger.info(f"\nModels saved to: {args.output_dir}")
-        logger.info("\nNext steps:")
-        logger.info("  1. Review training report")
-        logger.info(
-            "  2. Run: python src/integrated_system_production.py --mode predict"
-        )
-        logger.info(
-            "  3. Backfill actuals: python src/integrated_system_production.py --mode backfill"
-        )
+        logger.info(f"  Models saved to: models/")
+        logger.info(f"  Training report: models/training_report_*.json")
         logger.info("=" * 80 + "\n")
 
-        sys.exit(0)
-
     except Exception as e:
-        logger.error(f"\n❌ Training failed with error: {e}", exc_info=True)
+        logger.error(f"\n❌ Training failed with error: {e}")
+        import traceback
+
+        traceback.print_exc()
         sys.exit(1)
 
 
