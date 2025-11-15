@@ -335,6 +335,45 @@ class IntegratedForecastingSystem:
 
         return distribution
 
+    def _log_forecast_summary(self, distribution: Dict):
+        """Log forecast summary to console."""
+        logger.info("\n" + "─" * 80)
+        logger.info("FORECAST DISTRIBUTION")
+        logger.info("─" * 80)
+
+        # Median forecast (primary)
+        logger.info(f"  Median Forecast (q50): {distribution['median_forecast']:+.2f}%")
+
+        # Full distribution
+        logger.info(f"\n  Quantile Distribution:")
+        logger.info(f"    10th percentile: {distribution['quantiles']['q10']:+.2f}%")
+        logger.info(f"    25th percentile: {distribution['quantiles']['q25']:+.2f}%")
+        logger.info(f"    50th percentile: {distribution['quantiles']['q50']:+.2f}%")
+        logger.info(f"    75th percentile: {distribution['quantiles']['q75']:+.2f}%")
+        logger.info(f"    90th percentile: {distribution['quantiles']['q90']:+.2f}%")
+
+        # Quantile spread (uncertainty measure)
+        spread = distribution["quantiles"]["q90"] - distribution["quantiles"]["q10"]
+        logger.info(f"\n  Uncertainty (q90-q10 spread): {spread:.2f}%")
+
+        # Direction
+        logger.info(f"\n  Direction:")
+        logger.info(f"    Probability UP:   {distribution['prob_up']:.1%}")
+        logger.info(f"    Probability DOWN: {distribution['prob_down']:.1%}")
+
+        # Confidence
+        logger.info(f"\n  Confidence Score: {distribution['confidence_score']:.2f}")
+
+        # Metadata
+        if "metadata" in distribution:
+            meta = distribution["metadata"]
+            logger.info(f"\n  Context:")
+            logger.info(f"    Current VIX: {meta['current_vix']:.2f}")
+            logger.info(f"    Feature Quality: {meta['feature_quality']:.2f}")
+            logger.info(f"    Cohort Weight: {meta['cohort_weight']:.2f}")
+
+        logger.info("─" * 80 + "\n")
+
     def _validate_quantile_ordering(self, distribution: Dict):
         """Ensure quantiles are properly ordered."""
         quantiles = ["q10", "q25", "q50", "q75", "q90"]
