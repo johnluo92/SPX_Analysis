@@ -1058,11 +1058,7 @@ def main():
 
             # STEP 2: Backfill actuals for calibration period
             logger.info(f"\n[2/8] Backfilling actuals for {cal_start[:4]}...")
-            feature_data = system.feature_engine.build_complete_features(
-                years=TRAINING_YEARS
-            )
-            vix_series = feature_data["vix"]
-            system.prediction_db.backfill_actuals(vix_series)
+            system.prediction_db.backfill_actuals()
 
             # STEP 3: Train calibrator on calibration period ONLY
             logger.info(f"\n[3/8] Training calibrator on {cal_start[:4]} data...")
@@ -1099,7 +1095,7 @@ def main():
 
             # STEP 6: Backfill actuals for validation period
             logger.info(f"\n[6/8] Backfilling actuals for {val_start[:4]}...")
-            system.prediction_db.backfill_actuals(vix_series)
+            system.prediction_db.backfill_actuals()
 
             # STEP 7: Generate production year forecasts WITH calibration
             logger.info(f"\n[7/8] Generating {PRODUCTION_START_DATE[:4]} forecasts...")
@@ -1108,7 +1104,7 @@ def main():
 
             # STEP 8: Backfill actuals and run validation
             logger.info(f"\n[8/8] Backfilling {PRODUCTION_START_DATE[:4]} actuals...")
-            system.prediction_db.backfill_actuals(vix_series)
+            system.prediction_db.backfill_actuals()
 
             # Run walk-forward validation if available
             try:
@@ -1160,11 +1156,7 @@ def main():
         sys.exit(0)
 
     elif args.mode == "backfill":
-        feature_data = system.feature_engine.build_complete_features(
-            years=TRAINING_YEARS
-        )
-        vix_series = feature_data["vix"]
-        system.backfill_actuals()  # This now handles vix_series internally
+        system.prediction_db.backfill_actuals()  # ✅ Direct call, no vix_series needed
         sys.exit(0)
 
     elif args.mode == "anomaly":
