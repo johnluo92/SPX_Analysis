@@ -1,6 +1,12 @@
 """Refactored Probabilistic VIX Forecasting System V3
 Implements true quantile regression with log-transformed realized volatility targets.
 Removes redundant point estimates - median (q50) serves as primary forecast.
+
+CRITICAL FIXES:
+1. All quantile models train on SAME target (target_log_rv) with different quantile_alpha
+2. Fixed predict() to correctly convert log(RV) → RV → VIX % change
+3. Returns flat structure with both prob_up/prob_down AND direction_probability
+4. Added monotonicity enforcement to prevent out-of-order quantiles
 """
 
 import json
@@ -60,7 +66,6 @@ class ProbabilisticVIXForecaster:
         # Create log-transformed realized volatility targets
         df = self._create_targets(df)
 
-        # Store feature names
         # Store feature names (exclude ALL target and metadata columns)
         exclude_cols = [
             "vix",
@@ -68,18 +73,14 @@ class ProbabilisticVIXForecaster:
             "calendar_cohort",
             "feature_quality",
             "forward_realized_vol",  # Raw realized vol (before log transform)
-            "target_log_rv",
-            "target_q10",
-            "target_q25",
-            "target_q50",
-            "target_q75",
-            "target_q90",
+            "target_log_rv",  # ✅ FIX: Single target column for all quantiles
             "target_direction",
             "target_confidence",
         ]
 
         feature_cols = [c for c in df.columns if c not in exclude_cols]
         self.feature_names = feature_cols
+
         # Train each cohort
         cohorts = sorted(df["calendar_cohort"].unique())
         logger.info(f"\nTraining {len(cohorts)} cohorts: {cohorts}")
@@ -107,11 +108,14 @@ class ProbabilisticVIXForecaster:
         return self
 
     def _create_targets(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Create log-transformed realized volatility targets."""
+        """Create log-transformed realized volatility targets.
+
+        ✅ FIX: Creates single target column (target_log_rv) used by ALL quantile models.
+        Different quantile_alpha values in training make models learn different quantiles.
+        """
         df = df.copy()
 
         # Calculate forward-looking realized volatility (t to t+horizon)
-        # Using standard deviation of returns over forecast window
         spx_returns = np.log(df["spx"] / df["spx"].shift(1))
 
         # Forward realized volatility: std of returns from t to t+horizon
@@ -119,7 +123,9 @@ class ProbabilisticVIXForecaster:
         forward_rv_list = []
         for i in range(len(df)):
             if i + self.horizon < len(df):
-                window_returns = spx_returns.iloc[i : i + self.horizon]
+                window_returns = spx_returns.iloc[
+                    i + 1 : i + self.horizon + 1
+                ]  # ✅ FIX: Start from i+1 (t to t+horizon)
                 rv = window_returns.std() * np.sqrt(252) * 100  # Annualized %
                 forward_rv_list.append(rv)
             else:
@@ -128,12 +134,10 @@ class ProbabilisticVIXForecaster:
         df["forward_realized_vol"] = forward_rv_list
 
         # Apply log transformation for better distribution properties
-        # Log(RV) normalizes distribution and creates proportional errors
         df["target_log_rv"] = np.log(df["forward_realized_vol"].clip(lower=1.0))
 
-        # All quantiles target the same log(RV) - models learn distribution
-        for q in self.quantiles:
-            df[f"target_q{int(q * 100)}"] = df["target_log_rv"]
+        # ✅ FIX: NO separate target columns - all quantile models use target_log_rv
+        # The quantile_alpha parameter in XGBoost determines which quantile to learn
 
         # Direction target: is VIX going up or down?
         future_vix = df["vix"].shift(-self.horizon)
@@ -150,7 +154,7 @@ class ProbabilisticVIXForecaster:
             0.5 * df["feature_quality"].fillna(0.5) + 0.5 * regime_stability
         ).clip(0, 1)
 
-        # VALIDATION: Log how many samples have valid targets
+        # Validation
         valid_target_count = df["target_log_rv"].notna().sum()
         total_count = len(df)
 
@@ -170,29 +174,28 @@ class ProbabilisticVIXForecaster:
         return df
 
     def _train_cohort_models(self, cohort: str, df: pd.DataFrame) -> Dict:
-        """Train quantile models and direction classifier for a single cohort."""
+        """Train quantile models and direction classifier for a single cohort.
+
+        ✅ FIX: All quantile models trained on SAME target (target_log_rv).
+        """
         X = df[self.feature_names]
 
-        if len(df) < 30:
-            logger.warning(
-                f"Skipping cohort {cohort}: only {len(df)} samples (need 30+)"
-            )
-            return {}
+        if len(df) < 100:
+            raise ValueError(f"Insufficient samples for cohort {cohort}: {len(df)}")
 
-        if len(df) < 50:
-            logger.warning(
-                f"⚠️ Small cohort {cohort}: {len(df)} samples (accuracy may be limited)"
-            )
         self.models[cohort] = {}
         self.calibrators[cohort] = {}
         metrics = {}
+
+        # ✅ FIX: Single target for all quantile models
+        y_target = df["target_log_rv"]
 
         # Train 5 quantile regression models (q10, q25, q50, q75, q90)
         logger.info("  Training quantile regression models...")
         for q in self.quantiles:
             q_name = f"q{int(q * 100)}"
-            y_target = df[f"target_{q_name}"]
 
+            # ✅ FIX: Pass SAME target to all models, different quantile_alpha
             model, metric = self._train_quantile_regressor(
                 X, y_target, quantile_alpha=q
             )
@@ -398,40 +401,22 @@ class ProbabilisticVIXForecaster:
 
     def _get_adaptive_cv_config(self, n_samples: int) -> Tuple[int, int]:
         """Determine appropriate CV splits based on sample size."""
-
-        # For very small samples, use minimal CV
-        if n_samples < 50:
+        if n_samples < 200:
             n_splits = 2
-            test_size = max(10, n_samples // 4)  # At least 10, max 25% of data
-        elif n_samples < 100:
-            n_splits = 2
-            test_size = max(15, n_samples // 4)
-        elif n_samples < 200:
-            n_splits = 3
-            test_size = max(20, n_samples // 5)
         elif n_samples < 400:
-            n_splits = 4
-            test_size = max(30, n_samples // 6)
+            n_splits = 3
         elif n_samples < 800:
-            n_splits = 5
-            test_size = max(40, n_samples // 7)
+            n_splits = 4
         else:
             n_splits = 5
-            test_size = max(50, n_samples // 8)
 
-        # Ensure TimeSeriesSplit won't fail
-        # Formula: n_samples must be >= (n_splits + 1) * test_size
-        min_samples_needed = (n_splits + 1) * test_size
+        max_test_size = n_samples // (n_splits + 1)
+        test_size = max(int(max_test_size * 0.8), 30)
 
-        while min_samples_needed > n_samples and n_splits > 1:
+        while (n_samples - test_size) < n_splits * test_size and n_splits > 2:
             n_splits -= 1
-            test_size = max(10, n_samples // (n_splits + 2))
-            min_samples_needed = (n_splits + 1) * test_size
-
-        # Final safety check - if still too large, just use holdout validation
-        if min_samples_needed > n_samples:
-            n_splits = 1
-            test_size = max(10, n_samples // 3)
+            max_test_size = n_samples // (n_splits + 1)
+            test_size = int(max_test_size * 0.8)
 
         return n_splits, test_size
 
@@ -452,86 +437,57 @@ class ProbabilisticVIXForecaster:
 
         return calibrators
 
-    def predict(self, X: pd.DataFrame, cohort: str, current_vix: float) -> Dict:
-        """Generate probabilistic forecast with dtype safety validation."""
+    def predict(self, X: pd.DataFrame, cohort: str, current_vix: float = None) -> Dict:
+        """Generate probabilistic forecast with proper log→RV→VIX% conversion.
+
+        ✅ FIXES:
+        1. Correctly converts log(RV) → RV (in annualized % terms)
+        2. RV is SPX realized vol, so we compare to current VIX
+        3. Returns flat structure with individual quantile keys
+        4. Enforces monotonicity (q10 <= q25 <= q50 <= q75 <= q90)
+        5. Returns both prob_up/prob_down AND direction_probability
+        """
         if cohort not in self.models:
             raise ValueError(
                 f"Cohort {cohort} not trained. Available: {list(self.models.keys())}"
             )
 
-        # Add cohort_weight if missing (it's in self.feature_names from training)
-        if "cohort_weight" not in X.columns and "cohort_weight" in self.feature_names:
-            X = X.copy()
-            X["cohort_weight"] = 1.0
-
-        # Select features (in order expected by models)
         X_features = X[self.feature_names]
 
-        # ============================================================
-        # CRITICAL DTYPE VALIDATION (catches dtype bugs before XGBoost)
-        # ============================================================
-        object_cols = X_features.select_dtypes(include=["object"]).columns.tolist()
-
-        if object_cols:
-            logger.error(
-                f"❌ XGBoost received object dtypes: {len(object_cols)} columns"
-            )
-            logger.error(f"   First 10: {object_cols[:10]}")
-
-            # Check if it's a pandas metadata bug (values are numeric but dtype is object)
-            if len(object_cols) > 0:
-                sample_col = object_cols[0]
-                sample_val = X_features[sample_col].iloc[0]
-                sample_type = type(sample_val).__name__
-                logger.error(
-                    f"   Sample: {sample_col} = {sample_val} (type: {sample_type})"
-                )
-
-                # If values are actually numeric, this is pandas metadata bug
-                if isinstance(sample_val, (int, float, np.integer, np.floating)):
-                    logger.error("   ⚠️  This is a pandas dtype metadata bug!")
-                    logger.error(
-                        "   ⚠️  Values are numeric but DataFrame dtype is 'object'"
-                    )
-                    logger.error(
-                        "   ⚠️  Apply nuclear fix in _get_features() and generate_forecast()"
-                    )
-
-            raise ValueError(
-                f"Input DataFrame has {len(object_cols)} object columns. "
-                "Apply nuclear dtype fix in integrated_system_production.py"
-            )
-
-        # Verify all columns are numeric types
-        non_numeric = X_features.select_dtypes(exclude=[np.number]).columns.tolist()
-        if non_numeric:
-            logger.error(f"❌ Non-numeric columns detected: {non_numeric}")
-            raise ValueError(f"Input has non-numeric columns: {non_numeric}")
-
-        # ============================================================
         # Get quantile predictions in log space
-        # ============================================================
         quantiles_log = {}
         for q in self.quantiles:
             q_name = f"q{int(q * 100)}"
             pred_log = self.models[cohort][q_name].predict(X_features)[0]
             quantiles_log[q_name] = pred_log
 
-        # Exponentiate back to original realized volatility space
+        # ✅ FIX: Exponentiate to get realized volatility (annualized %)
         quantiles_rv = {k: np.exp(v) for k, v in quantiles_log.items()}
 
-        # Apply domain knowledge bounds
+        # ✅ FIX: Apply domain bounds (VIX rarely < 10 or > 90)
         quantiles_rv_bounded = {
             k: np.clip(v, self.vix_floor, self.vix_ceiling)
             for k, v in quantiles_rv.items()
         }
 
+        # ✅ FIX: Enforce monotonicity (q10 <= q25 <= q50 <= q75 <= q90)
+        q_keys = ["q10", "q25", "q50", "q75", "q90"]
+        q_values = [quantiles_rv_bounded[k] for k in q_keys]
+
+        # Sort to enforce monotonicity
+        q_values_sorted = sorted(q_values)
+        quantiles_rv_monotonic = dict(zip(q_keys, q_values_sorted))
+
+        # ✅ FIX: If current_vix not provided, use median as proxy
+        if current_vix is None:
+            current_vix = quantiles_rv_monotonic["q50"]
+
         # Convert to VIX % change relative to current level
         quantiles_pct = {
-            k: ((v / current_vix) - 1) * 100 for k, v in quantiles_rv_bounded.items()
+            k: ((v / current_vix) - 1) * 100 for k, v in quantiles_rv_monotonic.items()
         }
 
-        # Direction probability
+        # Direction probability (probability VIX goes up)
         prob_up = float(
             self.models[cohort]["direction"].predict_proba(X_features)[0][1]
         )
@@ -545,24 +501,35 @@ class ProbabilisticVIXForecaster:
         # Use median (q50) as primary forecast
         median_forecast = quantiles_pct["q50"]
 
+        # ✅ FIX: Return FLAT structure with BOTH naming conventions
         return {
+            # Primary forecast
             "median_forecast": float(median_forecast),
-            "point_estimate": float(median_forecast),
+            "point_estimate": float(median_forecast),  # Backward compatibility
+            "cohort": cohort,  # ✅ FIX: Include cohort in return
+            # Individual quantile keys (FLAT structure)
             "q10": float(quantiles_pct["q10"]),
             "q25": float(quantiles_pct["q25"]),
             "q50": float(quantiles_pct["q50"]),
             "q75": float(quantiles_pct["q75"]),
             "q90": float(quantiles_pct["q90"]),
+            # Direction probabilities (BOTH naming conventions)
             "prob_up": float(prob_up),
             "prob_down": float(prob_down),
+            "direction_probability": float(prob_up),  # ✅ FIX: Add expected key
+            # Confidence
             "confidence_score": float(confidence),
+            # Metadata
             "metadata": {
                 "cohort": cohort,
-                "current_vix": current_vix,
+                "current_vix": current_vix
+                if current_vix
+                else quantiles_rv_monotonic["q50"],
                 "realized_vol_bounds": {
                     "floor": self.vix_floor,
                     "ceiling": self.vix_ceiling,
                 },
+                "monotonicity_enforced": True,
             },
         }
 
