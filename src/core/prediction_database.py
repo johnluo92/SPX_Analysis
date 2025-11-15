@@ -7,6 +7,7 @@ Stores all forecasts with full distribution + metadata for backtesting.
 1. Removed premature quantile ordering validation (happens at prediction time, not storage)
 2. Fixed schema migration to handle direction_probability properly
 3. Improved duplicate prevention with atomic key tracking
+4. ADDED observation_date column to schema
 """
 
 import atexit
@@ -120,6 +121,7 @@ class PredictionDatabase:
             CREATE TABLE forecasts (
                 prediction_id TEXT PRIMARY KEY,
                 timestamp DATETIME NOT NULL,
+                observation_date DATE NOT NULL,
                 forecast_date DATE NOT NULL,
                 horizon INTEGER NOT NULL,
 
@@ -168,6 +170,7 @@ class PredictionDatabase:
 
         # Create indexes for fast queries
         indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_observation_date ON forecasts(observation_date)",
             "CREATE INDEX IF NOT EXISTS idx_forecast_date ON forecasts(forecast_date)",
             "CREATE INDEX IF NOT EXISTS idx_cohort ON forecasts(calendar_cohort)",
             "CREATE INDEX IF NOT EXISTS idx_has_actual ON forecasts(actual_vix_change) WHERE actual_vix_change IS NOT NULL",
@@ -196,7 +199,7 @@ class PredictionDatabase:
         """
         # Convert timestamps to ISO strings
         record = record.copy()
-        for key in ["timestamp", "forecast_date", "created_at"]:
+        for key in ["timestamp", "observation_date", "forecast_date", "created_at"]:
             if key in record and isinstance(record[key], pd.Timestamp):
                 record[key] = record[key].isoformat()
 
@@ -387,7 +390,7 @@ class PredictionDatabase:
                 query,
                 self.conn,
                 params=params,
-                parse_dates=["forecast_date", "timestamp"],
+                parse_dates=["observation_date", "forecast_date", "timestamp"],
             )
 
             # Safety: drop any duplicates that made it through

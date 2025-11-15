@@ -109,6 +109,7 @@ TARGET_CONFIG = {
     },
 }
 
+
 # ============================================================================
 # CALENDAR COHORTS - Event-Driven Volatility Dynamics
 # ============================================================================
@@ -281,6 +282,7 @@ PREDICTION_DB_CONFIG = {
     "schema": {
         "prediction_id": "TEXT PRIMARY KEY",
         "timestamp": "DATETIME",
+        "observation_date": "DATE",
         "forecast_date": "DATE",
         "horizon": "INTEGER",
         "calendar_cohort": "TEXT",
@@ -316,10 +318,12 @@ PREDICTION_DB_CONFIG = {
     },
     "indexes": [
         "CREATE INDEX idx_timestamp ON forecasts(timestamp)",
+        "CREATE INDEX idx_observation_date ON forecasts(observation_date)",
         "CREATE INDEX idx_cohort ON forecasts(calendar_cohort)",
         "CREATE INDEX idx_forecast_date ON forecasts(forecast_date)",
     ],
 }
+
 
 # ============================================================================
 # BACKTEST QUERIES
