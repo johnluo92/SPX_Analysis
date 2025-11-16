@@ -1,814 +1,362 @@
-# **PYTHON MINIFICATION INSTRUCTIONS FOR CLAUDE**
+# Python Minification Instructions
 
-## **🎯 YOUR MISSION**
+## Mission
+Minify Python code for 30-60% token reduction while maintaining:
+1. Identical functionality (same inputs → same outputs)
+2. Valid Python syntax (runs without errors)
+3. Safe resource management (no leaks)
 
-You are minifying Python code to reduce token count while maintaining:
-1. **Identical functionality** (same inputs → same outputs)
-2. **Valid Python syntax** (must run without errors)
-3. **Safe resource management** (no resource leaks)
+## Priority Order (NEVER VIOLATE)
+```
+1. SAFETY FIRST    → Resource management, error handling, correctness
+2. SYNTAX SECOND   → Valid Python that executes
+3. COMPRESSION THIRD → Token reduction only after 1 & 2 satisfied
+```
 
-**Success metric**: Original and minified code produce identical results on all test cases, with 30-60% token reduction.
-
-**Failure modes to AVOID**:
-- ❌ IndentationError (wrong spacing)
-- ❌ SyntaxError (removed required spaces/keywords)
-- ❌ Resource leaks (removed context managers)
-- ❌ Changed behavior (over-aggressive optimization)
-
----
-
-## **🔴 CRITICAL SAFETY PRINCIPLES**
-
-### **PRIORITY ORDER (NEVER VIOLATE):**
-
-1. **SAFETY FIRST**: Resource management, error handling, functional correctness
-2. **SYNTAX SECOND**: Valid Python that runs without errors
-3. **COMPRESSION THIRD**: Token reduction only after 1 & 2 are satisfied
-
-### **GOLDEN RULE:**
-**When in doubt, preserve the original structure. A few extra tokens are ALWAYS better than broken code.**
+**Golden Rule:** When uncertain, preserve original. Extra tokens > broken code.
 
 ---
 
-## **🔴 ABSOLUTE REQUIREMENTS**
+## Critical Rules (Breaking = Instant Failure)
 
-### **REQUIREMENT 1: Python REQUIRES Exactly 4 Spaces Per Indentation Level**
+### Rule 1: Indentation = Exactly 4 Spaces Per Level
+**Why:** Python requires consistent 4-space indentation. Wrong spacing = IndentationError.
 
-This is **NON-NEGOTIABLE**. Incorrect indentation causes IndentationError.
-
-**✅ CORRECT (4 spaces per level):**
 ```python
+✅ RIGHT (count spaces: 0, 4, 8, 12)
 def foo():
     if x:
-        for i in list:
+        for i in lst:
             print(i)
-```
 
-**❌ WRONG (will crash):**
-```python
+❌ WRONG (inconsistent spacing = crash)
 def foo():
-  if x:  # WRONG - only 2 spaces
-   for i in list:  # WRONG - misaligned
-    print(i)  # WRONG - inconsistent
+  if x:        # 2 spaces - WRONG
+   for i in lst:  # 3 spaces - WRONG
 ```
 
-**Verification method**: Count spaces before each line. Level 1 = 4 spaces, Level 2 = 8 spaces, Level 3 = 12 spaces, etc.
+### Rule 2: Always Use Context Managers for Resources
+**Why:** Prevents file descriptor exhaustion, data corruption, memory leaks.
 
----
-
-### **REQUIREMENT 2: ALWAYS Use Context Managers for Resources**
-
-**❌ DANGEROUS - File handles WILL leak:**
 ```python
-# NEVER DO THIS
-json.dump(data,open("file.json","w"))
-pickle.dump(obj,open("file.pkl","wb"))
-config=yaml.load(open("config.yml","r"))
+❌ DANGEROUS (file handle leaks)
+json.dump(data,open("f.json","w"))
+
+✅ SAFE (guarantees cleanup)
+with open("f.json","w")as f:json.dump(data,f)
 ```
 
-**✅ CORRECT - Guarantees cleanup:**
+**Apply to:** `open()`, sockets, databases, locks, `gzip.open()`, `zipfile.ZipFile()`, any object with `__enter__`/`__exit__`
+
+### Rule 3: Mandatory Spaces After Keywords
+**Why:** Python syntax requires spaces after control flow keywords. Missing = SyntaxError.
+
 ```python
-# ALWAYS DO THIS
-with open("file.json","w")as f:json.dump(data,f)
-with open("file.pkl","wb")as f:pickle.dump(obj,f)
-with open("config.yml","r")as f:config=yaml.load(f)
+✅ MUST KEEP SPACE AFTER:
+if x    for i    while c    def name    class Name    return val
+import x    from x    as e    lambda x    in lst    is None
+not x    and y    or z    elif x    else:    yield val
+
+✅ CAN REMOVE SPACES AROUND:
+x=1+2    y==3    z!=4    func(a,b,c)    [1,2,3]    {"k":"v"}
 ```
 
-**This applies to ALL resources:**
-- **File I/O**: `open()`, `pathlib.Path().open()`
-- **Network**: `socket.socket()`, `urllib.request.urlopen()`, `requests.get(...,stream=True)`
-- **Databases**: `sqlite3.connect()`, `psycopg2.connect()`, SQLAlchemy sessions
-- **Locks/Threads**: `threading.Lock()`, `multiprocessing.Lock()`
-- **Compression**: `gzip.open()`, `zipfile.ZipFile()`
-- **Any object with `__enter__` and `__exit__` methods**
+### Rule 4: Remove All Type Annotations
+**Why:** Type hints are for static analysis only - they don't execute.
 
-**Why this matters:**
-- Resource exhaustion (OS file descriptor limits ~1024)
-- Data corruption (buffers may not flush)
-- Windows file locking issues
-- Memory leaks
-- Unpredictable garbage collection timing
-
-**Exception - Simple reads only (still use context managers when possible):**
 ```python
-# Acceptable but context manager still preferred
-data=json.load(open("file.json","r"))
-content=open("file.txt","r").read()
+# Before
+def process(data:list[int],config:dict[str,Any])->dict[str,int]:
+    result:dict[str,int]={}
+
+# After
+def process(data,config):
+    result={}
 ```
 
 ---
 
-### **REQUIREMENT 3: Mandatory Spaces (SyntaxError if Missing)**
+## Minification Sequence (Apply in Order)
 
-**✅ MUST KEEP SPACES:**
-- After control flow keywords: `if x`, `for i`, `while cond`, `elif x`, `else:`
-- After definition keywords: `def name`, `class Name`, `return val`, `yield val`
-- Around `in`, `is`, `not`, `and`, `or`: `for x in list`, `if x is None`, `if not cond`, `if x and y`
-- After `import` and `from`: `import x`, `from x import y`
-- After `as` keyword: `except Exception as e`, `with open()as f`
-- After `lambda`: `lambda x:x*2` (space before colon not needed)
-
-**✅ CAN REMOVE SPACES:**
-- Around operators: `x=1+2`, `y==3`, `z!=4`, `a*b`, `c/d`
-- After commas: `func(a,b,c)`, `[1,2,3]`, `(x,y,z)`
-- After colons in dicts: `{"key":"value"}`
-- Around brackets/parens: `list[0]`, `func(x)`, `(a+b)*c`
-
----
-
-## **STEP-BY-STEP MINIFICATION PROCESS**
-
-### **STEP 1: Import Statement Optimization**
-
-**Combine imports from same module:**
+### Step 1: Optimize Imports
 ```python
-# BEFORE
-from module import func1
-from module import func2
-from module import Class1
-
-# AFTER
+# Combine from same module
 from module import func1,func2,Class1
-```
 
-**Use aliases for long names:**
-```python
-# BEFORE
-import numpy
-import pandas
-data=pandas.DataFrame()
-
-# AFTER
+# Use short aliases
 import numpy as np,pandas as pd
-data=pd.DataFrame()
 ```
 
-**⚠️ LIMITATION - Cannot combine different import types:**
+⚠️ Cannot combine `import x` with `from x import y` (syntax restriction)
+
+### Step 2: Remove Non-Executing Content
+Strip all comments, docstrings, inline annotations:
 ```python
-# These MUST stay separate (Python syntax requirement)
-import module
-from module import func
-```
-
----
-
-### **STEP 2: Remove All Comments and Docstrings**
-
-**Remove everything that doesn't execute:**
-```python
-# BEFORE
+# Before
 def process(data):
-    # This processes the data
-    """
-    Process data and return results.
-    
-    Args:
-        data: Input data
-    Returns:
-        Processed results
-    """
-    # Loop through items
-    for item in data:  # Check each one
+    """Process data."""  # Remove docstring
+    # Remove comments
+    for item in data:  # Remove inline comments
         result=transform(item)
-    return result
 
-# AFTER
+# After
 def process(data):
     for item in data:
         result=transform(item)
-    return result
 ```
 
-**Remove ALL:**
-- Single-line comments: `# comment`
-- Multi-line strings used as comments: `"""comment"""`
-- Inline comments: `x=5 # set value`
-- Block comments: `# ==== Section ====`
+### Step 3: Eliminate Blank Lines
+Remove blank lines between functions, classes, methods, inside bodies, after imports.
 
----
-
-### **STEP 3: Eliminate Blank Lines**
-
+### Step 4: Minimize Whitespace
 ```python
-# BEFORE
-def func1():
-    return 1
-
-def func2():
-    return 2
-
-class MyClass:
-    
-    def method(self):
-        pass
-
-# AFTER
-def func1():
-    return 1
-def func2():
-    return 2
-class MyClass:
-    def method(self):
-        pass
-```
-
-**Remove blank lines:**
-- Between function definitions
-- Between class definitions
-- Inside function bodies
-- Between class methods
-- After imports
-
----
-
-### **STEP 4: Minimize Whitespace**
-
-**Around operators and punctuation:**
-```python
-# BEFORE
-x = 1 + 2
-result = func(arg1, arg2, arg3)
-dict_data = {"key": "value", "num": 42}
-my_list = [1, 2, 3, 4]
-
-# AFTER
 x=1+2
 result=func(arg1,arg2,arg3)
-dict_data={"key":"value","num":42}
-my_list=[1,2,3,4]
+data={"key":"value","num":42}
+lst=[1,2,3,4]
 ```
 
-**Remember**: Keep spaces after keywords (see REQUIREMENT 3).
-
----
-
-### **STEP 5: Condense Simple Statements**
-
-**Single-line conditionals:**
+### Step 5: Condense Simple Statements
 ```python
-# BEFORE
-if x > 0:
-    return x
-
-# AFTER
+# Single-line when possible
 if x>0:return x
-```
-
-**Single-line loops (when body is one statement):**
-```python
-# BEFORE
-for item in items:
-    process(item)
-
-# AFTER
 for item in items:process(item)
-```
 
-**⚠️ KEEP multi-line when REQUIRED:**
-```python
-# This CANNOT be single-line (nested structures need proper indentation)
+# Keep multi-line when nested
 for x in items:
     if condition:
         process(x)
 ```
 
----
-
-### **STEP 6: Use Semicolons for Statement Combining**
-
-**Combine multiple simple statements at SAME indentation level:**
+### Step 6: Semicolon Combining (Same Indentation Only)
 ```python
-# BEFORE
-a = 1
-b = 2
-c = 3
-d = a + b + c
-
-# AFTER
+# Same level = can combine
 a=1;b=2;c=3;d=a+b+c
+
+# Different levels = CANNOT combine
+if condition:  # ← This needs newline before x=1
+    x=1;y=2
 ```
 
-**✅ CORRECT usage:**
-```python
-def func():
-    x=1;y=2;z=3
-    return x+y+z
-```
-
-**❌ WRONG - different indentation levels cannot be combined:**
-```python
-# BAD - statements after colon need newline
-if condition:x=1;y=2
-```
-
----
-
-### **STEP 7: Apply Code Optimization Techniques**
+### Step 7: Apply Code Optimizations
 
 **Ternary operators:**
 ```python
-# BEFORE
-if condition:
-    result = value1
-else:
-    result = value2
-
-# AFTER
 result=value1 if condition else value2
+grade='A'if score>=90 else('B'if score>=80 else'C')
 ```
 
-**Use `or` for default values:**
+**Default values with `or`:**
 ```python
-# BEFORE
-if arg is None:
-    value = default_value
-else:
-    value = arg
-
-# AFTER
 value=arg or default_value
 ```
 
 **Walrus operator (Python 3.8+):**
 ```python
-# BEFORE
-match = re.search(pattern, text)
-if match:
-    process(match)
-
-# AFTER
 if(match:=re.search(pattern,text)):process(match)
 ```
 
-**List comprehensions instead of loops:**
+**List comprehensions:**
 ```python
-# BEFORE
-results = []
+# Before
+results=[]
 for x in items:
     results.append(transform(x))
 
-# AFTER
+# After
 results=[transform(x)for x in items]
-```
-
-**⚠️ Use comprehensions for side effects CAUTIOUSLY:**
-```python
-# BEFORE
-for item in items:
-    process(item)
-
-# AFTER (only when return value is unused AND no other effects)
-[process(item)for item in items]
-
-# BETTER - Keep as loop if there are print statements or state changes
-for item in items:process(item)
 ```
 
 **Chain operations:**
 ```python
-# BEFORE
-temp = get_data()
-processed = transform(temp)
-return processed
-
-# AFTER
-return transform(get_data())
+return transform(get_data())  # Instead of temp variable
 ```
 
 **Tuple unpacking:**
 ```python
-# BEFORE
-a = 1
-b = 2
-
-# AFTER
-a,b=1,2
-```
-
-**Nested ternaries for multi-branch:**
-```python
-# BEFORE
-if score >= 90:
-    grade = 'A'
-elif score >= 80:
-    grade = 'B'
-elif score >= 70:
-    grade = 'C'
-else:
-    grade = 'F'
-
-# AFTER
-grade='A'if score>=90 else('B'if score>=80 else('C'if score>=70 else'F'))
+a,b=1,2  # Instead of separate lines
 ```
 
 ---
 
-## **🔴 CRITICAL SAFETY RULES**
+## Never Do These (Code Breaking)
 
-### **RULE 1: NEVER Use break/continue in List Comprehensions**
-
+❌ **Use break/continue in comprehensions** (SyntaxError)
 ```python
-# ❌ WRONG - SyntaxError
-result=[x for x in items if(check(x),break)[0]]
+# WRONG - statements can't be in expressions
+[x for x in items if(check(x),break)[0]]
 
-# ✅ CORRECT - Use traditional loop
+# RIGHT - use traditional loop
 for x in items:
     if condition:result=x;break
 ```
 
-**Why**: `break` and `continue` are statements, not expressions. They cannot exist inside comprehensions.
-
----
-
-### **RULE 2: NEVER Split Dictionary/List Literals Mid-Element**
-
+❌ **Split dict/list literals mid-element**
 ```python
-# ❌ WRONG - SyntaxError
-data={
-"key1":"value1","key2":
-"value2"}
+# WRONG
+data={"k1":"v1","k2":
+"v2"}
 
-# ✅ CORRECT - Complete elements on same line
-data={"key1":"value1",
-"key2":"value2"}
-
-# ✅ BETTER - Single line if possible
-data={"key1":"value1","key2":"value2"}
+# RIGHT
+data={"k1":"v1","k2":"v2"}
 ```
 
----
-
-### **RULE 3: Preserve Try/Except Blocks**
-
+❌ **Remove context managers from I/O**
 ```python
-# ❌ WRONG - Don't inline complex error handling
-try:x=risky();y=x.process();return y
-except Exception as e:log(e);return None
+# WRONG - resource leak guaranteed
+config=json.load(open("f.json"))
 
-# ✅ CORRECT - Keep error handling clear
-try:
-    x=risky()
-    y=x.process()
-    return y
-except Exception as e:
-    log(e)
-    return None
+# RIGHT - proper cleanup
+with open("f.json")as f:config=json.load(f)
 ```
 
-**Exception**: Simple try/except can be condensed if very short:
-```python
-# Acceptable
-try:value=int(input())
-except:value=0
-```
+❌ **Use wrong indentation** (not 4-space multiples)
+
+❌ **Remove mandatory keyword spaces** (see Rule 3)
 
 ---
 
-### **RULE 4: Maintain Indentation Hierarchy**
+## Always Preserve
 
-```python
-# ✅ CORRECT - Each level exactly 4 spaces deeper
-class MyClass:
-    def method(self):
-        if condition:
-            for item in items:
-                process(item)
-
-# ❌ WRONG - Inconsistent spacing
-class MyClass:
-   def method(self):  # 3 spaces - WRONG
-     if condition:  # 5 spaces - WRONG
-        for item in items:  # 8 spaces (should be 12) - WRONG
-```
+✅ Try/except block structure
+✅ Error handling logic
+✅ All functional behavior
+✅ Resource cleanup patterns (with statements)
+✅ Class/function signatures (minus type hints)
+✅ Print statements and output
 
 ---
 
-## **EDGE CASES & SPECIAL SITUATIONS**
+## Decision Trees
 
-### **F-strings and String Formatting:**
-```python
-# These are fine to condense
-f"{name}:{value}"  # no spaces needed
-f"{x+y}"  # operators inside f-strings don't need spaces
-```
+**Convert loop to comprehension?**
+- ✅ Only builds list/dict/set
+- ✅ No side effects (print, global state)
+- ✅ No break/continue
+- ✅ Logic not too complex
+→ Otherwise keep as loop
 
-### **Lambda Functions:**
-```python
-# Correct
-func=lambda x:x*2
-sorted(items,key=lambda x:x[1])
-```
+**Use context manager?**
+- ✅ Involves `open()`, network, database
+- ✅ Object has `__enter__`/`__exit__`
+→ MANDATORY for resources
 
-### **Decorators:**
-```python
-# Keep decorators on separate lines
-@decorator
-def func():
-    pass
+**Combine with semicolons?**
+- ✅ Same indentation level
+- ✅ All simple statements
+- ⚠️ Consider readability if >3 statements
 
-# Multiple decorators
-@decorator1
-@decorator2
-def func():
-    pass
-```
-
-### **Nested Context Managers:**
-```python
-# Keep them nested with proper indentation
-with open("file1.txt")as f1:
-    with open("file2.txt")as f2:
-        data=process(f1,f2)
-
-# Or use comma syntax (Python 3.1+)
-with open("file1.txt")as f1,open("file2.txt")as f2:
-    data=process(f1,f2)
-```
-
-### **Long Lines After Minification:**
-```python
-# Python doesn't have a line length limit
-# Keep it on one line unless it creates a syntax error
-very_long_function_call=some_function(arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9,arg10)
-```
+**Inline if/else?**
+- ✅ Simple assignment or return
+- ✅ Clear logic flow
+→ NO if multiple statements per branch
 
 ---
 
-## **COMMON QUESTIONS & DECISION TREE**
+## Validation Checklist (Before Output)
 
-### **Q: Can I convert this loop to a comprehension?**
-**Decision tree:**
-1. Does the loop only build a list/dict/set? → YES, use comprehension
-2. Does it have side effects (print, modify global, file I/O)? → NO, keep as loop
-3. Does it have break/continue? → NO, keep as loop
-4. Is the logic complex/nested? → NO, keep as loop for clarity
+- [ ] All indentation is 4-space multiples
+- [ ] All `open()` calls in `with` statements
+- [ ] Required spaces after keywords present
+- [ ] No break/continue in comprehensions
+- [ ] Try/except blocks preserved
+- [ ] Would pass `python -m py_compile`
+- [ ] Identical functionality to original
 
-### **Q: Should I use a context manager here?**
-**Decision tree:**
-1. Does it involve `open()`? → YES, always use `with`
-2. Does it involve network/database connection? → YES, always use `with`
-3. Does the object have `__enter__` and `__exit__`? → YES, use `with`
-4. Is it a simple `.read()` that fits in memory? → Prefer `with`, acceptable without
-
-### **Q: Can I combine these statements with semicolons?**
-**Decision tree:**
-1. Are they at the same indentation level? → Required for YES
-2. Are they all simple assignments/calls? → Required for YES
-3. Would combining make debugging harder? → Consider keeping separate
-4. Are there more than 3 statements? → Consider keeping separate for readability
-
-### **Q: Should I inline this if/else?**
-**Decision tree:**
-1. Is it a simple assignment? → YES, use ternary
-2. Does it have elif branches? → Use nested ternary (but limit to 3 levels max)
-3. Does it have multiple statements in each branch? → NO, keep as-is
-4. Would the ternary be hard to read? → NO, keep as-is
+**If any check fails:** DO NOT output. Revise until all pass.
 
 ---
 
-## **WHAT TO PRESERVE (DO NOT MINIFY)**
+## Output Format
 
-### **✅ MUST Keep:**
-1. **Exact 4-space indentation** at every level
-2. **All functional behavior** - same inputs → same outputs
-3. **All class/function signatures** - same arguments, same return types
-4. **All error handling** - try/except blocks must work identically
-5. **All print/output statements** - exact same output text
-6. **Context managers** - `with` statements for resources
-7. **All necessary imports** (though can condense format)
-8. **Syntactically required structures** - colons, keywords
-9. **Space after keywords** - as specified in REQUIREMENT 3
-
-### **✅ Safe to Remove/Condense:**
-1. Comments (remove all)
-2. Docstrings (remove all)
-3. Blank lines (remove all)
-4. Whitespace around operators
-5. Whitespace after commas/colons in data structures
-6. Multiple simple statements → semicolon separation
-7. Simple if/for statements → single line
+1. Present minified code in code block
+2. Summary: "Reduced from X to Y lines (Z% reduction)"
+3. Note safety-critical preservations (e.g., "All context managers maintained")
+4. Only explain changes if asked
 
 ---
 
-## **OUTPUT FORMAT FOR CLAUDE**
+## Complete Example
 
-When minifying code, follow this structure:
-
-1. **Acknowledge the task**: "I'll minify this Python code while preserving functionality and safety."
-
-2. **Present the minified code** in a code block with proper syntax highlighting
-
-3. **Provide a brief summary**: 
-   - "Reduced from X to Y tokens (Z% reduction)"
-   - "Key changes: Removed N comment lines, condensed M imports, applied list comprehensions"
-   - Note any safety-critical preservations: "Maintained all context managers for file I/O"
-
-4. **DO NOT explain every single change** unless specifically asked
-
-5. **If you cannot safely minify something**, explain why:
-   - "This section uses complex error handling that cannot be safely condensed"
-   - "The nested loops require proper indentation and cannot be inlined"
-
----
-
-## **MANDATORY VALIDATION BEFORE DELIVERY**
-
-Before presenting minified code, mentally verify:
-
-### **1. Syntax Check:**
-- Would `python -m py_compile` succeed?
-- Are all indentations exactly 4-space multiples?
-- Are all required spaces after keywords present?
-
-### **2. Resource Management Audit:**
-- Are all `open()` calls inside `with` statements?
-- Are all database connections properly managed?
-- Are all network resources properly closed?
-
-### **3. Functional Equivalence:**
-- Does the minified code have the same logic flow?
-- Are all error paths preserved?
-- Are all return values identical?
-
-### **4. No Forbidden Constructs:**
-- No `break`/`continue` in comprehensions?
-- No mid-element splits in literals?
-- No removed error handling?
-
-**If ANY check fails, DO NOT deliver. Revise and recheck.**
-
----
-
-## **MINIFICATION PRIORITY ORDER**
-
-Apply in this sequence for maximum token reduction:
-
-1. **Remove all comments and docstrings** → 10-30% reduction
-2. **Remove all blank lines** → 5-15% reduction
-3. **Condense imports** → 2-5% reduction
-4. **Minimize whitespace** (operators, commas) → 5-10% reduction
-5. **Single-line simple statements** → 3-8% reduction
-6. **Apply ternary operators** → 2-5% reduction
-7. **Use semicolons for statement combining** → 3-7% reduction
-8. **List comprehensions instead of loops** → 1-5% reduction
-9. **Chain operations** → 1-3% reduction
-
-**Expected total reduction: 30-60% fewer tokens**
-
----
-
-## **COMPLETE EXAMPLE**
-
-### **BEFORE (Verbose - 89 lines):**
+**Before (42 lines):**
 ```python
 import json
-import pickle
 from pathlib import Path
 
-# Configuration loader
 def load_config(config_path):
-    """
-    Load configuration from JSON file.
-    
-    Args:
-        config_path: Path to config file
-    Returns:
-        Dictionary of configuration
-    """
-    # Open and parse the file
+    """Load configuration from JSON file."""
     with open(config_path, 'r') as config_file:
         config = json.load(config_file)
-    
-    # Apply defaults
+
     if 'timeout' not in config:
         config['timeout'] = 30
-    
-    if 'retries' not in config:
-        config['retries'] = 3
-    
+
     return config
 
-# Data processor class
 class DataProcessor:
-    """Process data items with configuration."""
-    
+    """Process data items."""
+
     def __init__(self, config):
-        """
-        Initialize processor.
-        
-        Args:
-            config: Configuration dictionary
-        """
-        # Store configuration
         self.config = config
         self.results = []
-        self.error_count = 0
-    
+
     def process(self, items):
-        """
-        Process list of items.
-        
-        Args:
-            items: List of items to process
-        Returns:
-            List of processed results
-        """
-        # Process each item
+        """Process list of items."""
         for item in items:
-            # Check validity
             if item is not None:
                 try:
-                    # Transform item
                     result = self.transform(item)
-                    # Store result
                     self.results.append(result)
                 except Exception as e:
-                    # Log error
-                    print(f"Error processing {item}: {e}")
-                    self.error_count += 1
-        
+                    print(f"Error: {e}")
         return self.results
-    
+
     def transform(self, item):
-        """
-        Transform a single item.
-        
-        Args:
-            item: Item to transform
-        Returns:
-            Transformed item
-        """
-        # Apply transformation based on type
+        """Transform single item."""
         if isinstance(item, int):
             return item * 2
         elif isinstance(item, str):
             return item.upper()
         else:
             return str(item)
-    
+
     def save_results(self, filepath):
         """Save results to file."""
         with open(filepath, 'w') as f:
             json.dump(self.results, f)
 ```
 
-### **AFTER (Minified - 23 lines):**
+**After (16 lines, 62% reduction):**
 ```python
-import json,pickle
+import json
 from pathlib import Path
 def load_config(config_path):
     with open(config_path,'r')as f:config=json.load(f)
     if 'timeout'not in config:config['timeout']=30
-    if 'retries'not in config:config['retries']=3
     return config
 class DataProcessor:
     def __init__(self,config):
-        self.config=config;self.results=[];self.error_count=0
+        self.config=config;self.results=[]
     def process(self,items):
         for item in items:
             if item is not None:
-                try:
-                    result=self.transform(item)
-                    self.results.append(result)
-                except Exception as e:
-                    print(f"Error processing {item}: {e}")
-                    self.error_count+=1
+                try:result=self.transform(item);self.results.append(result)
+                except Exception as e:print(f"Error: {e}")
         return self.results
-    def transform(self,item):
-        return item*2 if isinstance(item,int)else(item.upper()if isinstance(item,str)else str(item))
+    def transform(self,item):return item*2 if isinstance(item,int)else(item.upper()if isinstance(item,str)else str(item))
     def save_results(self,filepath):
         with open(filepath,'w')as f:json.dump(self.results,f)
 ```
 
-**Result**: 
-- 74% line reduction (89 → 23 lines)
-- ~60% token reduction
-- ✅ Identical functionality
-- ✅ All context managers preserved
-- ✅ All error handling preserved
-- ✅ Valid Python syntax with correct 4-space indentation
+✅ Identical functionality
+✅ All context managers preserved
+✅ Valid Python syntax with correct 4-space indentation
+✅ All error handling maintained
 
 ---
 
-## **FINAL CHECKLIST FOR CLAUDE**
+## Final Reminder
 
-Before delivering ANY minified code, confirm:
-
-- [ ] All indentation is exactly 4-space multiples
-- [ ] All `open()` calls are in `with` statements
-- [ ] All required spaces after keywords are present
-- [ ] No `break`/`continue` in comprehensions
-- [ ] All try/except blocks are preserved
-- [ ] Code would pass `python -m py_compile`
-- [ ] Functional behavior is identical to original
-- [ ] No syntax errors would occur
-
-**If you cannot check all boxes, DO NOT deliver the code. Explain what prevents safe minification.**
-
----
-
-## **REMEMBER:**
-
-**Better to preserve 10 extra tokens than to break 1 line of code.**
+**Better to preserve 10 extra tokens than break 1 line of code.**
 
 Safety and functionality ALWAYS trump compression.

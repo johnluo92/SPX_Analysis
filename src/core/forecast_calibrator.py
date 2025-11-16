@@ -1,150 +1,59 @@
 import json,logging,pickle
 from datetime import datetime
 from pathlib import Path
-from typing import Dict,List,Optional
-import numpy as np
-import pandas as pd
+import numpy as np,pandas as pd
 from scipy.interpolate import interp1d
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import HuberRegressor,LinearRegression
 from sklearn.metrics import mean_absolute_error,mean_squared_error
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
-
-
 class QuantileCalibrator:
-    """
-    Post-hoc calibration for quantile predictions.
-
-    METHODOLOGY:
-    1. On validation set, compute empirical coverage for each prediction
-    2. Build isotonic regression mapping: predicted_value -> empirical_quantile
-    3. At test time, adjust predictions to target quantiles via inverse mapping
-
-    Example:
-        - Model predicts q10=5%, but empirically 25% of actuals are ≤ 5%
-        - Calibrator learns: "when model says 5%, it's actually the 25th percentile"
-        - At test time: to get true q10, find value where model's empirical coverage is 10%
-    """
-
-    def __init__(self, quantiles=[0.10, 0.25, 0.50, 0.75, 0.90]):
-        self.quantiles = quantiles
-        self.calibrators = {}  # One per quantile
-        self.fitted = False
-
-    def fit(self, predictions: Dict[str, np.ndarray], actuals: np.ndarray):
-        """
-        Fit calibration using validation set.
-
-        Args:
-            predictions: {'q10': array, 'q25': array, ...} of RAW predictions
-            actuals: array of actual outcomes
-        """
-        if len(actuals) < 30:
-            logger.warning(f"⚠️  Only {len(actuals)} samples for calibration - may be unreliable")
-
+    def __init__(self,quantiles=[0.10,0.25,0.50,0.75,0.90]):
+        self.quantiles=quantiles;self.calibrators={};self.fitted=False
+    def fit(self,predictions,actuals):
+        if len(actuals)<30:logger.warning(f"⚠️  Only {len(actuals)} samples for calibration - may be unreliable")
         logger.info(f"   Fitting quantile calibrator on {len(actuals)} samples...")
-
-        for q_name, q_preds in predictions.items():
-            if len(q_preds) != len(actuals):
-                raise ValueError(f"{q_name}: length mismatch ({len(q_preds)} vs {len(actuals)})")
-
-            # Calculate empirical quantile that each prediction actually represents
-            empirical_quantiles = []
+        for q_name,q_preds in predictions.items():
+            if len(q_preds)!=len(actuals):raise ValueError(f"{q_name}: length mismatch ({len(q_preds)} vs {len(actuals)})")
+            empirical_quantiles=[]
             for pred in q_preds:
-                # What fraction of actuals are ≤ this prediction?
-                empirical_q = (actuals <= pred).mean()
+                empirical_q=(actuals<=pred).mean()
                 empirical_quantiles.append(empirical_q)
-
-            empirical_quantiles = np.array(empirical_quantiles)
-
-            # Build isotonic regression: predicted_value -> empirical_quantile
-            # Must be monotonic: higher predicted values = higher empirical quantiles
-            calibrator = IsotonicRegression(out_of_bounds='clip')
-            calibrator.fit(q_preds, empirical_quantiles)
-
-            self.calibrators[q_name] = calibrator
-
-            # Diagnostic: check calibration
-            target_quantile = float(q_name[1:]) / 100
-            actual_coverage = (actuals <= q_preds).mean()
+            empirical_quantiles=np.array(empirical_quantiles)
+            calibrator=IsotonicRegression(out_of_bounds='clip')
+            calibrator.fit(q_preds,empirical_quantiles)
+            self.calibrators[q_name]=calibrator
+            target_quantile=float(q_name[1:])/100
+            actual_coverage=(actuals<=q_preds).mean()
             logger.info(f"      {q_name}: {actual_coverage:.1%} coverage (target {target_quantile:.1%})")
-
-        self.fitted = True
+        self.fitted=True
         logger.info("   ✅ Quantile calibrator fitted")
-
-    def transform(self, predictions: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        """
-        Apply calibration to get properly calibrated quantiles.
-
-        Args:
-            predictions: {'q10': value, 'q25': value, ...}
-
-        Returns:
-            Calibrated predictions with same structure
-        """
-        if not self.fitted:
-            logger.warning("⚠️  Calibrator not fitted, returning raw predictions")
-            return predictions
-
-        calibrated = {}
-
-        for q_name, q_value in predictions.items():
-            if q_name not in self.calibrators:
-                calibrated[q_name] = q_value
-                continue
-
-            calibrator = self.calibrators[q_name]
-            target_quantile = float(q_name[1:]) / 100
-
-            # INVERSE PROBLEM: Find value where empirical coverage = target
-            # Use bisection search over calibrator's range
-
-            # Get calibrator's input range (predicted values)
-            try:
-                pred_min = calibrator.X_min_
-                pred_max = calibrator.X_max_
-            except AttributeError:
-                # Fallback for older sklearn
-                pred_min = np.min(calibrator.X_thresholds_)
-                pred_max = np.max(calibrator.X_thresholds_)
-
-            # Binary search for value that gives target coverage
-            def coverage_at_value(val):
-                return calibrator.predict([val])[0]
-
-            # Search bounds with safety margin
-            search_min = pred_min - abs(pred_min) * 0.2
-            search_max = pred_max + abs(pred_max) * 0.2
-
-            # Bisection search
-            tol = 0.001  # Coverage tolerance
-            max_iter = 50
-
+    def transform(self,predictions):
+        if not self.fitted:logger.warning("⚠️  Calibrator not fitted, returning raw predictions");return predictions
+        calibrated={}
+        for q_name,q_value in predictions.items():
+            if q_name not in self.calibrators:calibrated[q_name]=q_value;continue
+            calibrator=self.calibrators[q_name]
+            target_quantile=float(q_name[1:])/100
+            try:pred_min=calibrator.X_min_;pred_max=calibrator.X_max_
+            except AttributeError:pred_min=np.min(calibrator.X_thresholds_);pred_max=np.max(calibrator.X_thresholds_)
+            def coverage_at_value(val):return calibrator.predict([val])[0]
+            search_min=pred_min-abs(pred_min)*0.2;search_max=pred_max+abs(pred_max)*0.2;tol=0.001;max_iter=50
             for _ in range(max_iter):
-                mid = (search_min + search_max) / 2
-                mid_coverage = coverage_at_value(mid)
-
-                if abs(mid_coverage - target_quantile) < tol:
-                    break
-
-                if mid_coverage < target_quantile:
-                    search_min = mid
-                else:
-                    search_max = mid
-
-            calibrated_value = mid
-            calibrated[q_name] = calibrated_value
-
+                mid=(search_min+search_max)/2
+                mid_coverage=coverage_at_value(mid)
+                if abs(mid_coverage-target_quantile)<tol:break
+                if mid_coverage<target_quantile:search_min=mid
+                else:search_max=mid
+            calibrated_value=mid
+            calibrated[q_name]=calibrated_value
         return calibrated
-
-
-
 class ForecastCalibrator:
-    def __init__(self,min_samples:int=50,use_robust:bool=True,cohort_specific:bool=True,regime_specific:bool=True):
+    def __init__(self,min_samples=50,use_robust=True,cohort_specific=True,regime_specific=True):
         self.min_samples=min_samples;self.use_robust=use_robust;self.cohort_specific=cohort_specific;self.regime_specific=regime_specific;self.global_model=None;self.cohort_models={};self.regime_models={};self.calibration_stats={};self.fitted=False
         logger.info(f"ForecastCalibrator V3 initialized:\n  Min samples: {min_samples}\n  Robust regression: {use_robust}\n  Cohort-specific: {cohort_specific}\n  Regime-specific: {regime_specific}")
-    def fit_from_database(self,database,start_date:Optional[str]=None,end_date:Optional[str]=None)->bool:
+    def fit_from_database(self,database,start_date=None,end_date=None):
         logger.info("\n"+"="*80+"\nFORECAST CALIBRATION\n"+"="*80)
         logger.info("\n[1/5] Loading historical predictions...")
         df=database.get_predictions(with_actuals=True)
@@ -191,49 +100,16 @@ class ForecastCalibrator:
         self.fitted=True
         logger.info("\n✅ Calibration complete\n"+"="*80+"\n")
         return True
-
-    def calibrate(
-        self,
-        raw_forecast: float,
-        current_vix: float,
-        cohort: Optional[str] = None,
-    ) -> Dict:
-        """
-        Apply calibration - TEMPORARILY DISABLED pending retargeting.
-
-        The bias correction was treating symptoms of the target mismatch problem.
-        Once models are retrained with aligned targets (VIX % change), we'll
-        reassess whether calibration provides meaningful improvement.
-
-        Args:
-            raw_forecast: Raw median forecast from model (%)
-            current_vix: Current VIX level
-            cohort: Calendar cohort (optional)
-
-        Returns:
-            Dict with raw forecast (no adjustment applied)
-        """
-
-        if not self.fitted:
-            logger.debug("⚠️  Calibrator not fitted - using raw forecasts")
-        else:
-            logger.debug("⚠️  Calibration temporarily disabled - using raw forecasts until models retrained")
-
-        return {
-            "calibrated_forecast": raw_forecast,
-            "adjustment": 0.0,
-            "method": "disabled_pending_retrain",
-            "raw_forecast": raw_forecast,
-            "note": "Calibration disabled - target mismatch fix in progress",
-        }
-
-
-    def get_diagnostics(self)->Dict:
+    def calibrate(self,raw_forecast,current_vix,cohort=None):
+        if not self.fitted:logger.debug("⚠️  Calibrator not fitted - using raw forecasts")
+        else:logger.debug("⚠️  Calibration temporarily disabled - using raw forecasts until models retrained")
+        return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"method":"disabled_pending_retrain","raw_forecast":raw_forecast,"note":"Calibration disabled - target mismatch fix in progress"}
+    def get_diagnostics(self):
         if not self.fitted:return{"error":"Calibrator not fitted"}
         diagnostics={"fitted":self.fitted,"timestamp":datetime.now().isoformat(),"config":{"min_samples":self.min_samples,"use_robust":self.use_robust,"cohort_specific":self.cohort_specific,"regime_specific":self.regime_specific},"statistics":self.calibration_stats,"models":{"global":self.global_model is not None,"cohorts":list(self.cohort_models.keys()),"regimes":list(self.regime_models.keys())}}
         if"global"in self.calibration_stats:global_stats=self.calibration_stats["global"];diagnostics["overall_improvement"]=global_stats.get("improvement_pct",0);diagnostics["training_samples"]=global_stats.get("samples",0);diagnostics["bias_correction"]=global_stats.get("mean_error",0)
         return diagnostics
-    def save_calibrator(self,output_dir:str="models"):
+    def save_calibrator(self,output_dir="models"):
         if not self.fitted:logger.error("❌ Cannot save unfitted calibrator");return
         output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True);calibrator_file=output_path/"forecast_calibrator.pkl"
         calibrator_data={"global_model":self.global_model,"cohort_models":self.cohort_models,"regime_models":self.regime_models,"config":{"min_samples":self.min_samples,"use_robust":self.use_robust,"cohort_specific":self.cohort_specific,"regime_specific":self.regime_specific},"fitted":self.fitted}
@@ -242,7 +118,7 @@ class ForecastCalibrator:
         diagnostics_file=output_path/"calibrator_diagnostics.json";diagnostics=self.get_diagnostics()
         with open(diagnostics_file,"w")as f:json.dump(diagnostics,f,indent=2,default=str)
         logger.info(f"✅ Saved diagnostics: {diagnostics_file}")
-    def load_calibrator(self,input_dir:str="models"):
+    def load_calibrator(self,input_dir="models"):
         calibrator_file=Path(input_dir)/"forecast_calibrator.pkl"
         if not calibrator_file.exists():logger.error(f"❌ Calibrator file not found: {calibrator_file}");return False
         try:
@@ -252,7 +128,7 @@ class ForecastCalibrator:
             return True
         except Exception as e:logger.error(f"❌ Failed to load calibrator: {e}");return False
     @classmethod
-    def load(cls,input_dir:str="models")->Optional["ForecastCalibrator"]:
+    def load(cls,input_dir="models"):
         calibrator=cls();return calibrator if calibrator.load_calibrator(input_dir)else None
 def test_calibrator():
     print("\n"+"="*80+"\nTESTING FORECAST CALIBRATOR V3\n"+"="*80)
@@ -266,5 +142,5 @@ def test_calibrator():
         result=calibrator.calibrate(raw_forecast=2.5,current_vix=18.0,cohort="mid_month");print(f"\n✅ Test calibration:");print(f"   Raw: {result['raw_forecast']:+.2f}%");print(f"   Calibrated: {result['calibrated_forecast']:+.2f}%");print(f"   Adjustment: {result['adjustment']:+.2f}%");print(f"   Method: {result['method']}")
         calibrator.save_calibrator(output_dir="/home/claude/test_output");print(f"\n✅ Calibrator saved")
     else:print("\n❌ Calibrator fitting failed")
-    print("\n"+"="*80+"\nTEST COMPLETE\n"+"="*80)
+    print("\n"+"="*80+"\nTEST COMPLETE\n"+"="*80")
 if __name__=="__main__":test_calibrator()

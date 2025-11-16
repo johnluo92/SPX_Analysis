@@ -1,7 +1,6 @@
 import argparse,json,logging,sys
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple
 import pandas as pd
 from config import TARGET_CONFIG,TRAINING_END_DATE,TRAINING_YEARS,XGBOOST_CONFIG
 from core.data_fetcher import UnifiedDataFetcher
@@ -42,162 +41,93 @@ def prepare_training_data():
     else:logger.info(f"✅ Temporal hygiene validated: All data ≤ {TRAINING_END_DATE}")
     logger.info("="*80+"\n")
     return complete_df
-
-def validate_configuration() -> Tuple[bool, str]:
-    """
-    Validate configuration for VIX percentage change target system.
-
-    Returns:
-        (is_valid, error_message)
-    """
-    errors = []
-
-    logger.info("")
-    logger.info("=" * 80)
-    logger.info("CONFIGURATION VALIDATION")
-    logger.info("=" * 80)
-    logger.info("")
-
-    # [1/4] Target configuration
+def validate_configuration():
+    errors=[]
+    logger.info("");logger.info("="*80);logger.info("CONFIGURATION VALIDATION");logger.info("="*80);logger.info("")
     logger.info("[1/4] Validating target configuration...")
-
-    # Check target type
-    target_type = TARGET_CONFIG.get("target_type")
-    if target_type != "vix_pct_change":  # ✅ CHANGED from "log_realized_volatility"
-        errors.append(
-            f"  ❌ Target type incorrect: {target_type} "
-            "(expected 'vix_pct_change')"
-        )
+    target_type=TARGET_CONFIG.get("target_type")
+    if target_type!="vix_pct_change":
+        errors.append(f"  ❌ Target type incorrect: {target_type} (expected 'vix_pct_change')")
     else:
         logger.info("  ✅ Target type correct: vix_pct_change")
-
-    # Check movement bounds (not volatility bounds)
-    if "movement_bounds" in TARGET_CONFIG:  # ✅ CHANGED from "volatility_bounds"
-        bounds = TARGET_CONFIG["movement_bounds"]
-        floor = bounds.get("floor", 0)
-        ceiling = bounds.get("ceiling", 0)
+    if "movement_bounds"in TARGET_CONFIG:
+        bounds=TARGET_CONFIG["movement_bounds"]
+        floor=bounds.get("floor",0);ceiling=bounds.get("ceiling",0)
         logger.info(f"  ✅ Movement bounds: [{floor}, {ceiling}]")
     else:
         errors.append("  ❌ Movement bounds missing")
-
     logger.info("")
-
-    # [2/4] Model objectives - check for removed models
     logger.info("[2/4] Validating model objectives...")
-
-    objectives = XGBOOST_CONFIG.get("objectives", {})
-
-    # These should be REMOVED in V3
-    if "point" in objectives:
+    objectives=XGBOOST_CONFIG.get("objectives",{})
+    if "point"in objectives:
         errors.append("  ❌ Point estimate still present (should be removed)")
     else:
         logger.info("  ✅ Point estimate removed")
-
-    if "uncertainty" in objectives:
+    if "uncertainty"in objectives:
         errors.append("  ❌ Uncertainty estimate still present (should be removed)")
     else:
         logger.info("  ✅ Uncertainty estimate removed")
-
     logger.info("")
-
-    # [3/4] Quantile configuration - check for individual quantile models
     logger.info("[3/4] Validating quantile configuration...")
-
-    expected_quantiles = [
-        "quantile_10",
-        "quantile_25",
-        "quantile_50",
-        "quantile_75",
-        "quantile_90",
-    ]
-
-    missing_quantiles = []
+    expected_quantiles=["quantile_10","quantile_25","quantile_50","quantile_75","quantile_90"]
+    missing_quantiles=[]
     for q_name in expected_quantiles:
         if q_name not in objectives:
             missing_quantiles.append(q_name)
-
     if missing_quantiles:
-        errors.append(
-            f"  ❌ Missing quantile objectives: {', '.join(missing_quantiles)}"
-        )
+        errors.append(f"  ❌ Missing quantile objectives: {', '.join(missing_quantiles)}")
     else:
         logger.info("  ✅ All quantile objectives present")
-
-    # Validate each quantile has correct objective
     for q_name in expected_quantiles:
         if q_name in objectives:
-            q_config = objectives[q_name]
-            if q_config.get("objective") != "reg:quantileerror":
-                errors.append(
-                    f"  ❌ {q_name} has wrong objective: {q_config.get('objective')}"
-                )
-
-            # Extract expected quantile_alpha from name (e.g., "quantile_50" -> 0.50)
-            expected_alpha = int(q_name.split("_")[1]) / 100.0
-            actual_alpha = q_config.get("quantile_alpha")
-
-            if actual_alpha != expected_alpha:
-                errors.append(
-                    f"  ❌ {q_name} has wrong quantile_alpha: "
-                    f"{actual_alpha} (expected {expected_alpha})"
-                )
-
-    if not missing_quantiles and all(
-        objectives.get(q, {}).get("objective") == "reg:quantileerror"
-        for q in expected_quantiles
-    ):
+            q_config=objectives[q_name]
+            if q_config.get("objective")!="reg:quantileerror":
+                errors.append(f"  ❌ {q_name} has wrong objective: {q_config.get('objective')}")
+            expected_alpha=int(q_name.split("_")[1])/100.0
+            actual_alpha=q_config.get("quantile_alpha")
+            if actual_alpha!=expected_alpha:
+                errors.append(f"  ❌ {q_name} has wrong quantile_alpha: {actual_alpha} (expected {expected_alpha})")
+    if not missing_quantiles and all(objectives.get(q,{}).get("objective")=="reg:quantileerror"for q in expected_quantiles):
         logger.info("  ✅ Quantile objectives correctly configured")
-
     logger.info("")
-
-    # [4/4] Expected model count
     logger.info("[4/4] Validating expected model count...")
     logger.info("  Expected models per cohort: 7")
     logger.info("    - 5 quantile regressors (q10, q25, q50, q75, q90)")
     logger.info("    - 1 direction classifier")
     logger.info("    - 1 confidence scorer")
-
-    # Verify direction and confidence are present
-    if "direction" not in objectives:
+    if "direction"not in objectives:
         errors.append("  ❌ Direction classifier missing")
     else:
-        if objectives["direction"].get("objective") != "binary:logistic":
+        if objectives["direction"].get("objective")!="binary:logistic":
             errors.append("  ❌ Direction classifier has wrong objective")
         else:
             logger.info("  ✅ Direction classifier configured")
-
-    if "confidence" not in objectives:
+    if "confidence"not in objectives:
         errors.append("  ❌ Confidence model missing")
     else:
-        if objectives["confidence"].get("objective") != "reg:squarederror":
+        if objectives["confidence"].get("objective")!="reg:squarederror":
             errors.append("  ❌ Confidence model has wrong objective")
         else:
             logger.info("  ✅ Confidence model configured")
-
     logger.info("")
-
-    # Summary
     if errors:
         logger.error("❌ Configuration validation FAILED")
         logger.error("   Please fix the following issues:")
-        for error in errors:
-            logger.error(error)
-        logger.info("=" * 80)
-        return False, "\n".join(errors)
+        for error in errors:logger.error(error)
+        logger.info("="*80)
+        return False,"\n".join(errors)
     else:
         logger.info("✅ Configuration validation PASSED")
         logger.info("   All checks successful - ready to train")
-        logger.info("=" * 80)
-        return True, ""
-
-
-def save_training_report(training_results:dict,output_dir:str="models"):
+        logger.info("="*80)
+        return True,""
+def save_training_report(training_results,output_dir="models"):
     output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True)
     report_file=output_path/f"training_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     report={"timestamp":datetime.now().isoformat(),"system_version":"v3.0_log_rv","target_type":TARGET_CONFIG.get("target_type"),"training_summary":{"cohorts_trained":list(training_results.models.keys())if hasattr(training_results,"models")else[],"models_per_cohort":7,"quantile_levels":TARGET_CONFIG.get("quantiles",{}).get("levels",[])},"configuration":{"xgboost":XGBOOST_CONFIG,"target":TARGET_CONFIG}}
     with open(report_file,"w")as f:json.dump(report,f,indent=2,default=str)
     logger.info(f"✅ Training report saved: {report_file}")
-def display_training_summary(forecaster:ProbabilisticVIXForecaster):
+def display_training_summary(forecaster):
     logger.info("\n"+"="*80);logger.info("TRAINING SUMMARY");logger.info("="*80)
     total_cohorts=len(forecaster.models)
     logger.info(f"  Cohorts trained: {total_cohorts}");logger.info(f"  Models per cohort: 7 (5 quantiles + direction + confidence)");logger.info(f"  Total models: {total_cohorts*7}");logger.info(f"  Feature count: {len(forecaster.feature_names)}")
