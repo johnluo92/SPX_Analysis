@@ -4,7 +4,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from scipy import stats
 logging.basicConfig(level=logging.INFO,format="%(levelname)s | %(message)s")
 logger=logging.getLogger(__name__)
@@ -150,21 +149,21 @@ class EnhancedWalkForwardValidator:
         print(f"   RMSE:          {m['rmse']:.2f}%")
         print(f"   Median Abs Error: {m['median_abs_error']:.2f}%")
         print(f"   Bias: {m['bias']:+.2f}% {'(over-predicting)'if m['bias']>0 else'(under-predicting)'}")
-        print(f"\n🔎 Quantile Calibration:")
+        print("\n🔎 Quantile Calibration:")
         for q in[10,25,50,75,90]:
             cal=metrics["quantile_calibration"][f"q{q}"]
             status="✅"if cal["calibrated"]else"⚠️"
             print(f"   {status} q{q}: {cal['observed']:.1%} (expected {cal['expected']:.1%}, diff: {cal['diff']:+.1%})")
         int80=metrics["quantile_calibration"]["interval_80"]["coverage"]
         int50=metrics["quantile_calibration"]["interval_50"]["coverage"]
-        print(f"\n📦 Interval Coverage:")
+        print("\n📦 Interval Coverage:")
         print(f"   80% interval (q10-q90): {int80:.1%} (expected 80%)")
         print(f"   50% interval (q25-q75): {int50:.1%} (expected 50%)")
         if metrics["by_cohort"]:
             print(f"\n📅 Performance by Cohort:")
             for cohort,stats in metrics["by_cohort"].items():print(f"   {cohort:30s}: MAE={stats['mae']:.2f}%, n={stats['n']}")
         conf=metrics["confidence_analysis"]
-        print(f"\n🎯 Confidence Analysis:")
+        print("\n🎯 Confidence Analysis:")
         print(f"   Correlation (conf vs error): {conf['correlation']:.3f}")
         print(f"   Confidence useful: {'✅ Yes'if conf['is_useful']else'⚠️ No'}")
         print(f"   {conf['interpretation']}")

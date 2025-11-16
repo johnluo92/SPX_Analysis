@@ -18,7 +18,10 @@ class XGBoostFeatureSelector:
         realized_vols=pd.Series(index=dates,dtype=float);spx_returns=spx_returns.sort_index();valid_count=0;insufficient_data=0
         for date in dates:
             if date not in spx_returns.index:continue
-            try:date_pos=spx_returns.index.get_loc(date)
+            try:
+                date_pos_temp = spx_returns.index.get_loc(date)
+                if not isinstance(date_pos_temp, int):continue
+                date_pos = date_pos_temp
             except KeyError:continue
             end_pos=date_pos+self.horizon+1
             if end_pos>len(spx_returns):insufficient_data+=1;continue
@@ -33,7 +36,7 @@ class XGBoostFeatureSelector:
     def select_features(self,features_df:pd.DataFrame,spx_returns:pd.Series,feature_categories:Optional[Dict[str,List[str]]]=None)->Tuple[List[str],Dict]:
         logger.info("\n"+"="*80+"\nFEATURE SELECTION - LOG-RV TARGET\n"+"="*80)
         logger.info("\nStep 1: Calculating forward-looking realized volatility...")
-        target=self._calculate_forward_realized_volatility(spx_returns=spx_returns,dates=features_df.index)
+        target=self._calculate_forward_realized_volatility(spx_returns=spx_returns,dates=pd.DatetimeIndex(features_df.index))
         if len(target)==0:logger.error("❌ No valid targets calculated");return [],{}
         logger.info("\nStep 2: Aligning features with targets...")
         common_dates=features_df.index.intersection(target.index)
@@ -88,14 +91,14 @@ class XGBoostFeatureSelector:
         importance_file=input_path/"feature_importance.json"
         if importance_file.exists():
             with open(importance_file,"r")as f:self.importance_scores=json.load(f)
-            logger.info(f"✅ Loaded importance scores")
+            logger.info("✅ Loaded importance scores")
         metadata_file=input_path/"selection_metadata.json"
         if metadata_file.exists():
             with open(metadata_file,"r")as f:self.selection_metadata=json.load(f)
-            logger.info(f"✅ Loaded selection metadata")
+            logger.info("✅ Loaded selection metadata")
 def test_feature_selector():
-    print("\n"+"="*80+"\nTESTING FEATURE SELECTOR V3\n"+"="*80);np.random.seed(42);dates=pd.date_range("2020-01-01","2023-12-31",freq="D");spx_returns=pd.Series(np.random.randn(len(dates))*0.01,index=dates);n_features=100;features_df=pd.DataFrame(np.random.randn(len(dates),n_features),index=dates,columns=[f"feature_{i}"for i in range(n_features)])
+    print("\n"+"="*80+"\nTESTING FEATURE SELECTOR V3\n"+"="*80);np.random.seed(42);dates=pd.date_range("2020-01-01","2023-12-31",freq="D");spx_returns=pd.Series(np.random.randn(len(dates))*0.01,index=dates);n_features=100;features_df=pd.DataFrame(np.random.randn(len(dates),n_features),index=dates,columns=pd.Index([f"feature_{i}"for i in range(n_features)]))
     for i in range(5):future_vol=spx_returns.rolling(21).std().shift(-21);features_df[f"predictive_{i}"]=future_vol+np.random.randn(len(dates))*0.001
     selector=XGBoostFeatureSelector(horizon=21,min_importance=0.001,top_n=50);selected,metadata=selector.select_features(features_df=features_df,spx_returns=spx_returns)
-    print(f"\n✅ Selected {len(selected)} features");print(f"✅ Avg validation MAE: {metadata['avg_val_mae']:.4f}");predictive_selected=[f for f in selected if "predictive"in f];print(f"✅ Predictive features selected: {len(predictive_selected)}/5");selector.save_results(output_dir="/home/claude/test_output");print(f"✅ Results saved to /home/claude/test_output");print("\n"+"="*80+"\nTEST COMPLETE\n"+"="*80)
+    print(f"\n✅ Selected {len(selected)} features");print(f"✅ Avg validation MAE: {metadata['avg_val_mae']:.4f}");predictive_selected=[f for f in selected if "predictive"in f];print(f"✅ Predictive features selected: {len(predictive_selected)}/5");selector.save_results(output_dir="/home/claude/test_output");print("✅ Results saved to /home/claude/test_output");print("\n"+"="*80+"\nTEST COMPLETE\n"+"="*80)
 if __name__=="__main__":test_feature_selector()
