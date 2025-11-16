@@ -100,7 +100,7 @@ class ProbabilisticVIXForecaster:
         self.calibrators[cohort] = {}
         metrics = {}
 
-        y_target = df["target_log_rv"]  # Single target for ALL quantiles
+        y_target = df["target_vix_pct_change"]
 
         # ============================================================
         # STEP 1: Train quantile regressors
