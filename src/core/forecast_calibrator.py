@@ -59,17 +59,43 @@ class ForecastCalibrator:
         self.fitted=True
         logger.info("\n✅ Calibration complete\n"+"="*80+"\n")
         return True
-    def calibrate(self,raw_forecast:float,current_vix:float,cohort:Optional[str]=None)->Dict:
-        if not self.fitted:logger.warning("⚠️  Calibrator not fitted, returning raw forecast");return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"method":"none","raw_forecast":raw_forecast}
-        X=np.array([[raw_forecast,current_vix]]);model=None;method="global"
-        if cohort and cohort in self.cohort_models:model=self.cohort_models[cohort];method=f"cohort_{cohort}"
-        elif self.regime_specific:
-            regime="crisis"if current_vix>=40 else"elevated"if current_vix>=25 else"normal"if current_vix>=15 else"low"
-            if regime in self.regime_models:model=self.regime_models[regime];method=f"regime_{regime}"
-        if model is None:model=self.global_model;method="global"
-        predicted_error=model.predict(X)[0];calibrated_forecast=raw_forecast+predicted_error
-        logger.debug(f"Calibration ({method}): {raw_forecast:+.2f}% → {calibrated_forecast:+.2f}% (adjustment: {predicted_error:+.2f}%)")
-        return{"calibrated_forecast":float(calibrated_forecast),"adjustment":float(predicted_error),"method":method,"raw_forecast":float(raw_forecast)}
+
+    def calibrate(
+        self,
+        raw_forecast: float,
+        current_vix: float,
+        cohort: Optional[str] = None,
+    ) -> Dict:
+        """
+        Apply calibration - TEMPORARILY DISABLED pending retargeting.
+
+        The bias correction was treating symptoms of the target mismatch problem.
+        Once models are retrained with aligned targets (VIX % change), we'll
+        reassess whether calibration provides meaningful improvement.
+
+        Args:
+            raw_forecast: Raw median forecast from model (%)
+            current_vix: Current VIX level
+            cohort: Calendar cohort (optional)
+
+        Returns:
+            Dict with raw forecast (no adjustment applied)
+        """
+
+        if not self.fitted:
+            logger.debug("⚠️  Calibrator not fitted - using raw forecasts")
+        else:
+            logger.debug("⚠️  Calibration temporarily disabled - using raw forecasts until models retrained")
+
+        return {
+            "calibrated_forecast": raw_forecast,
+            "adjustment": 0.0,
+            "method": "disabled_pending_retrain",
+            "raw_forecast": raw_forecast,
+            "note": "Calibration disabled - target mismatch fix in progress",
+        }
+
+
     def get_diagnostics(self)->Dict:
         if not self.fitted:return{"error":"Calibrator not fitted"}
         diagnostics={"fitted":self.fitted,"timestamp":datetime.now().isoformat(),"config":{"min_samples":self.min_samples,"use_robust":self.use_robust,"cohort_specific":self.cohort_specific,"regime_specific":self.regime_specific},"statistics":self.calibration_stats,"models":{"global":self.global_model is not None,"cohorts":list(self.cohort_models.keys()),"regimes":list(self.regime_models.keys())}}

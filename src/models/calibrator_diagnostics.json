@@ -1,6 +1,6 @@
 {
   "fitted": true,
-  "timestamp": "2025-11-15T20:24:29.645854",
+  "timestamp": "2025-11-15T21:16:30.903501",
   "config": {
     "min_samples": 50,
     "use_robust": true,
@@ -10,59 +10,59 @@
   "statistics": {
     "global": {
       "samples": 247,
-      "mae_before": 26.341774446675064,
-      "mae_after": 9.064762095155476,
-      "improvement_pct": 65.5878835592275,
-      "mean_error": 24.54029332514218
+      "mae_before": 9.973044830396844,
+      "mae_after": 8.91932999337121,
+      "improvement_pct": 10.565628200266547,
+      "mean_error": -3.269259421151096
     },
     "cohort_mid_cycle": {
       "samples": 120,
-      "mae_before": 25.811265812525548,
-      "mae_after": 8.491902670800622,
-      "improvement_pct": 67.10001465065803,
-      "mean_error": 25.47328253173367
+      "mae_before": 9.282413623035927,
+      "mae_after": 8.014588201323713,
+      "improvement_pct": 13.658359487083017,
+      "mean_error": -3.4253923098329624
     },
     "cohort_earnings_heavy": {
       "samples": 30,
-      "mae_before": 30.665679588008057,
-      "mae_after": 9.438170179361578,
-      "improvement_pct": 69.22236746042174,
-      "mean_error": 30.11489252238762
+      "mae_before": 9.960048225016608,
+      "mae_after": 9.46485904413504,
+      "improvement_pct": 4.97175485192737,
+      "mean_error": -2.114442273335735
     },
     "cohort_monthly_opex_minus_5": {
       "samples": 29,
-      "mae_before": 27.917357625779687,
-      "mae_after": 7.949679522264432,
-      "improvement_pct": 71.52424083673495,
-      "mean_error": 27.8870424615889
+      "mae_before": 8.9246945242783,
+      "mae_after": 8.394379947734027,
+      "improvement_pct": 5.942103397507117,
+      "mean_error": -2.4752440110399574
     },
     "cohort_monthly_opex_minus_1": {
       "samples": 31,
-      "mae_before": 27.733649523847973,
-      "mae_after": 9.22073870117524,
-      "improvement_pct": 66.752523164157,
-      "mean_error": 27.733649523847973
+      "mae_before": 10.96218237158747,
+      "mae_after": 8.78598111443589,
+      "improvement_pct": 19.85189794681766,
+      "mean_error": -4.206590296060364
     },
     "cohort_fomc_minus_3": {
       "samples": 24,
-      "mae_before": 24.52117702943691,
-      "mae_after": 8.056050144731413,
-      "improvement_pct": 67.14656015467621,
-      "mean_error": 22.744630781090308
+      "mae_before": 13.13747789128066,
+      "mae_after": 8.74013215093686,
+      "improvement_pct": 33.471765103881296,
+      "mean_error": -3.741256077065021
     },
     "regime_low": {
       "samples": 90,
-      "mae_before": 23.16025278201126,
-      "mae_after": 6.645152700028446,
-      "improvement_pct": 71.3079439910527,
-      "mean_error": 20.17007468691935
+      "mae_before": 8.658746322096864,
+      "mae_after": 6.613391223934597,
+      "improvement_pct": 23.621838798332515,
+      "mean_error": -2.399442065740925
     },
     "regime_normal": {
       "samples": 154,
-      "mae_before": 28.546882630726476,
-      "mae_after": 10.033549639711673,
-      "improvement_pct": 64.8523806627066,
-      "mean_error": 27.405713881703697
+      "mae_before": 10.557330759126934,
+      "mae_after": 9.718540027291372,
+      "improvement_pct": 7.945102327218629,
+      "mean_error": -3.463190414895342
     }
   },
   "models": {
@@ -79,7 +79,7 @@
       "normal"
     ]
   },
-  "overall_improvement": 65.5878835592275,
+  "overall_improvement": 10.565628200266547,
   "training_samples": 247,
-  "bias_correction": 24.54029332514218
+  "bias_correction": -3.269259421151096
 }

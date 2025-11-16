@@ -1,7 +1,7 @@
 {
-  "timestamp": "2025-11-15T20:24:07.957458",
+  "timestamp": "2025-11-15T21:16:12.885012",
   "system_version": "v3.0_log_rv",
-  "target_type": "log_realized_volatility",
+  "target_type": "vix_pct_change",
   "training_summary": {
     "cohorts_trained": [
       "earnings_heavy",
@@ -106,11 +106,11 @@
     "target": {
       "horizon_days": 5,
       "horizon_label": "5d",
-      "target_type": "log_realized_volatility",
-      "volatility_bounds": {
-        "floor": 10.0,
-        "ceiling": 90.0,
-        "description": "Physical constraints from VIX history (1990-2025)"
+      "target_type": "vix_pct_change",
+      "movement_bounds": {
+        "floor": -50.0,
+        "ceiling": 100.0,
+        "description": "Reasonable VIX percentage change bounds for 5-day horizon"
       },
       "quantiles": {
         "levels": [

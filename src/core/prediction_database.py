@@ -185,53 +185,125 @@ class PredictionDatabase:
         except Exception as e:
             logger.error(f"❌ Failed to query predictions: {e}")
             raise
-    def backfill_actuals(self,fetcher=None):
+
+
+    def backfill_actuals(self, fetcher=None):
+        """Populate actual outcomes for forecasts whose target dates have passed."""
         if fetcher is None:
             from core.data_fetcher import UnifiedDataFetcher
-            fetcher=UnifiedDataFetcher()
+            fetcher = UnifiedDataFetcher()
+
         logger.info("Starting actuals backfill...")
-        vix_data=fetcher.fetch_yahoo("^VIX",start_date="2009-01-01")["Close"]
-        vix_dates=set(vix_data.index.strftime("%Y-%m-%d"))
-        query="SELECT prediction_id, forecast_date, horizon, current_vix, q10, q25, q50, q75, q90 FROM forecasts WHERE actual_vix_change IS NULL"
-        cursor=self.conn.cursor()
+
+        # Get VIX data
+        vix_data = fetcher.fetch_yahoo("^VIX", start_date="2009-01-01")["Close"]
+
+        # Convert index to date strings for matching
+        vix_dates = set(vix_data.index.strftime("%Y-%m-%d"))
+
+        # Find predictions needing actuals
+        query = """
+            SELECT prediction_id, forecast_date, horizon, current_vix,
+                   q10, q25, q50, q75, q90, median_forecast
+            FROM forecasts
+            WHERE actual_vix_change IS NULL
+        """
+        cursor = self.conn.cursor()
         cursor.execute(query)
-        rows=cursor.fetchall()
-        if len(rows)==0:
+        rows = cursor.fetchall()
+
+        if len(rows) == 0:
             logger.info("No predictions need backfilling")
             return
+
         logger.info(f"   Found {len(rows)} predictions to backfill")
-        updated=0
-        skipped=0
+
+        updated = 0
+        skipped = 0
         for row in rows:
-            pred_id,forecast_date,horizon,current_vix,q10,q25,q50,q75,q90=row
-            try:target_date_attempt=pd.bdate_range(start=pd.Timestamp(forecast_date),periods=horizon+1)[-1]
+            # ✅ FIX: Unpack with median_forecast
+            pred_id, forecast_date, horizon, current_vix, q10, q25, q50, q75, q90, median_forecast = row
+
+            # Calculate target date using BUSINESS DAYS
+            try:
+                target_date_attempt = pd.bdate_range(
+                    start=pd.Timestamp(forecast_date), periods=horizon + 1
+                )[-1]
             except Exception as e:
-                logger.warning(f"   Failed to calculate business days for {forecast_date}: {e}")
-                skipped+=1
+                logger.warning(
+                    f"   Failed to calculate business days for {forecast_date}: {e}"
+                )
+                skipped += 1
                 continue
-            found_date=None
-            for offset in range(4):
-                check_date=(target_date_attempt+pd.Timedelta(days=offset)).strftime("%Y-%m-%d")
+
+            # Find nearest actual VIX date (within 3 days forward to handle holidays)
+            found_date = None
+            for offset in range(4):  # Check up to 3 days forward
+                check_date = (target_date_attempt + pd.Timedelta(days=offset)).strftime(
+                    "%Y-%m-%d"
+                )
                 if check_date in vix_dates:
-                    found_date=check_date
+                    found_date = check_date
                     break
+
             if found_date is None:
-                skipped+=1
+                skipped += 1
                 continue
-            target_date=found_date
-            actual_vix=vix_data.loc[pd.Timestamp(target_date)]
-            actual_change=((actual_vix-current_vix)/current_vix)*100
-            regime="Low" if actual_change<-5 else "Normal" if actual_change<10 else "Elevated" if actual_change<25 else "Crisis"
-            cursor.execute("SELECT point_estimate FROM forecasts WHERE prediction_id = ?",(pred_id,))
-            point_est=cursor.fetchone()[0]
-            point_error=abs(actual_change-point_est)
-            quantile_coverage={"q10":1 if actual_change<=q10 else 0,"q25":1 if actual_change<=q25 else 0,"q50":1 if actual_change<=q50 else 0,"q75":1 if actual_change<=q75 else 0,"q90":1 if actual_change<=q90 else 0}
-            coverage_json=json.dumps(quantile_coverage)
-            cursor.execute("UPDATE forecasts SET actual_vix_change = ?, actual_regime = ?, point_error = ?, quantile_coverage = ? WHERE prediction_id = ?",(actual_change,regime,point_error,coverage_json,pred_id))
-            updated+=1
+
+            target_date = found_date
+
+            # Get actual VIX value at target date
+            actual_vix = vix_data.loc[pd.Timestamp(target_date)]
+
+            # ✅ FIX: Calculate VIX % change (matches new training target!)
+            actual_change = ((actual_vix - current_vix) / current_vix) * 100
+
+            # Classify regime
+            if actual_change < -5:
+                regime = "Low"
+            elif actual_change < 10:
+                regime = "Normal"
+            elif actual_change < 25:
+                regime = "Elevated"
+            else:
+                regime = "Crisis"
+
+            # ✅ FIX: Use median_forecast for point_error (backward compat)
+            point_error = abs(actual_change - median_forecast)
+
+            # Compute quantile coverage
+            quantile_coverage = {
+                "q10": 1 if actual_change <= q10 else 0,
+                "q25": 1 if actual_change <= q25 else 0,
+                "q50": 1 if actual_change <= q50 else 0,
+                "q75": 1 if actual_change <= q75 else 0,
+                "q90": 1 if actual_change <= q90 else 0,
+            }
+            coverage_json = json.dumps(quantile_coverage)
+
+            # Update database with ALL fields
+            cursor.execute(
+                """
+                UPDATE forecasts
+                SET actual_vix_change = ?,
+                    actual_regime = ?,
+                    point_error = ?,
+                    quantile_coverage = ?
+                WHERE prediction_id = ?
+                """,
+                (actual_change, regime, point_error, coverage_json, pred_id),
+            )
+            updated += 1
+
         self.conn.commit()
         logger.info(f"✅ Backfilled {updated} predictions")
-        if skipped>0:logger.info(f"⚠️  Skipped {skipped} predictions (target date not yet available)")
+        if skipped > 0:
+            logger.info(
+                f"⚠️  Skipped {skipped} predictions (target date not yet available)"
+            )
+
+
+
     def compute_quantile_coverage(self,cohort:str=None)->Dict:
         df=self.get_predictions(cohort=cohort,with_actuals=True)
         if len(df)==0:

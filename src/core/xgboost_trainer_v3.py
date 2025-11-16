@@ -17,23 +17,132 @@ class ProbabilisticVIXForecaster:
     def train(self,df:pd.DataFrame,save_dir:str="models"):
         logger.info("="*80);logger.info("REFACTORED QUANTILE REGRESSION TRAINING");logger.info("="*80)
         if "calendar_cohort" not in df.columns:raise ValueError("Missing calendar_cohort column")
-        df=self._create_targets(df);exclude_cols=["vix","spx","calendar_cohort","feature_quality","cohort_weight","forward_realized_vol","target_log_rv","target_direction","target_confidence"];feature_cols=[c for c in df.columns if c not in exclude_cols];self.feature_names=feature_cols;cohorts=sorted(df["calendar_cohort"].unique());logger.info(f"\nTraining {len(cohorts)} cohorts: {cohorts}");cohort_metrics={}
+        df=self._create_targets(df)
+
+
+        exclude_cols = [
+            "vix",
+            "spx",
+            "calendar_cohort",
+            "feature_quality",
+            "cohort_weight",  # Added if exists
+            "future_vix",  # Future VIX level
+            "target_vix_pct_change",  # VIX % change target
+            "target_direction",
+            "target_confidence",
+        ]
+
+        feature_cols=[c for c in df.columns if c not in exclude_cols];self.feature_names=feature_cols;cohorts=sorted(df["calendar_cohort"].unique());logger.info(f"\nTraining {len(cohorts)} cohorts: {cohorts}");cohort_metrics={}
         for cohort in cohorts:
             cohort_df=df[df["calendar_cohort"]==cohort].copy();logger.info(f"\n{'─'*80}");logger.info(f"Cohort: {cohort} ({len(cohort_df)} samples)");logger.info(f"{'─'*80}");metrics=self._train_cohort_models(cohort,cohort_df);cohort_metrics[cohort]=metrics;self._save_cohort_models(cohort,save_dir);logger.info(f"✅ Saved: {cohort}")
         self._generate_diagnostics(cohort_metrics,save_dir);logger.info(f"\n{'='*80}");logger.info("TRAINING COMPLETE");logger.info(f"{'='*80}");return self
-    def _create_targets(self,df:pd.DataFrame)->pd.DataFrame:
-        logger.info("  Target creation:");logger.info(f"    Total samples: {len(df)}");df=df.copy();spx_returns=np.log(df["spx"]/df["spx"].shift(1));forward_rv_list=[]
+
+    def _create_targets(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Create VIX percentage change targets."""
+        logger.info("  Target creation:")
+        logger.info(f"    Total samples: {len(df)}")
+
+        df = df.copy()
+
+        # ✅ NEW: Calculate forward VIX percentage change directly
+        # This is exactly what we evaluate against!
+
+        future_vix_list = []
         for i in range(len(df)):
-            if i+self.horizon+1<=len(df):window_returns=spx_returns.iloc[i+1:i+self.horizon+1];rv=window_returns.std()*np.sqrt(252)*100;forward_rv_list.append(rv)
-            else:forward_rv_list.append(np.nan)
-        df["forward_realized_vol"]=forward_rv_list;df["target_log_rv"]=np.log(df["forward_realized_vol"].clip(lower=1.0));future_vix=df["vix"].shift(-self.horizon);df["target_direction"]=(future_vix>df["vix"]).astype(int);regime_volatility=df["vix"].rolling(21,min_periods=10).std();regime_stability=1/(1+regime_volatility/df["vix"].rolling(21,min_periods=10).mean());regime_stability=regime_stability.fillna(0.5);df["target_confidence"]=(0.5*df.get("feature_quality",0.5).fillna(0.5)+0.5*regime_stability).clip(0,1);valid_targets=(~df["target_log_rv"].isna()).sum();logger.info(f"    Valid targets: {valid_targets}");logger.info(f"    NaN targets: {len(df)-valid_targets} (last {self.horizon} days)");logger.info("");return df
-    def _train_cohort_models(self,cohort:str,df:pd.DataFrame)->Dict:
-        df=df.copy();X=df[self.feature_names]
-        if len(df)<30:raise ValueError(f"Insufficient samples for cohort {cohort}: {len(df)}")
-        self.models[cohort]={};self.calibrators[cohort]={};metrics={};y_target=df["target_log_rv"];logger.info("  Training quantile regression models...")
+            if i + self.horizon < len(df):
+                # Get VIX at horizon days ahead
+                future_vix = df["vix"].iloc[i + self.horizon]
+                future_vix_list.append(future_vix)
+            else:
+                future_vix_list.append(np.nan)
+
+        df["future_vix"] = future_vix_list
+
+        # ✅ PRIMARY TARGET: VIX percentage change
+        df["target_vix_pct_change"] = ((df["future_vix"] - df["vix"]) / df["vix"]) * 100
+
+        # ✅ SINGLE target for ALL quantile models
+        # No log transformation needed - we're predicting % directly
+
+        # Direction target: is VIX going up or down? (unchanged)
+        future_vix_series = df["vix"].shift(-self.horizon)
+        df["target_direction"] = (future_vix_series > df["vix"]).astype(int)
+
+        # Confidence based on regime stability (unchanged logic)
+        regime_volatility = df["vix"].rolling(21, min_periods=10).std()
+        regime_stability = 1 / (
+            1 + regime_volatility / df["vix"].rolling(21, min_periods=10).mean()
+        )
+        regime_stability = regime_stability.fillna(0.5)
+
+        df["target_confidence"] = (
+            0.5 * df.get("feature_quality", 0.5).fillna(0.5) + 0.5 * regime_stability
+        ).clip(0, 1)
+
+        valid_targets = (~df["target_vix_pct_change"].isna()).sum()
+        logger.info(f"    Valid targets: {valid_targets}")
+        logger.info(f"    NaN targets: {len(df) - valid_targets} (last {self.horizon} days)")
+        logger.info("")
+
+        return df
+
+    def _train_cohort_models(self, cohort: str, df: pd.DataFrame) -> Dict:
+        """Train quantile models and direction classifier for a single cohort."""
+        df = df.copy()
+        X = df[self.feature_names]
+
+        if len(df) < 30:
+            raise ValueError(f"Insufficient samples for cohort {cohort}: {len(df)}")
+
+        self.models[cohort] = {}
+        self.calibrators[cohort] = {}
+        metrics = {}
+
+        # ✅ NEW: All quantile models use VIX % change target
+        y_target = df["target_vix_pct_change"]  # Direct % prediction
+
+        # Train 5 quantile regression models
+        logger.info("  Training quantile regression models...")
         for q in self.quantiles:
-            q_name=f"q{int(q*100)}";model,metric=self._train_quantile_regressor(X,y_target,quantile_alpha=q);self.models[cohort][q_name]=model;metrics[q_name]=metric;logger.info(f"    {q_name}: MAE={metric['mae']:.4f}")
-        logger.info("  Training direction classifier...");y_direction=df["target_direction"];model_direction,metric_direction=self._train_classifier(X,y_direction,num_classes=2);self.models[cohort]["direction"]=model_direction;metrics["direction"]=metric_direction;logger.info(f"    Accuracy: {metric_direction.get('accuracy',0):.3f}");logger.info("  Calibrating direction probabilities...");calibrators=self._calibrate_probabilities(model_direction,X,y_direction);self.calibrators[cohort]["direction"]=calibrators;logger.info("  Training confidence model...");y_confidence=df["target_confidence"];model_conf,metric_conf=self._train_regressor(X,y_confidence,objective="reg:squarederror",eval_metric="rmse");self.models[cohort]["confidence"]=model_conf;metrics["confidence"]=metric_conf;logger.info(f"    RMSE: {metric_conf['rmse']:.3f}");return metrics
+            q_name = f"q{int(q * 100)}"
+
+            # ✅ Same target, different quantile_alpha
+            model, metric = self._train_quantile_regressor(
+                X, y_target, quantile_alpha=q
+            )
+            self.models[cohort][q_name] = model
+            metrics[q_name] = metric
+            logger.info(f"    {q_name}: MAE={metric['mae']:.4f}")
+
+        # Train direction classifier
+        logger.info("  Training direction classifier...")
+        y_direction = df["target_direction"]
+
+        model_direction, metric_direction = self._train_classifier(
+            X, y_direction, num_classes=2
+        )
+        self.models[cohort]["direction"] = model_direction
+        metrics["direction"] = metric_direction
+        logger.info(f"    Accuracy: {metric_direction.get('accuracy', 0):.3f}")
+
+        # Calibrate direction probabilities
+        logger.info("  Calibrating direction probabilities...")
+        calibrators = self._calibrate_probabilities(model_direction, X, y_direction)
+        self.calibrators[cohort]["direction"] = calibrators
+
+        # Train confidence model (kept for compatibility)
+        logger.info("  Training confidence model...")
+        y_confidence = df["target_confidence"]
+        model_conf, metric_conf = self._train_regressor(
+            X, y_confidence, objective="reg:squarederror", eval_metric="rmse"
+        )
+        self.models[cohort]["confidence"] = model_conf
+        metrics["confidence"] = metric_conf
+        logger.info(f"    RMSE: {metric_conf['rmse']:.3f}")
+
+        return metrics
+
+
     def _train_quantile_regressor(self,X,y,quantile_alpha:float):
         params=XGBOOST_CONFIG["shared_params"].copy();params.update({"objective":"reg:quantileerror","quantile_alpha":quantile_alpha});n_splits,test_size=self._get_adaptive_cv_config(len(X));val_maes=[]
         if n_splits==0:
@@ -87,12 +196,82 @@ class ProbabilisticVIXForecaster:
             if y_binary.sum()>0 and y_binary.sum()<len(y_binary):calibrator=IsotonicRegression(out_of_bounds="clip");calibrator.fit(y_proba[:,class_idx],y_binary);calibrators.append(calibrator)
             else:calibrators.append(None)
         return calibrators
-    def predict(self,X:pd.DataFrame,cohort:str,current_vix:float)->Dict:
-        if cohort not in self.models:raise ValueError(f"Cohort {cohort} not trained. Available: {list(self.models.keys())}")
-        X_features=X[self.feature_names];quantiles_log={}
+
+    def predict(self, X: pd.DataFrame, cohort: str, current_vix: float) -> Dict:
+        """
+        Generate probabilistic forecast with quantiles and direction.
+
+        Args:
+            X: Feature dataframe (single row)
+            cohort: Calendar cohort to use
+            current_vix: Current VIX level (for metadata only)
+
+        Returns:
+            Dictionary with quantiles, direction_probability, confidence_score
+        """
+        if cohort not in self.models:
+            raise ValueError(
+                f"Cohort {cohort} not trained. Available: {list(self.models.keys())}"
+            )
+
+        X_features = X[self.feature_names]
+
+        # ✅ NEW: Get quantile predictions DIRECTLY as VIX % changes
+        quantiles_pct = {}
         for q in self.quantiles:
-            q_name=f"q{int(q*100)}";pred_log=self.models[cohort][q_name].predict(X_features)[0];quantiles_log[q_name]=pred_log
-        quantiles_rv={k:np.exp(v)for k,v in quantiles_log.items()};quantiles_rv_bounded={k:np.clip(v,self.vix_floor,self.vix_ceiling)for k,v in quantiles_rv.items()};q_keys=["q10","q25","q50","q75","q90"];q_values=[quantiles_rv_bounded[k]for k in q_keys];q_values_sorted=sorted(q_values);quantiles_rv_monotonic=dict(zip(q_keys,q_values_sorted));quantiles_pct={k:((v/current_vix)-1)*100 for k,v in quantiles_rv_monotonic.items()};prob_up=float(self.models[cohort]["direction"].predict_proba(X_features)[0][1]);prob_down=1.0-prob_up;confidence=np.clip(self.models[cohort]["confidence"].predict(X_features)[0],0,1);median_forecast=quantiles_pct["q50"];return {"median_forecast":float(median_forecast),"quantiles":{k:float(v)for k,v in quantiles_pct.items()},"q10":float(quantiles_pct["q10"]),"q25":float(quantiles_pct["q25"]),"q50":float(quantiles_pct["q50"]),"q75":float(quantiles_pct["q75"]),"q90":float(quantiles_pct["q90"]),"prob_up":float(prob_up),"prob_down":float(prob_down),"direction_probability":float(prob_up),"confidence_score":float(confidence),"cohort":cohort,"metadata":{"current_vix":current_vix,"realized_vol_bounds":{"floor":self.vix_floor,"ceiling":self.vix_ceiling}}}
+            q_name = f"q{int(q * 100)}"
+            # Models now output % change directly!
+            pred_pct = self.models[cohort][q_name].predict(X_features)[0]
+            quantiles_pct[q_name] = pred_pct
+
+        # ✅ NEW: Enforce monotonicity in % space (not RV space)
+        q_keys = ["q10", "q25", "q50", "q75", "q90"]
+        q_values = [quantiles_pct[k] for k in q_keys]
+        q_values_sorted = sorted(q_values)
+        quantiles_pct_monotonic = dict(zip(q_keys, q_values_sorted))
+
+        # ✅ OPTIONAL: Apply domain bounds if desired
+        # VIX rarely moves more than ±50% in 5 days
+        for k in q_keys:
+            quantiles_pct_monotonic[k] = np.clip(
+                quantiles_pct_monotonic[k], -50, 100
+            )
+
+        # Direction probability (unchanged)
+        prob_up = float(
+            self.models[cohort]["direction"].predict_proba(X_features)[0][1]
+        )
+        prob_down = 1.0 - prob_up
+
+        # Confidence score (unchanged)
+        confidence = np.clip(
+            self.models[cohort]["confidence"].predict(X_features)[0], 0, 1
+        )
+
+        # Use median (q50) as primary forecast
+        median_forecast = quantiles_pct_monotonic["q50"]
+
+        return {
+            "median_forecast": float(median_forecast),
+            "quantiles": {k: float(v) for k, v in quantiles_pct_monotonic.items()},
+            "q10": float(quantiles_pct_monotonic["q10"]),
+            "q25": float(quantiles_pct_monotonic["q25"]),
+            "q50": float(quantiles_pct_monotonic["q50"]),
+            "q75": float(quantiles_pct_monotonic["q75"]),
+            "q90": float(quantiles_pct_monotonic["q90"]),
+            "prob_up": float(prob_up),
+            "prob_down": float(prob_down),
+            "direction_probability": float(prob_up),
+            "confidence_score": float(confidence),
+            "cohort": cohort,
+            "metadata": {
+                "current_vix": current_vix,
+                "prediction_type": "vix_pct_change",
+                "target_aligned": True,
+            },
+        }
+
+
     def load(self,cohort:str,models_dir:str):
         models_path=Path(models_dir);file_path=models_path/f"probabilistic_forecaster_{cohort}.pkl"
         if not file_path.exists():raise FileNotFoundError(f"No saved model found for cohort: {cohort}")
