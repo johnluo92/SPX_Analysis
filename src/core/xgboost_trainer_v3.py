@@ -8,6 +8,8 @@ import xgboost as xgb
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import accuracy_score,log_loss,mean_absolute_error
 from sklearn.model_selection import TimeSeriesSplit
+
+from core.forecast_calibrator import QuantileCalibrator
 from xgboost import XGBClassifier,XGBRegressor
 from config import TARGET_CONFIG,XGBOOST_CONFIG
 warnings.filterwarnings("ignore");logging.basicConfig(level=logging.INFO);logger=logging.getLogger(__name__)
@@ -98,29 +100,55 @@ class ProbabilisticVIXForecaster:
         self.calibrators[cohort] = {}
         metrics = {}
 
-        # ✅ NEW: All quantile models use VIX % change target
-        y_target = df["target_vix_pct_change"]  # Direct % prediction
+        y_target = df["target_log_rv"]  # Single target for ALL quantiles
 
-        # Train 5 quantile regression models
+        # ============================================================
+        # STEP 1: Train quantile regressors
+        # ============================================================
         logger.info("  Training quantile regression models...")
+        raw_predictions = {}  # Store for calibration
+
         for q in self.quantiles:
             q_name = f"q{int(q * 100)}"
-
-            # ✅ Same target, different quantile_alpha
-            model, metric = self._train_quantile_regressor(
-                X, y_target, quantile_alpha=q
-            )
+            model, metric = self._train_quantile_regressor(X, y_target, quantile_alpha=q)
             self.models[cohort][q_name] = model
             metrics[q_name] = metric
+
+            # Store raw predictions for calibration
+            raw_predictions[q_name] = model.predict(X)
+
             logger.info(f"    {q_name}: MAE={metric['mae']:.4f}")
 
-        # Train direction classifier
+        # ============================================================
+        # STEP 2: Calibrate quantiles (NEW)
+        # ============================================================
+        logger.info("  Calibrating quantile predictions...")
+
+        # Remove NaN targets for calibration
+        valid_mask = ~y_target.isna()
+        y_valid = y_target[valid_mask].values
+
+        # Prepare calibration data
+        calib_predictions = {
+            q_name: raw_predictions[q_name][valid_mask]
+            for q_name in raw_predictions.keys()
+        }
+
+        # Fit calibrator
+        quantile_calibrator = QuantileCalibrator(quantiles=self.quantiles)
+        quantile_calibrator.fit(calib_predictions, y_valid)
+
+        # Store calibrator with cohort
+        self.calibrators[cohort]['quantile'] = quantile_calibrator
+
+        logger.info("  ✅ Quantile calibration complete")
+
+        # ============================================================
+        # STEP 3: Train direction classifier (unchanged)
+        # ============================================================
         logger.info("  Training direction classifier...")
         y_direction = df["target_direction"]
-
-        model_direction, metric_direction = self._train_classifier(
-            X, y_direction, num_classes=2
-        )
+        model_direction, metric_direction = self._train_classifier(X, y_direction, num_classes=2)
         self.models[cohort]["direction"] = model_direction
         metrics["direction"] = metric_direction
         logger.info(f"    Accuracy: {metric_direction.get('accuracy', 0):.3f}")
@@ -130,7 +158,9 @@ class ProbabilisticVIXForecaster:
         calibrators = self._calibrate_probabilities(model_direction, X, y_direction)
         self.calibrators[cohort]["direction"] = calibrators
 
-        # Train confidence model (kept for compatibility)
+        # ============================================================
+        # STEP 4: Train confidence model (unchanged)
+        # ============================================================
         logger.info("  Training confidence model...")
         y_confidence = df["target_confidence"]
         model_conf, metric_conf = self._train_regressor(
@@ -141,7 +171,6 @@ class ProbabilisticVIXForecaster:
         logger.info(f"    RMSE: {metric_conf['rmse']:.3f}")
 
         return metrics
-
 
     def _train_quantile_regressor(self,X,y,quantile_alpha:float):
         params=XGBOOST_CONFIG["shared_params"].copy();params.update({"objective":"reg:quantileerror","quantile_alpha":quantile_alpha});n_splits,test_size=self._get_adaptive_cv_config(len(X));val_maes=[]

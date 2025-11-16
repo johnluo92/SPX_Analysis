@@ -4,10 +4,142 @@ from pathlib import Path
 from typing import Dict,List,Optional
 import numpy as np
 import pandas as pd
+from scipy.interpolate import interp1d
+from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import HuberRegressor,LinearRegression
 from sklearn.metrics import mean_absolute_error,mean_squared_error
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
+
+
+class QuantileCalibrator:
+    """
+    Post-hoc calibration for quantile predictions.
+
+    METHODOLOGY:
+    1. On validation set, compute empirical coverage for each prediction
+    2. Build isotonic regression mapping: predicted_value -> empirical_quantile
+    3. At test time, adjust predictions to target quantiles via inverse mapping
+
+    Example:
+        - Model predicts q10=5%, but empirically 25% of actuals are ≤ 5%
+        - Calibrator learns: "when model says 5%, it's actually the 25th percentile"
+        - At test time: to get true q10, find value where model's empirical coverage is 10%
+    """
+
+    def __init__(self, quantiles=[0.10, 0.25, 0.50, 0.75, 0.90]):
+        self.quantiles = quantiles
+        self.calibrators = {}  # One per quantile
+        self.fitted = False
+
+    def fit(self, predictions: Dict[str, np.ndarray], actuals: np.ndarray):
+        """
+        Fit calibration using validation set.
+
+        Args:
+            predictions: {'q10': array, 'q25': array, ...} of RAW predictions
+            actuals: array of actual outcomes
+        """
+        if len(actuals) < 30:
+            logger.warning(f"⚠️  Only {len(actuals)} samples for calibration - may be unreliable")
+
+        logger.info(f"   Fitting quantile calibrator on {len(actuals)} samples...")
+
+        for q_name, q_preds in predictions.items():
+            if len(q_preds) != len(actuals):
+                raise ValueError(f"{q_name}: length mismatch ({len(q_preds)} vs {len(actuals)})")
+
+            # Calculate empirical quantile that each prediction actually represents
+            empirical_quantiles = []
+            for pred in q_preds:
+                # What fraction of actuals are ≤ this prediction?
+                empirical_q = (actuals <= pred).mean()
+                empirical_quantiles.append(empirical_q)
+
+            empirical_quantiles = np.array(empirical_quantiles)
+
+            # Build isotonic regression: predicted_value -> empirical_quantile
+            # Must be monotonic: higher predicted values = higher empirical quantiles
+            calibrator = IsotonicRegression(out_of_bounds='clip')
+            calibrator.fit(q_preds, empirical_quantiles)
+
+            self.calibrators[q_name] = calibrator
+
+            # Diagnostic: check calibration
+            target_quantile = float(q_name[1:]) / 100
+            actual_coverage = (actuals <= q_preds).mean()
+            logger.info(f"      {q_name}: {actual_coverage:.1%} coverage (target {target_quantile:.1%})")
+
+        self.fitted = True
+        logger.info("   ✅ Quantile calibrator fitted")
+
+    def transform(self, predictions: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        """
+        Apply calibration to get properly calibrated quantiles.
+
+        Args:
+            predictions: {'q10': value, 'q25': value, ...}
+
+        Returns:
+            Calibrated predictions with same structure
+        """
+        if not self.fitted:
+            logger.warning("⚠️  Calibrator not fitted, returning raw predictions")
+            return predictions
+
+        calibrated = {}
+
+        for q_name, q_value in predictions.items():
+            if q_name not in self.calibrators:
+                calibrated[q_name] = q_value
+                continue
+
+            calibrator = self.calibrators[q_name]
+            target_quantile = float(q_name[1:]) / 100
+
+            # INVERSE PROBLEM: Find value where empirical coverage = target
+            # Use bisection search over calibrator's range
+
+            # Get calibrator's input range (predicted values)
+            try:
+                pred_min = calibrator.X_min_
+                pred_max = calibrator.X_max_
+            except AttributeError:
+                # Fallback for older sklearn
+                pred_min = np.min(calibrator.X_thresholds_)
+                pred_max = np.max(calibrator.X_thresholds_)
+
+            # Binary search for value that gives target coverage
+            def coverage_at_value(val):
+                return calibrator.predict([val])[0]
+
+            # Search bounds with safety margin
+            search_min = pred_min - abs(pred_min) * 0.2
+            search_max = pred_max + abs(pred_max) * 0.2
+
+            # Bisection search
+            tol = 0.001  # Coverage tolerance
+            max_iter = 50
+
+            for _ in range(max_iter):
+                mid = (search_min + search_max) / 2
+                mid_coverage = coverage_at_value(mid)
+
+                if abs(mid_coverage - target_quantile) < tol:
+                    break
+
+                if mid_coverage < target_quantile:
+                    search_min = mid
+                else:
+                    search_max = mid
+
+            calibrated_value = mid
+            calibrated[q_name] = calibrated_value
+
+        return calibrated
+
+
+
 class ForecastCalibrator:
     def __init__(self,min_samples:int=50,use_robust:bool=True,cohort_specific:bool=True,regime_specific:bool=True):
         self.min_samples=min_samples;self.use_robust=use_robust;self.cohort_specific=cohort_specific;self.regime_specific=regime_specific;self.global_model=None;self.cohort_models={};self.regime_models={};self.calibration_stats={};self.fitted=False
