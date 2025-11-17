@@ -3,7 +3,8 @@ from datetime import datetime,timedelta
 from typing import Dict,List,Optional,Tuple
 import numpy as np
 import pandas as pd
-from config import REGIME_BOUNDARIES,TRAINING_YEARS
+from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG,MACRO_EVENT_CONFIG
+
 from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,VIX_REGIME_BINS,VIX_REGIME_LABELS,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
 warnings.filterwarnings("ignore")
 try:
@@ -158,31 +159,55 @@ class FeatureEngineer:
         for od in self.opex_calendar.index:
             ad=od-pd.Timedelta(days=30);dtw=(2-ad.weekday())%7;vd=ad+pd.Timedelta(days=dtw);ve.append({"date":vd,"expiry_type":"vix_futures"})
         return pd.DataFrame(ve).set_index("date").sort_index()
-    def get_calendar_cohort(self,date):
-        date=pd.Timestamp(date)
-        if date in self._cohort_cache:return self._cohort_cache[date]
-        if self.opex_calendar is None:self._load_calendar_data()
-        dto=self._days_to_monthly_opex(date);dtf=self._days_to_fomc(date);dtve=self._days_to_vix_futures_expiry(date);ep=self._spx_earnings_intensity(date)
+
+
+    def get_calendar_cohort(self, date):
+        date = pd.Timestamp(date)
+        if date in self._cohort_cache:
+            return self._cohort_cache[date]
+        if self.opex_calendar is None:
+            self._load_calendar_data()
+        dto = self._days_to_monthly_opex(date)
+        dtf = self._days_to_fomc(date)
+        dtve = self._days_to_vix_futures_expiry(date)
+        ep = self._spx_earnings_intensity(date)
+        is_cpi = self._is_cpi_release_day(date)
+        is_pce = self._is_pce_release_day(date)
+        is_fomc_minutes = self._is_fomc_minutes_day(date)
         for cn in COHORT_PRIORITY:
-            cd=CALENDAR_COHORTS[cn];cond=cd["condition"]
-            if cond=="days_to_monthly_opex":
-                if dto is not None:
-                    rmin,rmax=cd["range"]
-                    if rmin<=dto<=rmax:res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
-            elif cond=="days_to_fomc":
+            cd = CALENDAR_COHORTS[cn]
+            cond = cd["condition"]
+            if cond == "macro_event_period":
                 if dtf is not None:
-                    rmin,rmax=cd["range"]
-                    if rmin<=dtf<=rmax:res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
-            elif cond=="days_to_futures_expiry":
-                if dtve is not None:
-                    rmin,rmax=cd["range"]
-                    if rmin<=dtve<=rmax:res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
-            elif cond=="spx_earnings_pct":
+                    rmin, rmax = cd["range"]
+                    if rmin <= dtf <= rmax:
+                        res = (cn, cd["weight"])
+                        self._cohort_cache[date] = res
+                        return res
+                if is_cpi or is_pce or is_fomc_minutes:
+                    res = (cn, cd["weight"])
+                    self._cohort_cache[date] = res
+                    return res
+            elif cond == "days_to_monthly_opex":
+                if dto is not None or dtve is not None:
+                    rmin, rmax = cd["range"]
+                    if (dto is not None and rmin <= dto <= rmax) or (dtve is not None and rmin <= dtve <= rmax):
+                        res = (cn, cd["weight"])
+                        self._cohort_cache[date] = res
+                        return res
+            elif cond == "spx_earnings_pct":
                 if ep is not None:
-                    rmin,rmax=cd["range"]
-                    if rmin<=ep<=rmax:res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
-            elif cond=="default":res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
+                    rmin, rmax = cd["range"]
+                    if rmin <= ep <= rmax:
+                        res = (cn, cd["weight"])
+                        self._cohort_cache[date] = res
+                        return res
+            elif cond == "default":
+                res = (cn, cd["weight"])
+                self._cohort_cache[date] = res
+                return res
         raise ValueError(f"No cohort matched for date {date}")
+
     def _days_to_monthly_opex(self,date):
         if self.opex_calendar is None or len(self.opex_calendar)==0:return None
         fo=self.opex_calendar[self.opex_calendar.index>=date]
@@ -206,6 +231,33 @@ class FeatureEngineer:
             wom=(date.day-1)//7+1
             if wom in [2,3,4]:return 0.25
         return 0.05
+
+
+    def _is_cpi_release_day(self, date):
+        target = MACRO_EVENT_CONFIG["cpi_release"]["day_of_month_target"]
+        window = MACRO_EVENT_CONFIG["cpi_release"]["window_days"]
+        return abs(date.day - target) <= window
+
+    def _is_pce_release_day(self, date):
+        target = MACRO_EVENT_CONFIG["pce_release"]["day_of_month_target"]
+        window = MACRO_EVENT_CONFIG["pce_release"]["window_days"]
+        return abs(date.day - target) <= window
+
+    def _is_fomc_minutes_day(self, date):
+        if self.fomc_calendar is None or len(self.fomc_calendar) == 0:
+            return False
+        days_after = MACRO_EVENT_CONFIG["fomc_minutes"]["days_after_meeting"]
+        window = MACRO_EVENT_CONFIG["fomc_minutes"]["window_days"]
+        for fomc_date in self.fomc_calendar.index:
+            minutes_date = fomc_date + pd.Timedelta(days=days_after)
+            if abs((date - minutes_date).days) <= window:
+                return True
+        return False
+
+
+
+
+
     def _compute_feature_quality_vectorized(self,df):
         if not FEATURE_QUALITY_CONFIG:return pd.Series(1.0,index=df.index)
         qs=[]

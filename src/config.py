@@ -11,8 +11,43 @@ PRODUCTION_START_DATE="2025-01-01"
 PUBLICATION_LAGS={"^GSPC":0,"^VIX":0,"CL=F":0,"GC=F":0,"DX-Y.NYB":0,"SKEW":0,"VIX3M":0,"VX1-VX2":0,"VX2-VX1_RATIO":0,"CL1-CL2":0,"DX1-DX2":0,"COR1M":0,"COR3M":0,"VXTH":0,"VXTLT":0,"PCCE":0,"PCCI":0,"PCC":0,"DGS1MO":1,"DGS3MO":1,"DGS6MO":1,"DGS1":1,"DGS2":1,"DGS5":1,"DGS10":1,"DGS30":1,"DTWEXBGS":1,"CPIAUCSL":14}
 ENABLE_TEMPORAL_SAFETY=True
 TARGET_CONFIG={"horizon_days":5,"horizon_label":"5d","target_type":"log_vix_change","output_type":"vix_pct_change","movement_bounds":{"floor":-50.0,"ceiling":100.0,"description":"Percentage change bounds (converted from log-space)"},"log_space":{"enabled":True,"description":"Train on log(future_vix/current_vix), convert to % for output"},"quantiles":{"levels":[0.10,0.25,0.50,0.75,0.90],"loss":"reg:quantileerror","loss_weight":1.0,"enforce_monotonicity":True,"description":"Median (q50) serves as primary forecast"},"regimes":{"boundaries":[16.77,24.40,39.67],"labels":["Low","Normal","Elevated","Crisis"],"loss":"multi:softprob","loss_weight":0.5,"num_classes":4,"description":"Reference only - not used in refactored quantile models"},"confidence":{"components":{"feature_quality":0.5,"regime_stability":0.3,"historical_error":0.2},"loss":"reg:squarederror","loss_weight":0.3,"calibration_method":"isotonic"}}
-CALENDAR_COHORTS={"monthly_opex_minus_5":{"condition":"days_to_monthly_opex","range":(-7,-3),"weight":1.2,"description":"Week before monthly options expiration"},"monthly_opex_minus_1":{"condition":"days_to_monthly_opex","range":(-2,0),"weight":1.5,"description":"Immediate pre-expiration (Wed-Fri)"},"monthly_opex_plus_1":{"condition":"days_to_monthly_opex","range":(1,3),"weight":1.1,"description":"Days after monthly expiration"},"fomc_minus_3":{"condition":"days_to_fomc","range":(-5,-1),"weight":1.3,"description":"Pre-FOMC positioning (Mon-Wed before meeting)"},"fomc_week":{"condition":"days_to_fomc","range":(0,2),"weight":1.4,"description":"FOMC decision day + 2 days after"},"earnings_heavy":{"condition":"spx_earnings_pct","range":(0.15,1.0),"weight":1.1,"description":"Peak earnings season (Jan, Apr, Jul, Oct)"},"futures_rollover":{"condition":"days_to_futures_expiry","range":(-5,0),"weight":1.15,"description":"VIX futures expiration week"},"mid_cycle":{"condition":"default","range":None,"weight":1.0,"description":"Regular market conditions (no major calendar events)"}}
-COHORT_PRIORITY=["fomc_week","fomc_minus_3","monthly_opex_minus_1","monthly_opex_minus_5","futures_rollover","monthly_opex_plus_1","earnings_heavy","mid_cycle"]
+
+CALENDAR_COHORTS = {
+    "fomc_period": {
+        "condition": "macro_event_period",
+        "range": (-7, 2),
+        "weight": 1.35,
+        "description": "FOMC meetings, CPI releases, PCE releases, FOMC minutes"
+    },
+    "opex_week": {
+        "condition": "days_to_monthly_opex",
+        "range": (-7, 0),
+        "weight": 1.3,
+        "description": "Options expiration week + VIX futures rollover"
+    },
+    "earnings_heavy": {
+        "condition": "spx_earnings_pct",
+        "range": (0.15, 1.0),
+        "weight": 1.1,
+        "description": "Peak earnings season (Jan, Apr, Jul, Oct)"
+    },
+    "mid_cycle": {
+        "condition": "default",
+        "range": None,
+        "weight": 1.0,
+        "description": "Regular market conditions"
+    }
+}
+
+COHORT_PRIORITY = ["fomc_period", "opex_week", "earnings_heavy", "mid_cycle"]
+
+MACRO_EVENT_CONFIG = {
+    "cpi_release": {"day_of_month_target": 12, "window_days": 2},
+    "pce_release": {"day_of_month_target": 28, "window_days": 3},
+    "fomc_minutes": {"days_after_meeting": 21, "window_days": 2},
+    "fomc_meeting": {"pre_meeting_days": 7, "post_meeting_days": 2}
+}
+
 XGBOOST_CONFIG={"strategy":"quantile_regression","cohort_aware":True,"shared_params":{"max_depth":6,"learning_rate":0.05,"n_estimators":500,"subsample":0.8,"colsample_bytree":0.8,"colsample_bylevel":0.8,"min_child_weight":3,"reg_alpha":0.1,"reg_lambda":1.0,"gamma":0.1,"seed":42,"n_jobs":-1},"objectives":{"quantile_10":{"objective":"reg:quantileerror","quantile_alpha":0.10,"eval_metric":"mae","early_stopping_rounds":50,"description":"10th percentile - conservative downside scenario"},"quantile_25":{"objective":"reg:quantileerror","quantile_alpha":0.25,"eval_metric":"mae","early_stopping_rounds":50,"description":"25th percentile - lower quartile"},"quantile_50":{"objective":"reg:quantileerror","quantile_alpha":0.50,"eval_metric":"mae","early_stopping_rounds":50,"description":"MEDIAN (50th percentile) - PRIMARY FORECAST (replaces point estimate)"},"quantile_75":{"objective":"reg:quantileerror","quantile_alpha":0.75,"eval_metric":"mae","early_stopping_rounds":50,"description":"75th percentile - upper quartile"},"quantile_90":{"objective":"reg:quantileerror","quantile_alpha":0.90,"eval_metric":"mae","early_stopping_rounds":50,"description":"90th percentile - aggressive upside scenario"},"direction":{"objective":"binary:logistic","eval_metric":"logloss","early_stopping_rounds":50,"num_classes":2,"description":"Binary: VIX up (1) vs down (0)"},"regime":{"objective":"multi:softprob","num_class":4,"eval_metric":"mlogloss","early_stopping_rounds":50,"description":"4-class regime (kept for compatibility)"},"confidence":{"objective":"reg:squarederror","eval_metric":"rmse","early_stopping_rounds":50,"description":"Forecast confidence [0, 1]"}},"cv_config":{"method":"time_series_split","n_splits":5,"test_size":0.2,"gap":5}}
 PREDICTION_DB_CONFIG={"db_path":"data_cache/predictions.db","table_name":"forecasts","min_samples_for_calibration":50,"schema":{"prediction_id":"TEXT PRIMARY KEY","timestamp":"DATETIME","observation_date":"DATE","forecast_date":"DATE","horizon":"INTEGER","calendar_cohort":"TEXT","cohort_weight":"REAL","point_estimate":"REAL","median_forecast":"REAL","q10":"REAL","q25":"REAL","q50":"REAL","q75":"REAL","q90":"REAL","prob_low":"REAL","prob_normal":"REAL","prob_elevated":"REAL","prob_crisis":"REAL","direction_probability":"REAL","confidence_score":"REAL","feature_quality":"REAL","regime_stability":"REAL","num_features_used":"INTEGER","missing_features":"TEXT","current_vix":"REAL","actual_vix_change":"REAL","actual_regime":"TEXT","point_error":"REAL","median_error":"REAL","quantile_coverage":"TEXT","features_used":"TEXT","model_version":"TEXT","created_at":"DATETIME"},"indexes":["CREATE INDEX idx_timestamp ON forecasts(timestamp)","CREATE INDEX idx_observation_date ON forecasts(observation_date)","CREATE INDEX idx_cohort ON forecasts(calendar_cohort)","CREATE INDEX idx_forecast_date ON forecasts(forecast_date)"]}
 BACKTEST_QUERIES={"quantile_coverage":"""
