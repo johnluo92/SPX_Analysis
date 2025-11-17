@@ -23,12 +23,102 @@ class ProbabilisticVIXForecaster:
         logger.info("  Target creation:");logger.info(f"    Total samples: {len(df)}");df=df.copy();future_vix_list=[]
         for i in range(len(df)):future_vix_list.append(df["vix"].iloc[i+self.horizon]if i+self.horizon<len(df)else np.nan)
         df["future_vix"]=future_vix_list;df["log_current_vix"]=np.log(df["vix"]);df["log_future_vix"]=np.log(df["future_vix"]);df["target_log_vix_change"]=df["log_future_vix"]-df["log_current_vix"];df["target_vix_pct_change"]=((df["future_vix"]-df["vix"])/df["vix"])*100;future_vix_series=df["vix"].shift(-self.horizon);df["target_direction"]=(future_vix_series>df["vix"]).astype(int);regime_volatility=df["vix"].rolling(21,min_periods=10).std();regime_stability=1/(1+regime_volatility/df["vix"].rolling(21,min_periods=10).mean());regime_stability=regime_stability.fillna(0.5);df["target_confidence"]=(0.5*df.get("feature_quality",0.5).fillna(0.5)+0.5*regime_stability).clip(0,1);valid_targets=(~df["target_log_vix_change"].isna()).sum();logger.info(f"    Valid targets: {valid_targets}");logger.info(f"    NaN targets: {len(df)-valid_targets} (last {self.horizon} days)");logger.info(f"    Training in: LOG-SPACE");logger.info(f"    Output in: PERCENTAGE-SPACE");logger.info("");return df
-    def _train_cohort_models(self,cohort,df):
-        df=df.copy();X=df[self.feature_names]
-        if len(df)<30:raise ValueError(f"Insufficient samples for cohort {cohort}: {len(df)}")
-        self.models[cohort]={};self.calibrators[cohort]={};metrics={};y_target=df["target_log_vix_change"];logger.info(f"  Training on LOG-SPACE target (will convert to % for output)");logger.info("  Training quantile regression models...");raw_predictions={}
-        for q in self.quantiles:q_name=f"q{int(q*100)}";model,metric=self._train_quantile_regressor(X,y_target,quantile_alpha=q);self.models[cohort][q_name]=model;metrics[q_name]=metric;raw_predictions[q_name]=model.predict(X);logger.info(f"    {q_name}: MAE={metric['mae']:.4f} (log-space)")
-        logger.info("  Calibrating quantile predictions...");valid_mask=~y_target.isna();y_valid=y_target[valid_mask].values;calib_predictions={q_name:raw_predictions[q_name][valid_mask]for q_name in raw_predictions.keys()};quantile_calibrator=QuantileCalibrator(quantiles=self.quantiles);quantile_calibrator.fit(calib_predictions,y_valid);self.calibrators[cohort]['quantile']=quantile_calibrator;logger.info("  ✅ Quantile calibration complete");logger.info("  Training direction classifier...");y_direction=df["target_direction"];model_direction,metric_direction=self._train_classifier(X,y_direction,num_classes=2);self.models[cohort]["direction"]=model_direction;metrics["direction"]=metric_direction;logger.info(f"    Accuracy: {metric_direction.get('accuracy',0):.3f}");logger.info("  Calibrating direction probabilities...");calibrators=self._calibrate_probabilities(model_direction,X,y_direction);self.calibrators[cohort]["direction"]=calibrators;logger.info("  Training confidence model...");y_confidence=df["target_confidence"];model_conf,metric_conf=self._train_regressor(X,y_confidence,objective="reg:squarederror",eval_metric="rmse");self.models[cohort]["confidence"]=model_conf;metrics["confidence"]=metric_conf;logger.info(f"    RMSE: {metric_conf['rmse']:.3f}");return metrics
+
+    def _train_cohort_models(self, cohort, df):
+        df = df.copy()
+        X = df[self.feature_names]
+
+        if len(df) < 30:
+            raise ValueError(f"Insufficient samples for cohort {cohort}: {len(df)}")
+
+        self.models[cohort] = {}
+        self.calibrators[cohort] = {}
+        metrics = {}
+
+        y_target = df["target_log_vix_change"]
+        logger.info(f"  Training on LOG-SPACE target (will convert to % for output)")
+
+        # Split data: 80% train, 20% calibration holdout
+        n_samples = len(X)
+        n_train = int(n_samples * 0.8)
+
+        X_train = X.iloc[:n_train]
+        X_cal = X.iloc[n_train:]
+        y_train = y_target.iloc[:n_train]
+        y_cal = y_target.iloc[n_train:]
+
+        logger.info(f"  Split: {n_train} train, {len(X_cal)} calibration holdout")
+
+        # Train quantile models on training set only
+        logger.info("  Training quantile regression models...")
+        raw_predictions_train = {}
+        raw_predictions_cal = {}
+
+        for q in self.quantiles:
+            q_name = f"q{int(q*100)}"
+
+            # Train on training set
+            model, metric = self._train_quantile_regressor(X_train, y_train, quantile_alpha=q)
+            self.models[cohort][q_name] = model
+            metrics[q_name] = metric
+
+            # Get predictions on BOTH sets
+            raw_predictions_train[q_name] = model.predict(X_train)
+            raw_predictions_cal[q_name] = model.predict(X_cal)
+
+            logger.info(f"    {q_name}: MAE={metric['mae']:.4f} (log-space)")
+
+        # Calibrate using HOLDOUT SET (critical fix!)
+        logger.info("  Calibrating quantile predictions on holdout set...")
+        valid_mask_cal = ~y_cal.isna()
+
+        if valid_mask_cal.sum() < 20:
+            logger.warning(f"  ⚠️  Only {valid_mask_cal.sum()} valid calibration samples - using full data")
+            # Fallback to full dataset if calibration set too small
+            valid_mask = ~y_target.isna()
+            y_valid = y_target[valid_mask].values
+            calib_predictions = {
+                q_name: raw_predictions_train[q_name][valid_mask[:n_train]]
+                for q_name in raw_predictions_train.keys()
+            }
+        else:
+            # Use holdout set (correct approach)
+            y_valid = y_cal[valid_mask_cal].values
+            calib_predictions = {
+                q_name: raw_predictions_cal[q_name][valid_mask_cal]
+                for q_name in raw_predictions_cal.keys()
+            }
+
+        quantile_calibrator = QuantileCalibrator(quantiles=self.quantiles)
+        quantile_calibrator.fit(calib_predictions, y_valid)
+        self.calibrators[cohort]['quantile'] = quantile_calibrator
+        logger.info("  ✅ Quantile calibration complete (holdout-validated)")
+
+        # Train direction classifier on full data
+        logger.info("  Training direction classifier...")
+        y_direction = df["target_direction"]
+        model_direction, metric_direction = self._train_classifier(X, y_direction, num_classes=2)
+        self.models[cohort]["direction"] = model_direction
+        metrics["direction"] = metric_direction
+        logger.info(f"    Accuracy: {metric_direction.get('accuracy', 0):.3f}")
+
+        # Calibrate direction probabilities
+        logger.info("  Calibrating direction probabilities...")
+        calibrators = self._calibrate_probabilities(model_direction, X, y_direction)
+        self.calibrators[cohort]["direction"] = calibrators
+
+        # Train confidence model
+        logger.info("  Training confidence model...")
+        y_confidence = df["target_confidence"]
+        model_conf, metric_conf = self._train_regressor(
+            X, y_confidence, objective="reg:squarederror", eval_metric="rmse"
+        )
+        self.models[cohort]["confidence"] = model_conf
+        metrics["confidence"] = metric_conf
+        logger.info(f"    RMSE: {metric_conf['rmse']:.3f}")
+
+        return metrics
+
     def _train_quantile_regressor(self,X,y,quantile_alpha):
         params=XGBOOST_CONFIG["shared_params"].copy();params.update({"objective":"reg:quantileerror","quantile_alpha":quantile_alpha});n_splits,test_size=self._get_adaptive_cv_config(len(X));val_maes=[]
         if n_splits==0:
