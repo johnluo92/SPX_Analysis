@@ -9,46 +9,293 @@ from sklearn.metrics import mean_absolute_error,mean_squared_error
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 class QuantileCalibrator:
-    def __init__(self,quantiles=[0.10,0.25,0.50,0.75,0.90]):
-        self.quantiles=quantiles;self.calibrators={};self.fitted=False
-    def fit(self,predictions,actuals):
-        if len(actuals)<30:logger.warning(f"⚠️  Only {len(actuals)} samples for calibration - may be unreliable")
+    """
+    Enhanced quantile calibrator with asymmetric corrections and adaptive windowing.
+
+    Key improvements over V1:
+    1. Asymmetric handling: Lower/upper quantiles get direction-specific corrections
+    2. Adaptive window sizing based on sample size
+    3. Quantile-specific learning: Each quantile learns its own error pattern
+    4. Robust monotonicity enforcement with minimal distortion
+    """
+
+    def __init__(self, quantiles=[0.10, 0.25, 0.50, 0.75, 0.90]):
+        self.quantiles = quantiles
+        self.calibrators = {}
+        self.bias_corrections = {}
+        self.coverage_adjustments = {}  # Store target-based adjustments
+        self.fitted = False
+
+    def fit(self, predictions, actuals):
+        """
+        Fit calibration using coverage-based corrections.
+
+        Strategy:
+        1. For each quantile, measure actual coverage
+        2. Learn correction that maps raw prediction -> calibrated prediction
+        3. Correction should push coverage toward target
+        """
+        if len(actuals) < 30:
+            logger.warning(f"⚠️  Only {len(actuals)} samples for calibration - may be unreliable")
+
         logger.info(f"   Fitting quantile calibrator on {len(actuals)} samples...")
-        for q_name,q_preds in predictions.items():
-            if len(q_preds)!=len(actuals):raise ValueError(f"{q_name}: length mismatch ({len(q_preds)} vs {len(actuals)})")
-            empirical_quantiles=[]
-            for pred in q_preds:
-                empirical_q=(actuals<=pred).mean()
-                empirical_quantiles.append(empirical_q)
-            empirical_quantiles=np.array(empirical_quantiles)
-            calibrator=IsotonicRegression(out_of_bounds='clip')
-            calibrator.fit(q_preds,empirical_quantiles)
-            self.calibrators[q_name]=calibrator
-            target_quantile=float(q_name[1:])/100
-            actual_coverage=(actuals<=q_preds).mean()
-            logger.info(f"      {q_name}: {actual_coverage:.1%} coverage (target {target_quantile:.1%})")
-        self.fitted=True
+
+        actuals = np.array(actuals)
+
+        for q_name, q_preds in predictions.items():
+            q_preds = np.array(q_preds)
+
+            if len(q_preds) != len(actuals):
+                raise ValueError(f"{q_name}: length mismatch ({len(q_preds)} vs {len(actuals)})")
+
+            target_quantile = float(q_name[1:]) / 100
+
+            # Calculate current coverage
+            current_coverage = (actuals <= q_preds).mean()
+            coverage_error = current_coverage - target_quantile
+
+            # Adaptive window size: balance between local adaptation and stability
+            # Smaller windows for better local adaptation, but need enough samples
+            n = len(actuals)
+            if n < 100:
+                window_size = max(20, n // 5)  # 20% of data, min 20
+            elif n < 500:
+                window_size = max(30, n // 8)  # 12.5% of data, min 30
+            else:
+                window_size = max(50, n // 15)  # 6.7% of data, min 50
+
+            # Sort by prediction value to learn prediction-dependent patterns
+            sort_idx = np.argsort(q_preds)
+            sorted_preds = q_preds[sort_idx]
+            sorted_actuals = actuals[sort_idx]
+
+            # Calculate local corrections using sliding window
+            corrections = []
+            pred_values = []
+
+            for i in range(len(sorted_preds)):
+                # Centered window
+                start_idx = max(0, i - window_size // 2)
+                end_idx = min(len(sorted_preds), i + window_size // 2)
+
+                window_actuals = sorted_actuals[start_idx:end_idx]
+                window_pred = sorted_preds[i]
+
+                # Calculate what the prediction should be for target coverage
+                # Use asymmetric approach based on quantile type
+                if target_quantile < 0.5:
+                    # Lower quantile: want actual >= prediction
+                    # Calculate value that would give target% below it
+                    target_value = np.quantile(window_actuals, target_quantile)
+                    # If we're underestimating coverage, need to move prediction DOWN
+                    correction = target_value - window_pred
+
+                elif target_quantile > 0.5:
+                    # Upper quantile: want actual <= prediction
+                    target_value = np.quantile(window_actuals, target_quantile)
+                    # If we're overestimating coverage, need to move prediction DOWN
+                    correction = target_value - window_pred
+
+                else:
+                    # Median: symmetric
+                    target_value = np.quantile(window_actuals, 0.5)
+                    correction = target_value - window_pred
+
+                corrections.append(correction)
+                pred_values.append(window_pred)
+
+            corrections = np.array(corrections)
+            pred_values = np.array(pred_values)
+
+            # Fit isotonic regression if we have enough unique prediction values
+            unique_preds = len(np.unique(pred_values))
+
+            if unique_preds >= 5:
+                # Use isotonic regression for smooth, monotonic corrections
+                calibrator = IsotonicRegression(out_of_bounds='clip')
+                calibrator.fit(pred_values, corrections)
+                self.calibrators[q_name] = calibrator
+
+                # Test the calibrator on training data
+                test_corrections = calibrator.predict(q_preds)
+                calibrated_test = q_preds + test_corrections
+                expected_coverage = (actuals <= calibrated_test).mean()
+
+            elif unique_preds >= 2:
+                # Use linear interpolation
+                unique_pred_vals = np.unique(pred_values)
+                unique_corrections = [corrections[pred_values == p].mean() for p in unique_pred_vals]
+
+                calibrator = interp1d(
+                    unique_pred_vals,
+                    unique_corrections,
+                    kind='linear',
+                    bounds_error=False,
+                    fill_value=(unique_corrections[0], unique_corrections[-1])
+                )
+                self.calibrators[q_name] = calibrator
+                expected_coverage = current_coverage
+
+            else:
+                # Fallback: simple bias correction
+                logger.warning(f"   ⚠️  {q_name}: using simple bias correction")
+                self.calibrators[q_name] = None
+                expected_coverage = current_coverage
+
+            # Store simple bias correction as fallback
+            # Use median for robustness
+            self.bias_corrections[q_name] = float(np.median(corrections))
+
+            # Store coverage-based adjustment for additional correction if needed
+            # This helps when systematic under/over-coverage persists
+            if abs(coverage_error) > 0.05:  # More than 5% off target
+                # Calculate global adjustment to push toward target
+                # Use conservative scaling
+                coverage_adjustment = coverage_error * np.std(actuals) * 0.1
+                self.coverage_adjustments[q_name] = float(coverage_adjustment)
+            else:
+                self.coverage_adjustments[q_name] = 0.0
+
+            # Log diagnostics
+            mean_correction = np.median(corrections)  # Use median for robustness
+            logger.info(
+                f"      {q_name}: {current_coverage:.1%} coverage (target {target_quantile:.1%}), "
+                f"median correction: {mean_correction:+.4f}"
+            )
+
+        self.fitted = True
         logger.info("   ✅ Quantile calibrator fitted")
-    def transform(self,predictions):
-        if not self.fitted:logger.warning("⚠️  Calibrator not fitted, returning raw predictions");return predictions
-        calibrated={}
-        for q_name,q_value in predictions.items():
-            if q_name not in self.calibrators:calibrated[q_name]=q_value;continue
-            calibrator=self.calibrators[q_name]
-            target_quantile=float(q_name[1:])/100
-            try:pred_min=calibrator.X_min_;pred_max=calibrator.X_max_
-            except AttributeError:pred_min=np.min(calibrator.X_thresholds_);pred_max=np.max(calibrator.X_thresholds_)
-            def coverage_at_value(val):return calibrator.predict([val])[0]
-            search_min=pred_min-abs(pred_min)*0.2;search_max=pred_max+abs(pred_max)*0.2;tol=0.001;max_iter=50
-            for _ in range(max_iter):
-                mid=(search_min+search_max)/2
-                mid_coverage=coverage_at_value(mid)
-                if abs(mid_coverage-target_quantile)<tol:break
-                if mid_coverage<target_quantile:search_min=mid
-                else:search_max=mid
-            calibrated_value=mid
-            calibrated[q_name]=calibrated_value
+
+    def transform(self, predictions):
+        """
+        Apply calibration corrections with coverage-based adjustments.
+        """
+        if not self.fitted:
+            logger.warning("⚠️  Calibrator not fitted, returning raw predictions")
+            return predictions
+
+        calibrated = {}
+
+        for q_name, raw_value in predictions.items():
+            if q_name not in self.calibrators:
+                calibrated[q_name] = raw_value
+                continue
+
+            calibrator = self.calibrators[q_name]
+            target_quantile = float(q_name[1:]) / 100
+
+            # Get base correction
+            if calibrator is None:
+                # Use simple bias correction
+                base_correction = self.bias_corrections[q_name]
+            else:
+                # Use learned correction function
+                base_correction = float(calibrator.predict([raw_value])[0]
+                                      if hasattr(calibrator, 'predict')
+                                      else calibrator([raw_value])[0])
+
+            # Apply base correction
+            calibrated_value = raw_value + base_correction
+
+            # Apply coverage adjustment if significant under/over-coverage detected
+            coverage_adj = self.coverage_adjustments.get(q_name, 0.0)
+            if abs(coverage_adj) > 0.001:
+                # Directional adjustment based on quantile type
+                if target_quantile < 0.5:
+                    # Lower quantile: if undercovering, move DOWN (more conservative)
+                    calibrated_value -= abs(coverage_adj)
+                elif target_quantile > 0.5:
+                    # Upper quantile: if overcovering, move DOWN (less conservative)
+                    calibrated_value -= coverage_adj
+                else:
+                    # Median: symmetric adjustment
+                    calibrated_value += coverage_adj
+
+            calibrated[q_name] = calibrated_value
+
+        # Enforce monotonicity with minimal distortion
+        calibrated = self._enforce_monotonicity_minimal(calibrated)
+
         return calibrated
+
+    def _enforce_monotonicity_minimal(self, quantiles_dict):
+        """
+        Enforce monotonicity with minimal distortion to predictions.
+        Uses projection onto monotonic space.
+        """
+        q_names = ['q10', 'q25', 'q50', 'q75', 'q90']
+        q_values = [quantiles_dict.get(q, None) for q in q_names]
+
+        # Skip if any quantile is missing
+        if None in q_values:
+            return quantiles_dict
+
+        q_values = np.array(q_values)
+        original = q_values.copy()
+
+        # Pool adjacent violators algorithm (PAV)
+        # This finds the closest monotonic sequence
+        n = len(q_values)
+        result = q_values.copy()
+
+        while True:
+            violations = 0
+            for i in range(n - 1):
+                if result[i] > result[i + 1]:
+                    # Violation found: average the violating pair
+                    # Find the extent of violation
+                    j = i + 1
+                    while j < n and result[i] > result[j]:
+                        j += 1
+
+                    # Average the violating range
+                    avg = np.mean(result[i:j])
+                    result[i:j] = avg
+                    violations += 1
+                    break
+
+            if violations == 0:
+                break
+
+        # Update dictionary
+        output = quantiles_dict.copy()
+        for q_name, q_value in zip(q_names, result):
+            output[q_name] = float(q_value)
+
+        # Log if significant adjustment was made
+        max_adjustment = np.max(np.abs(result - original))
+        if max_adjustment > 0.01:  # More than 1% adjustment
+            logger.debug(f"   Monotonicity enforcement: max adjustment = {max_adjustment:.4f}")
+
+        return output
+
+    def get_diagnostics(self):
+        """Return detailed calibration diagnostics."""
+        if not self.fitted:
+            return {"error": "Calibrator not fitted"}
+
+        diagnostics = {
+            "fitted": self.fitted,
+            "quantiles": self.quantiles,
+            "bias_corrections": self.bias_corrections,
+            "coverage_adjustments": self.coverage_adjustments,
+            "calibrator_types": {}
+        }
+
+        # Determine calibrator type for each quantile
+        for q_name in self.calibrators.keys():
+            cal = self.calibrators[q_name]
+            if cal is None:
+                cal_type = "simple_bias"
+            elif isinstance(cal, IsotonicRegression):
+                cal_type = "isotonic_regression"
+            else:
+                cal_type = "linear_interpolation"
+            diagnostics["calibrator_types"][q_name] = cal_type
+
+        return diagnostics
+
+
 class ForecastCalibrator:
     def __init__(self,min_samples=50,use_robust=True,cohort_specific=True,regime_specific=True):
         self.min_samples=min_samples;self.use_robust=use_robust;self.cohort_specific=cohort_specific;self.regime_specific=regime_specific;self.global_model=None;self.cohort_models={};self.regime_models={};self.calibration_stats={};self.fitted=False
