@@ -4,28 +4,13 @@ from typing import Dict,List,Optional,Tuple
 import numpy as np
 import pandas as pd
 from config import REGIME_BOUNDARIES,TRAINING_YEARS
+from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,VIX_REGIME_BINS,VIX_REGIME_LABELS,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
 warnings.filterwarnings("ignore")
 try:
     from config import CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG
 except ImportError:
     ENABLE_TEMPORAL_SAFETY=False;PUBLICATION_LAGS={};CALENDAR_COHORTS={};COHORT_PRIORITY=[];TARGET_CONFIG={};FEATURE_QUALITY_CONFIG={}
     warnings.warn("⚠️ Calendar cohort config not found - cohort features disabled")
-def calculate_robust_zscore(s,w,ms=1e-8):
-    rm,rs=s.rolling(w).mean(),s.rolling(w).std().clip(lower=ms);return (s-rm)/rs
-def calculate_regime_with_validation(s,bins,labels,feature_name="feature"):
-    if s.notna().sum()/len(s)<0.5:return pd.Series(0,index=s.index)
-    vv=s.dropna()
-    if len(vv)>0 and vv.max()-vv.min()<1e-6:return pd.Series(0,index=s.index)
-    try:r=pd.cut(s,bins=bins,labels=labels);return r.fillna(0).astype(int)
-    except:return pd.Series(0,index=s.index)
-def calculate_percentile_with_validation(s,w,mdp=0.7):
-    def safe_percentile_rank(x):
-        v=x.dropna()
-        if len(v)<w*mdp or len(v)==0:return np.nan
-        lv=x.iloc[-1]
-        if pd.isna(lv):return np.nan
-        return (v<lv).sum()/len(v)*100
-    return s.rolling(w+1).apply(safe_percentile_rank,raw=False)
 class MetaFeatureEngine:
     @staticmethod
     def extract_regime_indicators(df:pd.DataFrame,vix:pd.Series,spx:pd.Series)->pd.DataFrame:
@@ -261,7 +246,7 @@ class FeatureEngineer:
         cbd=self.fetcher.fetch_all_cboe()
         if cbd:cb=pd.DataFrame(index=spx.index);[cb.update({s:ser.reindex(spx.index,method="ffill",limit=5)}) for s,ser in cbd.items()]
         else:cb=pd.DataFrame(index=spx.index)
-        bf=self._build_base_features(spx,vix,spx_ohlc,cb);cbf=self._build_cboe_features(cb,vix) if not cb.empty else pd.DataFrame(index=spx.index);ff=self._build_futures_features(ss,es,spx.index,spx,cb);md=self._fetch_macro_data(ss,es,spx.index);mf=self._build_macro_features(md) if md is not None else pd.DataFrame(index=spx.index);tf=self._build_treasury_features(ss,es,spx.index);        cmb=pd.concat([bf,cbf],axis=1);mtf=self._build_meta_features(cmb,spx,vix,md);calf=self._build_calendar_features(spx.index)
+        bf=self._build_base_features(spx,vix,spx_ohlc,cb);cbf=self._build_cboe_features(cb,vix) if not cb.empty else pd.DataFrame(index=spx.index);ff=self._build_futures_features(ss,es,spx.index,spx,cb);md=self._fetch_macro_data(ss,es,spx.index);mf=self._build_macro_features(md) if md is not None else pd.DataFrame(index=spx.index);tf=self._build_treasury_features(ss,es,spx.index);cmb=pd.concat([bf,cbf],axis=1);mtf=self._build_meta_features(cmb,spx,vix,md);calf=self._build_calendar_features(spx.index)
         af=pd.concat([bf,cbf,ff,mf,tf,mtf,calf],axis=1);af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)
         self._load_calendar_data();cohd=[{"calendar_cohort":self.get_calendar_cohort(dt)[0],"cohort_weight":self.get_calendar_cohort(dt)[1]} for dt in af.index];cohdf=pd.DataFrame(cohd,index=af.index);af=pd.concat([af,cohdf],axis=1)
         af["feature_quality"]=self._compute_feature_quality_vectorized(af);af=self.apply_quality_control(af)
@@ -278,7 +263,7 @@ class FeatureEngineer:
         for w in [10,21]:mom=vix.diff(w);f[f"vix_momentum_z_{w}d"]=calculate_robust_zscore(mom,63)
         f["vix_accel_5d"]=vix.diff(5).diff(5);vm21,vm63=vix.rolling(21).mean(),vix.rolling(63).mean();f["vix_stretch_ma21"]=(vix-vm21).abs();f["vix_stretch_ma63"]=(vix-vm63).abs()
         for w in [21,63]:ma=vix.rolling(w).mean();f[f"reversion_strength_{w}d"]=(vix-ma).abs()/ma.replace(0,np.nan)
-        bw=20;bma,bstd=vix.rolling(bw).mean(),vix.rolling(bw).std();bu,bl=bma+2*bstd,bma-2*bstd;f["vix_bb_position_20d"]=((vix-bl)/(bu-bl).replace(0,np.nan)).clip(0,1);f["vix_extreme_low_21d"]=(vix<vix.rolling(21).quantile(0.1)).astype(int);f["vix_regime"]=calculate_regime_with_validation(vix,bins=REGIME_BOUNDARIES,labels=[0,1,2,3],feature_name="vix");rc=f["vix_regime"].diff().fillna(0)!=0;f["days_in_regime"]=(~rc).cumsum()-(~rc).cumsum().where(rc).ffill().fillna(0)
+        bw=20;bma,bstd=vix.rolling(bw).mean(),vix.rolling(bw).std();bu,bl=bma+2*bstd,bma-2*bstd;f["vix_bb_position_20d"]=((vix-bl)/(bu-bl).replace(0,np.nan)).clip(0,1);f["vix_extreme_low_21d"]=(vix<vix.rolling(21).quantile(0.1)).astype(int);f["vix_regime"]=calculate_regime_with_validation(vix,bins=VIX_REGIME_BINS,labels=VIX_REGIME_LABELS,feature_name="vix");rc=f["vix_regime"].diff().fillna(0)!=0;f["days_in_regime"]=(~rc).cumsum()-(~rc).cumsum().where(rc).ffill().fillna(0)
         if cb is not None and "VIX3M" in cb.columns:f["vix_term_structure"]=((vix/cb["VIX3M"].replace(0,np.nan))-1)*100
         else:f["vix_term_structure"]=np.nan
         for w in [1,5,10,21,63]:f[f"spx_ret_{w}d"]=spx.pct_change(w)*100
@@ -301,7 +286,7 @@ class FeatureEngineer:
     def _build_cboe_features(self,cb:pd.DataFrame,vix:pd.Series)->pd.DataFrame:
         f=pd.DataFrame(index=vix.index)
         if "SKEW" in cb.columns:
-            sk=cb["SKEW"];f["SKEW"]=sk;f["skew_regime"]=calculate_regime_with_validation(sk,bins=[0,130,145,160,200],labels=[0,1,2,3],feature_name="skew");f["skew_vs_vix"]=sk-vix;f["skew_vix_ratio"]=sk/vix.replace(0,np.nan);sma=sk.rolling(63).mean();f["skew_displacement"]=((sk-sma)/sma.replace(0,np.nan))*100
+            sk=cb["SKEW"];f["SKEW"]=sk;f["skew_regime"]=calculate_regime_with_validation(sk,bins=SKEW_REGIME_BINS,labels=SKEW_REGIME_LABELS,feature_name="skew");f["skew_vs_vix"]=sk-vix;f["skew_vix_ratio"]=sk/vix.replace(0,np.nan);sma=sk.rolling(63).mean();f["skew_displacement"]=((sk-sma)/sma.replace(0,np.nan))*100
         if "PCCE" in cb.columns and "PCCI" in cb.columns:f["pc_equity_inst_divergence"]=(cb["PCCE"].rolling(63).rank(pct=True)-cb["PCCI"].rolling(63).rank(pct=True)).abs()
         if "PCC" in cb.columns:f["pcc_accel_10d"]=cb["PCC"].diff(10).diff(10)
         for cn in ["COR1M","COR3M"]:

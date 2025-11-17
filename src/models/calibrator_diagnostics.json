@@ -1,0 +1,85 @@
+{
+  "fitted": true,
+  "timestamp": "2025-11-17T11:54:26.658268",
+  "config": {
+    "min_samples": 50,
+    "use_robust": true,
+    "cohort_specific": true,
+    "regime_specific": true
+  },
+  "statistics": {
+    "global": {
+      "samples": 371,
+      "mae_before": 9.00195292662778,
+      "mae_after": 8.37047486934491,
+      "improvement_pct": 7.014900682439221,
+      "mean_error": -2.246443339909882
+    },
+    "cohort_mid_cycle": {
+      "samples": 176,
+      "mae_before": 9.232418069192418,
+      "mae_after": 8.66392535888687,
+      "improvement_pct": 6.157571137322598,
+      "mean_error": -1.3780218502725368
+    },
+    "cohort_earnings_heavy": {
+      "samples": 46,
+      "mae_before": 8.488441102161566,
+      "mae_after": 8.080680740738956,
+      "improvement_pct": 4.803713149623848,
+      "mean_error": -2.0663744174731513
+    },
+    "cohort_monthly_opex_minus_5": {
+      "samples": 46,
+      "mae_before": 8.556263927295735,
+      "mae_after": 7.87170483061163,
+      "improvement_pct": 8.000677661429547,
+      "mean_error": -1.9602124105848984
+    },
+    "cohort_monthly_opex_minus_1": {
+      "samples": 47,
+      "mae_before": 8.232389621787913,
+      "mae_after": 5.987158762490174,
+      "improvement_pct": 27.273136506507072,
+      "mean_error": -3.2533400199676525
+    },
+    "cohort_fomc_minus_3": {
+      "samples": 36,
+      "mae_before": 11.767271348501719,
+      "mae_after": 8.541266652576585,
+      "improvement_pct": 27.415061660287872,
+      "mean_error": -6.489006689386376
+    },
+    "regime_low": {
+      "samples": 193,
+      "mae_before": 7.332376785187687,
+      "mae_after": 6.411984581366548,
+      "improvement_pct": 12.552440099374678,
+      "mean_error": -1.5837073335476244
+    },
+    "regime_normal": {
+      "samples": 175,
+      "mae_before": 10.684077609144557,
+      "mae_after": 10.114316860474457,
+      "improvement_pct": 5.332802414149813,
+      "mean_error": -2.7023584519685153
+    }
+  },
+  "models": {
+    "global": true,
+    "cohorts": [
+      "mid_cycle",
+      "earnings_heavy",
+      "monthly_opex_minus_5",
+      "monthly_opex_minus_1",
+      "fomc_minus_3"
+    ],
+    "regimes": [
+      "low",
+      "normal"
+    ]
+  },
+  "overall_improvement": 7.014900682439221,
+  "training_samples": 371,
+  "bias_correction": -2.246443339909882
+}
