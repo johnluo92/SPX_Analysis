@@ -8078,3 +8078,513 @@ Training 7 cohorts: ['earnings_heavy', 'fomc_minus_3', 'fomc_week', 'futures_rol
 2025-11-16 00:11:06 | INFO | __main__ |   Training report: models/training_report_*.json
 2025-11-16 00:11:06 | INFO | __main__ | ================================================================================
 
+2025-11-16 21:18:50 | INFO | __main__ | 
+================================================================================
+2025-11-16 21:18:50 | INFO | __main__ | PROBABILISTIC VIX FORECASTER - TRAINING PIPELINE
+2025-11-16 21:18:50 | INFO | __main__ | ================================================================================
+2025-11-16 21:18:50 | INFO | __main__ | Version: 3.0 (Log-Transformed Realized Volatility)
+2025-11-16 21:18:50 | INFO | __main__ | Date: 2025-11-16 21:18:50
+2025-11-16 21:18:50 | INFO | __main__ | Output: models
+2025-11-16 21:18:50 | INFO | __main__ | ================================================================================
+
+2025-11-16 21:18:50 | INFO | __main__ | 
+2025-11-16 21:18:50 | INFO | __main__ | 
+2025-11-16 21:18:50 | INFO | __main__ | ================================================================================
+2025-11-16 21:18:50 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-16 21:18:50 | INFO | __main__ | ================================================================================
+2025-11-16 21:18:50 | INFO | __main__ | 
+2025-11-16 21:18:50 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-16 21:18:50 | INFO | __main__ |   ✅ Target type correct: vix_pct_change
+2025-11-16 21:18:50 | INFO | __main__ |   ✅ Movement bounds: [-50.0, 100.0]
+2025-11-16 21:18:50 | INFO | __main__ | 
+2025-11-16 21:18:50 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-16 21:18:50 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-16 21:18:50 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-16 21:18:50 | INFO | __main__ | 
+2025-11-16 21:18:50 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-16 21:18:50 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-16 21:18:50 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-16 21:18:50 | INFO | __main__ | 
+2025-11-16 21:18:50 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-16 21:18:50 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-16 21:18:50 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-16 21:18:50 | INFO | __main__ |     - 1 direction classifier
+2025-11-16 21:18:50 | INFO | __main__ |     - 1 confidence scorer
+2025-11-16 21:18:50 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-16 21:18:50 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-16 21:18:50 | INFO | __main__ | 
+2025-11-16 21:18:50 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-16 21:18:50 | INFO | __main__ |    All checks successful - ready to train
+2025-11-16 21:18:50 | INFO | __main__ | ================================================================================
+2025-11-16 21:18:50 | INFO | __main__ | 
+2025-11-16 21:18:50 | INFO | __main__ | 
+================================================================================
+2025-11-16 21:18:50 | INFO | __main__ | DATA PREPARATION
+2025-11-16 21:18:50 | INFO | __main__ | ================================================================================
+2025-11-16 21:18:50 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-16 21:18:50 | INFO | __main__ | 
+[2/4] Building feature set for training period...
+2025-11-16 21:18:50 | INFO | __main__ |   Target period: 20 years ending 2022-12-31
+2025-11-16 21:18:50 | INFO | __main__ |   This includes ~450 days warmup for technical indicators
+2025-11-16 21:18:59 | INFO | __main__ | 
+  Features created: 168
+  Date range: 2001-10-12 to 2022-12-30
+  Total samples: 5342
+2025-11-16 21:18:59 | INFO | __main__ |   Usable training samples (after warmup): 4892
+2025-11-16 21:18:59 | INFO | __main__ |   Effective training period: 2003-07-29 to 2022-12-30
+2025-11-16 21:18:59 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-16 21:18:59 | INFO | __main__ |   Assigning calendar cohorts using feature_engine logic...
+2025-11-16 21:18:59 | INFO | __main__ | 
+[4/4] Validating temporal hygiene...
+2025-11-16 21:18:59 | INFO | __main__ |   Cohort distribution:
+2025-11-16 21:18:59 | INFO | __main__ |     earnings_heavy: 532 samples
+2025-11-16 21:18:59 | INFO | __main__ |     fomc_minus_3: 349 samples
+2025-11-16 21:18:59 | INFO | __main__ |     fomc_week: 115 samples
+2025-11-16 21:18:59 | INFO | __main__ |     futures_rollover: 233 samples
+2025-11-16 21:18:59 | INFO | __main__ |     mid_cycle: 2776 samples
+2025-11-16 21:18:59 | INFO | __main__ |     monthly_opex_minus_1: 703 samples
+2025-11-16 21:18:59 | INFO | __main__ |     monthly_opex_minus_5: 634 samples
+2025-11-16 21:18:59 | INFO | __main__ | 
+  Final dataframe shape: (5342, 169)
+2025-11-16 21:18:59 | INFO | __main__ |   Columns: features (166) + vix + spx + calendar_cohort
+2025-11-16 21:18:59 | INFO | __main__ | 
+✅ Data preparation complete
+2025-11-16 21:18:59 | INFO | __main__ | ✅ Temporal hygiene validated: All data ≤ 2022-12-31
+2025-11-16 21:18:59 | INFO | __main__ | ================================================================================
+
+2025-11-16 21:18:59 | INFO | __main__ | 
+2025-11-16 21:18:59 | INFO | __main__ | ================================================================================
+2025-11-16 21:18:59 | INFO | __main__ | MODEL TRAINING
+2025-11-16 21:18:59 | INFO | __main__ | ================================================================================
+2025-11-16 21:18:59 | INFO | __main__ | 
+2025-11-16 21:18:59 | INFO | __main__ | Starting training...
+2025-11-16 21:18:59 | INFO | __main__ |   Models per cohort: 7 (5 quantiles, direction, confidence)
+2025-11-16 21:18:59 | INFO | __main__ |   Primary forecast: Median (50th percentile)
+2025-11-16 21:18:59 | INFO | __main__ |   Target: Log-transformed forward realized volatility
+2025-11-16 21:18:59 | INFO | __main__ | 
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 | REFACTORED QUANTILE REGRESSION TRAINING
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 |   Target creation:
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 |     Total samples: 5342
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 |     Valid targets: 5337
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 |     NaN targets: 5 (last 5 days)
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 | 
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 | 
+Training 7 cohorts: ['earnings_heavy', 'fomc_minus_3', 'fomc_week', 'futures_rollover', 'mid_cycle', 'monthly_opex_minus_1', 'monthly_opex_minus_5']
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 | Cohort: earnings_heavy (532 samples)
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:18:59 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:19:05 | INFO | core.xgboost_trainer_v3 |     q10: MAE=11.5094
+2025-11-16 21:19:12 | INFO | core.xgboost_trainer_v3 |     q25: MAE=10.6205
+2025-11-16 21:19:20 | INFO | core.xgboost_trainer_v3 |     q50: MAE=11.5393
+2025-11-16 21:19:27 | INFO | core.xgboost_trainer_v3 |     q75: MAE=13.8999
+2025-11-16 21:19:34 | INFO | core.xgboost_trainer_v3 |     q90: MAE=15.4492
+2025-11-16 21:19:34 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:19:34 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 532 samples...
+2025-11-16 21:19:34 | INFO | core.forecast_calibrator |       q10: 3.0% coverage (target 10.0%)
+2025-11-16 21:19:34 | INFO | core.forecast_calibrator |       q25: 12.4% coverage (target 25.0%)
+2025-11-16 21:19:34 | INFO | core.forecast_calibrator |       q50: 38.5% coverage (target 50.0%)
+2025-11-16 21:19:34 | INFO | core.forecast_calibrator |       q75: 80.8% coverage (target 75.0%)
+2025-11-16 21:19:34 | INFO | core.forecast_calibrator |       q90: 96.1% coverage (target 90.0%)
+2025-11-16 21:19:34 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:19:34 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:19:34 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:19:37 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.637
+2025-11-16 21:19:37 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:19:37 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:19:39 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.015
+2025-11-16 21:19:39 | INFO | core.xgboost_trainer_v3 | ✅ Saved: earnings_heavy
+2025-11-16 21:19:39 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:19:39 | INFO | core.xgboost_trainer_v3 | Cohort: fomc_minus_3 (349 samples)
+2025-11-16 21:19:39 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:19:39 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:19:43 | INFO | core.xgboost_trainer_v3 |     q10: MAE=17.4591
+2025-11-16 21:19:47 | INFO | core.xgboost_trainer_v3 |     q25: MAE=15.2076
+2025-11-16 21:19:52 | INFO | core.xgboost_trainer_v3 |     q50: MAE=15.1794
+2025-11-16 21:19:56 | INFO | core.xgboost_trainer_v3 |     q75: MAE=17.7175
+2025-11-16 21:20:00 | INFO | core.xgboost_trainer_v3 |     q90: MAE=22.0206
+2025-11-16 21:20:00 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:20:00 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 349 samples...
+2025-11-16 21:20:00 | INFO | core.forecast_calibrator |       q10: 7.7% coverage (target 10.0%)
+2025-11-16 21:20:00 | INFO | core.forecast_calibrator |       q25: 12.9% coverage (target 25.0%)
+2025-11-16 21:20:00 | INFO | core.forecast_calibrator |       q50: 42.1% coverage (target 50.0%)
+2025-11-16 21:20:00 | INFO | core.forecast_calibrator |       q75: 89.1% coverage (target 75.0%)
+2025-11-16 21:20:00 | INFO | core.forecast_calibrator |       q90: 94.3% coverage (target 90.0%)
+2025-11-16 21:20:00 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:20:00 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:20:00 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:20:02 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.618
+2025-11-16 21:20:02 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:20:02 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:20:04 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.020
+2025-11-16 21:20:04 | INFO | core.xgboost_trainer_v3 | ✅ Saved: fomc_minus_3
+2025-11-16 21:20:04 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:20:04 | INFO | core.xgboost_trainer_v3 | Cohort: fomc_week (115 samples)
+2025-11-16 21:20:04 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:20:04 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:20:05 | INFO | core.xgboost_trainer_v3 |     q10: MAE=14.7365
+2025-11-16 21:20:07 | INFO | core.xgboost_trainer_v3 |     q25: MAE=13.8287
+2025-11-16 21:20:09 | INFO | core.xgboost_trainer_v3 |     q50: MAE=13.9826
+2025-11-16 21:20:11 | INFO | core.xgboost_trainer_v3 |     q75: MAE=16.3797
+2025-11-16 21:20:12 | INFO | core.xgboost_trainer_v3 |     q90: MAE=18.0173
+2025-11-16 21:20:12 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:20:12 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 115 samples...
+2025-11-16 21:20:12 | INFO | core.forecast_calibrator |       q10: 1.7% coverage (target 10.0%)
+2025-11-16 21:20:12 | INFO | core.forecast_calibrator |       q25: 8.7% coverage (target 25.0%)
+2025-11-16 21:20:12 | INFO | core.forecast_calibrator |       q50: 56.5% coverage (target 50.0%)
+2025-11-16 21:20:12 | INFO | core.forecast_calibrator |       q75: 87.0% coverage (target 75.0%)
+2025-11-16 21:20:12 | INFO | core.forecast_calibrator |       q90: 98.3% coverage (target 90.0%)
+2025-11-16 21:20:12 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:20:12 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:20:12 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:20:13 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.517
+2025-11-16 21:20:13 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:20:13 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:20:14 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.017
+2025-11-16 21:20:14 | INFO | core.xgboost_trainer_v3 | ✅ Saved: fomc_week
+2025-11-16 21:20:14 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:20:14 | INFO | core.xgboost_trainer_v3 | Cohort: futures_rollover (233 samples)
+2025-11-16 21:20:14 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:20:14 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:20:17 | INFO | core.xgboost_trainer_v3 |     q10: MAE=11.6113
+2025-11-16 21:20:21 | INFO | core.xgboost_trainer_v3 |     q25: MAE=10.6665
+2025-11-16 21:20:25 | INFO | core.xgboost_trainer_v3 |     q50: MAE=10.8033
+2025-11-16 21:20:29 | INFO | core.xgboost_trainer_v3 |     q75: MAE=12.4293
+2025-11-16 21:20:32 | INFO | core.xgboost_trainer_v3 |     q90: MAE=14.0373
+2025-11-16 21:20:32 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:20:32 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 233 samples...
+2025-11-16 21:20:32 | INFO | core.forecast_calibrator |       q10: 4.3% coverage (target 10.0%)
+2025-11-16 21:20:32 | INFO | core.forecast_calibrator |       q25: 10.7% coverage (target 25.0%)
+2025-11-16 21:20:32 | INFO | core.forecast_calibrator |       q50: 56.2% coverage (target 50.0%)
+2025-11-16 21:20:32 | INFO | core.forecast_calibrator |       q75: 90.6% coverage (target 75.0%)
+2025-11-16 21:20:32 | INFO | core.forecast_calibrator |       q90: 98.3% coverage (target 90.0%)
+2025-11-16 21:20:32 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:20:32 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:20:32 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:20:34 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.638
+2025-11-16 21:20:34 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:20:34 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:20:35 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.016
+2025-11-16 21:20:35 | INFO | core.xgboost_trainer_v3 | ✅ Saved: futures_rollover
+2025-11-16 21:20:35 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:20:35 | INFO | core.xgboost_trainer_v3 | Cohort: mid_cycle (2776 samples)
+2025-11-16 21:20:35 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:20:35 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:20:47 | INFO | core.xgboost_trainer_v3 |     q10: MAE=12.4650
+2025-11-16 21:21:02 | INFO | core.xgboost_trainer_v3 |     q25: MAE=11.4466
+2025-11-16 21:21:16 | INFO | core.xgboost_trainer_v3 |     q50: MAE=11.5464
+2025-11-16 21:21:32 | INFO | core.xgboost_trainer_v3 |     q75: MAE=14.9850
+2025-11-16 21:21:47 | INFO | __main__ | 
+================================================================================
+2025-11-16 21:21:47 | INFO | __main__ | PROBABILISTIC VIX FORECASTER - TRAINING PIPELINE
+2025-11-16 21:21:47 | INFO | __main__ | ================================================================================
+2025-11-16 21:21:47 | INFO | __main__ | Version: 3.0 (Log-Transformed Realized Volatility)
+2025-11-16 21:21:47 | INFO | __main__ | Date: 2025-11-16 21:21:47
+2025-11-16 21:21:47 | INFO | __main__ | Output: models
+2025-11-16 21:21:47 | INFO | __main__ | ================================================================================
+
+2025-11-16 21:21:47 | INFO | __main__ | 
+2025-11-16 21:21:47 | INFO | __main__ | 
+2025-11-16 21:21:47 | INFO | __main__ | ================================================================================
+2025-11-16 21:21:47 | INFO | __main__ | CONFIGURATION VALIDATION
+2025-11-16 21:21:47 | INFO | __main__ | ================================================================================
+2025-11-16 21:21:47 | INFO | __main__ | 
+2025-11-16 21:21:47 | INFO | __main__ | [1/4] Validating target configuration...
+2025-11-16 21:21:47 | INFO | __main__ |   ✅ Target type correct: vix_pct_change
+2025-11-16 21:21:47 | INFO | __main__ |   ✅ Movement bounds: [-50.0, 100.0]
+2025-11-16 21:21:47 | INFO | __main__ | 
+2025-11-16 21:21:47 | INFO | __main__ | [2/4] Validating model objectives...
+2025-11-16 21:21:47 | INFO | __main__ |   ✅ Point estimate removed
+2025-11-16 21:21:47 | INFO | __main__ |   ✅ Uncertainty estimate removed
+2025-11-16 21:21:47 | INFO | __main__ | 
+2025-11-16 21:21:47 | INFO | __main__ | [3/4] Validating quantile configuration...
+2025-11-16 21:21:47 | INFO | __main__ |   ✅ All quantile objectives present
+2025-11-16 21:21:47 | INFO | __main__ |   ✅ Quantile objectives correctly configured
+2025-11-16 21:21:47 | INFO | __main__ | 
+2025-11-16 21:21:47 | INFO | __main__ | [4/4] Validating expected model count...
+2025-11-16 21:21:47 | INFO | __main__ |   Expected models per cohort: 7
+2025-11-16 21:21:47 | INFO | __main__ |     - 5 quantile regressors (q10, q25, q50, q75, q90)
+2025-11-16 21:21:47 | INFO | __main__ |     - 1 direction classifier
+2025-11-16 21:21:47 | INFO | __main__ |     - 1 confidence scorer
+2025-11-16 21:21:47 | INFO | __main__ |   ✅ Direction classifier configured
+2025-11-16 21:21:47 | INFO | __main__ |   ✅ Confidence model configured
+2025-11-16 21:21:47 | INFO | __main__ | 
+2025-11-16 21:21:47 | INFO | __main__ | ✅ Configuration validation PASSED
+2025-11-16 21:21:47 | INFO | __main__ |    All checks successful - ready to train
+2025-11-16 21:21:47 | INFO | __main__ | ================================================================================
+2025-11-16 21:21:47 | INFO | __main__ | 
+2025-11-16 21:21:47 | INFO | __main__ | 
+================================================================================
+2025-11-16 21:21:47 | INFO | __main__ | DATA PREPARATION
+2025-11-16 21:21:47 | INFO | __main__ | ================================================================================
+2025-11-16 21:21:47 | INFO | __main__ | 
+[1/4] Initializing feature engineering pipeline...
+2025-11-16 21:21:47 | INFO | __main__ | 
+[2/4] Building feature set for training period...
+2025-11-16 21:21:47 | INFO | __main__ |   Target period: 20 years ending 2022-12-31
+2025-11-16 21:21:47 | INFO | __main__ |   This includes ~450 days warmup for technical indicators
+2025-11-16 21:21:57 | INFO | __main__ | 
+  Features created: 168
+  Date range: 2001-10-12 to 2022-12-30
+  Total samples: 5342
+2025-11-16 21:21:57 | INFO | __main__ |   Usable training samples (after warmup): 4892
+2025-11-16 21:21:57 | INFO | __main__ |   Effective training period: 2003-07-29 to 2022-12-30
+2025-11-16 21:21:57 | INFO | __main__ | 
+[3/4] Merging features with price data...
+2025-11-16 21:21:57 | INFO | __main__ |   Assigning calendar cohorts using feature_engine logic...
+2025-11-16 21:21:57 | INFO | __main__ | 
+[4/4] Validating temporal hygiene...
+2025-11-16 21:21:57 | INFO | __main__ |   Cohort distribution:
+2025-11-16 21:21:57 | INFO | __main__ |     earnings_heavy: 532 samples
+2025-11-16 21:21:57 | INFO | __main__ |     fomc_minus_3: 349 samples
+2025-11-16 21:21:57 | INFO | __main__ |     fomc_week: 115 samples
+2025-11-16 21:21:57 | INFO | __main__ |     futures_rollover: 233 samples
+2025-11-16 21:21:57 | INFO | __main__ |     mid_cycle: 2776 samples
+2025-11-16 21:21:57 | INFO | __main__ |     monthly_opex_minus_1: 703 samples
+2025-11-16 21:21:57 | INFO | __main__ |     monthly_opex_minus_5: 634 samples
+2025-11-16 21:21:57 | INFO | __main__ | 
+  Final dataframe shape: (5342, 169)
+2025-11-16 21:21:57 | INFO | __main__ |   Columns: features (166) + vix + spx + calendar_cohort
+2025-11-16 21:21:57 | INFO | __main__ | 
+✅ Data preparation complete
+2025-11-16 21:21:57 | INFO | __main__ | ✅ Temporal hygiene validated: All data ≤ 2022-12-31
+2025-11-16 21:21:57 | INFO | __main__ | ================================================================================
+
+2025-11-16 21:21:57 | INFO | __main__ | 
+2025-11-16 21:21:57 | INFO | __main__ | ================================================================================
+2025-11-16 21:21:57 | INFO | __main__ | MODEL TRAINING
+2025-11-16 21:21:57 | INFO | __main__ | ================================================================================
+2025-11-16 21:21:57 | INFO | __main__ | 
+2025-11-16 21:21:57 | INFO | __main__ | Starting training...
+2025-11-16 21:21:57 | INFO | __main__ |   Models per cohort: 7 (5 quantiles, direction, confidence)
+2025-11-16 21:21:57 | INFO | __main__ |   Primary forecast: Median (50th percentile)
+2025-11-16 21:21:57 | INFO | __main__ |   Target: Log-transformed forward realized volatility
+2025-11-16 21:21:57 | INFO | __main__ | 
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 | REFACTORED QUANTILE REGRESSION TRAINING
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 |   Target creation:
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 |     Total samples: 5342
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 |     Valid targets: 5337
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 |     NaN targets: 5 (last 5 days)
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 | 
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 | 
+Training 7 cohorts: ['earnings_heavy', 'fomc_minus_3', 'fomc_week', 'futures_rollover', 'mid_cycle', 'monthly_opex_minus_1', 'monthly_opex_minus_5']
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 | Cohort: earnings_heavy (532 samples)
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:21:57 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:22:04 | INFO | core.xgboost_trainer_v3 |     q10: MAE=11.5094
+2025-11-16 21:22:11 | INFO | core.xgboost_trainer_v3 |     q25: MAE=10.6205
+2025-11-16 21:22:19 | INFO | core.xgboost_trainer_v3 |     q50: MAE=11.5393
+2025-11-16 21:22:26 | INFO | core.xgboost_trainer_v3 |     q75: MAE=13.8999
+2025-11-16 21:22:33 | INFO | core.xgboost_trainer_v3 |     q90: MAE=15.4492
+2025-11-16 21:22:33 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:22:33 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 532 samples...
+2025-11-16 21:22:33 | INFO | core.forecast_calibrator |       q10: 3.0% coverage (target 10.0%)
+2025-11-16 21:22:33 | INFO | core.forecast_calibrator |       q25: 12.4% coverage (target 25.0%)
+2025-11-16 21:22:33 | INFO | core.forecast_calibrator |       q50: 38.5% coverage (target 50.0%)
+2025-11-16 21:22:33 | INFO | core.forecast_calibrator |       q75: 80.8% coverage (target 75.0%)
+2025-11-16 21:22:33 | INFO | core.forecast_calibrator |       q90: 96.1% coverage (target 90.0%)
+2025-11-16 21:22:33 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:22:33 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:22:33 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:22:36 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.637
+2025-11-16 21:22:36 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:22:36 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:22:38 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.015
+2025-11-16 21:22:38 | INFO | core.xgboost_trainer_v3 | ✅ Saved: earnings_heavy
+2025-11-16 21:22:38 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:22:38 | INFO | core.xgboost_trainer_v3 | Cohort: fomc_minus_3 (349 samples)
+2025-11-16 21:22:38 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:22:38 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:22:44 | INFO | core.xgboost_trainer_v3 |     q10: MAE=17.4591
+2025-11-16 21:22:48 | INFO | core.xgboost_trainer_v3 |     q25: MAE=15.2076
+2025-11-16 21:22:53 | INFO | core.xgboost_trainer_v3 |     q50: MAE=15.1794
+2025-11-16 21:22:58 | INFO | core.xgboost_trainer_v3 |     q75: MAE=17.7175
+2025-11-16 21:23:01 | INFO | core.xgboost_trainer_v3 |     q90: MAE=22.0206
+2025-11-16 21:23:01 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:23:01 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 349 samples...
+2025-11-16 21:23:01 | INFO | core.forecast_calibrator |       q10: 7.7% coverage (target 10.0%)
+2025-11-16 21:23:01 | INFO | core.forecast_calibrator |       q25: 12.9% coverage (target 25.0%)
+2025-11-16 21:23:01 | INFO | core.forecast_calibrator |       q50: 42.1% coverage (target 50.0%)
+2025-11-16 21:23:01 | INFO | core.forecast_calibrator |       q75: 89.1% coverage (target 75.0%)
+2025-11-16 21:23:01 | INFO | core.forecast_calibrator |       q90: 94.3% coverage (target 90.0%)
+2025-11-16 21:23:01 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:23:01 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:23:01 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:23:04 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.618
+2025-11-16 21:23:04 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:23:04 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:23:05 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.020
+2025-11-16 21:23:05 | INFO | core.xgboost_trainer_v3 | ✅ Saved: fomc_minus_3
+2025-11-16 21:23:05 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:23:05 | INFO | core.xgboost_trainer_v3 | Cohort: fomc_week (115 samples)
+2025-11-16 21:23:05 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:23:05 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:23:06 | INFO | core.xgboost_trainer_v3 |     q10: MAE=14.7365
+2025-11-16 21:23:08 | INFO | core.xgboost_trainer_v3 |     q25: MAE=13.8287
+2025-11-16 21:23:10 | INFO | core.xgboost_trainer_v3 |     q50: MAE=13.9826
+2025-11-16 21:23:12 | INFO | core.xgboost_trainer_v3 |     q75: MAE=16.3797
+2025-11-16 21:23:13 | INFO | core.xgboost_trainer_v3 |     q90: MAE=18.0173
+2025-11-16 21:23:13 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:23:13 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 115 samples...
+2025-11-16 21:23:13 | INFO | core.forecast_calibrator |       q10: 1.7% coverage (target 10.0%)
+2025-11-16 21:23:13 | INFO | core.forecast_calibrator |       q25: 8.7% coverage (target 25.0%)
+2025-11-16 21:23:13 | INFO | core.forecast_calibrator |       q50: 56.5% coverage (target 50.0%)
+2025-11-16 21:23:13 | INFO | core.forecast_calibrator |       q75: 87.0% coverage (target 75.0%)
+2025-11-16 21:23:13 | INFO | core.forecast_calibrator |       q90: 98.3% coverage (target 90.0%)
+2025-11-16 21:23:13 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:23:13 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:23:13 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:23:15 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.517
+2025-11-16 21:23:15 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:23:15 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:23:15 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.017
+2025-11-16 21:23:15 | INFO | core.xgboost_trainer_v3 | ✅ Saved: fomc_week
+2025-11-16 21:23:15 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:23:15 | INFO | core.xgboost_trainer_v3 | Cohort: futures_rollover (233 samples)
+2025-11-16 21:23:15 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:23:15 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:23:18 | INFO | core.xgboost_trainer_v3 |     q10: MAE=11.6113
+2025-11-16 21:23:22 | INFO | core.xgboost_trainer_v3 |     q25: MAE=10.6665
+2025-11-16 21:23:27 | INFO | core.xgboost_trainer_v3 |     q50: MAE=10.8033
+2025-11-16 21:23:30 | INFO | core.xgboost_trainer_v3 |     q75: MAE=12.4293
+2025-11-16 21:23:33 | INFO | core.xgboost_trainer_v3 |     q90: MAE=14.0373
+2025-11-16 21:23:33 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:23:33 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 233 samples...
+2025-11-16 21:23:33 | INFO | core.forecast_calibrator |       q10: 4.3% coverage (target 10.0%)
+2025-11-16 21:23:33 | INFO | core.forecast_calibrator |       q25: 10.7% coverage (target 25.0%)
+2025-11-16 21:23:33 | INFO | core.forecast_calibrator |       q50: 56.2% coverage (target 50.0%)
+2025-11-16 21:23:33 | INFO | core.forecast_calibrator |       q75: 90.6% coverage (target 75.0%)
+2025-11-16 21:23:33 | INFO | core.forecast_calibrator |       q90: 98.3% coverage (target 90.0%)
+2025-11-16 21:23:33 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:23:33 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:23:33 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:23:35 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.638
+2025-11-16 21:23:35 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:23:35 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:23:36 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.016
+2025-11-16 21:23:36 | INFO | core.xgboost_trainer_v3 | ✅ Saved: futures_rollover
+2025-11-16 21:23:36 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:23:36 | INFO | core.xgboost_trainer_v3 | Cohort: mid_cycle (2776 samples)
+2025-11-16 21:23:36 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:23:36 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:23:49 | INFO | core.xgboost_trainer_v3 |     q10: MAE=12.4650
+2025-11-16 21:24:03 | INFO | core.xgboost_trainer_v3 |     q25: MAE=11.4466
+2025-11-16 21:24:17 | INFO | core.xgboost_trainer_v3 |     q50: MAE=11.5464
+2025-11-16 21:24:31 | INFO | core.xgboost_trainer_v3 |     q75: MAE=14.9850
+2025-11-16 21:24:43 | INFO | core.xgboost_trainer_v3 |     q90: MAE=19.5876
+2025-11-16 21:24:43 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:24:43 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 2771 samples...
+2025-11-16 21:24:43 | INFO | core.forecast_calibrator |       q10: 7.8% coverage (target 10.0%)
+2025-11-16 21:24:43 | INFO | core.forecast_calibrator |       q25: 26.0% coverage (target 25.0%)
+2025-11-16 21:24:43 | INFO | core.forecast_calibrator |       q50: 47.6% coverage (target 50.0%)
+2025-11-16 21:24:43 | INFO | core.forecast_calibrator |       q75: 77.0% coverage (target 75.0%)
+2025-11-16 21:24:43 | INFO | core.forecast_calibrator |       q90: 92.0% coverage (target 90.0%)
+2025-11-16 21:24:43 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:24:43 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:24:43 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:24:54 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.569
+2025-11-16 21:24:54 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:24:54 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:24:59 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.013
+2025-11-16 21:24:59 | INFO | core.xgboost_trainer_v3 | ✅ Saved: mid_cycle
+2025-11-16 21:24:59 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:24:59 | INFO | core.xgboost_trainer_v3 | Cohort: monthly_opex_minus_1 (703 samples)
+2025-11-16 21:24:59 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:24:59 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:25:09 | INFO | core.xgboost_trainer_v3 |     q10: MAE=12.1251
+2025-11-16 21:25:19 | INFO | core.xgboost_trainer_v3 |     q25: MAE=10.9616
+2025-11-16 21:25:30 | INFO | core.xgboost_trainer_v3 |     q50: MAE=11.1644
+2025-11-16 21:25:39 | INFO | core.xgboost_trainer_v3 |     q75: MAE=15.7910
+2025-11-16 21:25:46 | INFO | core.xgboost_trainer_v3 |     q90: MAE=20.0851
+2025-11-16 21:25:46 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:25:46 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 703 samples...
+2025-11-16 21:25:46 | INFO | core.forecast_calibrator |       q10: 7.7% coverage (target 10.0%)
+2025-11-16 21:25:46 | INFO | core.forecast_calibrator |       q25: 15.4% coverage (target 25.0%)
+2025-11-16 21:25:46 | INFO | core.forecast_calibrator |       q50: 43.8% coverage (target 50.0%)
+2025-11-16 21:25:46 | INFO | core.forecast_calibrator |       q75: 83.2% coverage (target 75.0%)
+2025-11-16 21:25:46 | INFO | core.forecast_calibrator |       q90: 94.9% coverage (target 90.0%)
+2025-11-16 21:25:46 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:25:46 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:25:46 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:25:51 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.623
+2025-11-16 21:25:51 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:25:51 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:25:53 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.015
+2025-11-16 21:25:53 | INFO | core.xgboost_trainer_v3 | ✅ Saved: monthly_opex_minus_1
+2025-11-16 21:25:53 | INFO | core.xgboost_trainer_v3 | 
+────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:25:53 | INFO | core.xgboost_trainer_v3 | Cohort: monthly_opex_minus_5 (634 samples)
+2025-11-16 21:25:53 | INFO | core.xgboost_trainer_v3 | ────────────────────────────────────────────────────────────────────────────────
+2025-11-16 21:25:53 | INFO | core.xgboost_trainer_v3 |   Training quantile regression models...
+2025-11-16 21:25:59 | INFO | core.xgboost_trainer_v3 |     q10: MAE=13.2031
+2025-11-16 21:26:07 | INFO | core.xgboost_trainer_v3 |     q25: MAE=12.0807
+2025-11-16 21:26:16 | INFO | core.xgboost_trainer_v3 |     q50: MAE=11.3397
+2025-11-16 21:26:24 | INFO | core.xgboost_trainer_v3 |     q75: MAE=12.3791
+2025-11-16 21:26:31 | INFO | core.xgboost_trainer_v3 |     q90: MAE=13.7415
+2025-11-16 21:26:31 | INFO | core.xgboost_trainer_v3 |   Calibrating quantile predictions...
+2025-11-16 21:26:31 | INFO | core.forecast_calibrator |    Fitting quantile calibrator on 634 samples...
+2025-11-16 21:26:31 | INFO | core.forecast_calibrator |       q10: 5.7% coverage (target 10.0%)
+2025-11-16 21:26:31 | INFO | core.forecast_calibrator |       q25: 15.5% coverage (target 25.0%)
+2025-11-16 21:26:31 | INFO | core.forecast_calibrator |       q50: 40.7% coverage (target 50.0%)
+2025-11-16 21:26:31 | INFO | core.forecast_calibrator |       q75: 86.9% coverage (target 75.0%)
+2025-11-16 21:26:31 | INFO | core.forecast_calibrator |       q90: 96.1% coverage (target 90.0%)
+2025-11-16 21:26:31 | INFO | core.forecast_calibrator |    ✅ Quantile calibrator fitted
+2025-11-16 21:26:31 | INFO | core.xgboost_trainer_v3 |   ✅ Quantile calibration complete
+2025-11-16 21:26:31 | INFO | core.xgboost_trainer_v3 |   Training direction classifier...
+2025-11-16 21:26:35 | INFO | core.xgboost_trainer_v3 |     Accuracy: 0.502
+2025-11-16 21:26:35 | INFO | core.xgboost_trainer_v3 |   Calibrating direction probabilities...
+2025-11-16 21:26:35 | INFO | core.xgboost_trainer_v3 |   Training confidence model...
+2025-11-16 21:26:37 | INFO | core.xgboost_trainer_v3 |     RMSE: 0.015
+2025-11-16 21:26:37 | INFO | core.xgboost_trainer_v3 | ✅ Saved: monthly_opex_minus_5
+2025-11-16 21:26:37 | INFO | core.xgboost_trainer_v3 |   Saved metrics: models/training_metrics.json
+2025-11-16 21:26:38 | INFO | core.xgboost_trainer_v3 |   Saved plots: models/model_performance.png
+2025-11-16 21:26:38 | INFO | core.xgboost_trainer_v3 | 
+================================================================================
+2025-11-16 21:26:38 | INFO | core.xgboost_trainer_v3 | TRAINING COMPLETE
+2025-11-16 21:26:38 | INFO | core.xgboost_trainer_v3 | ================================================================================
+2025-11-16 21:26:38 | INFO | __main__ | 
+================================================================================
+2025-11-16 21:26:38 | INFO | __main__ | TRAINING SUMMARY
+2025-11-16 21:26:38 | INFO | __main__ | ================================================================================
+2025-11-16 21:26:38 | INFO | __main__ |   Cohorts trained: 7
+2025-11-16 21:26:38 | INFO | __main__ |   Models per cohort: 7 (5 quantiles + direction + confidence)
+2025-11-16 21:26:38 | INFO | __main__ |   Total models: 49
+2025-11-16 21:26:38 | INFO | __main__ |   Feature count: 164
+2025-11-16 21:26:38 | INFO | __main__ | 
+  Cohorts:
+2025-11-16 21:26:38 | INFO | __main__ |     - earnings_heavy
+2025-11-16 21:26:38 | INFO | __main__ |     - fomc_minus_3
+2025-11-16 21:26:38 | INFO | __main__ |     - fomc_week
+2025-11-16 21:26:38 | INFO | __main__ |     - futures_rollover
+2025-11-16 21:26:38 | INFO | __main__ |     - mid_cycle
+2025-11-16 21:26:38 | INFO | __main__ |     - monthly_opex_minus_1
+2025-11-16 21:26:38 | INFO | __main__ |     - monthly_opex_minus_5
+2025-11-16 21:26:38 | INFO | __main__ | ================================================================================
+
+2025-11-16 21:26:38 | INFO | __main__ | ✅ Training report saved: models/training_report_20251116_212638.json
+2025-11-16 21:26:38 | INFO | __main__ | 
+================================================================================
+2025-11-16 21:26:38 | INFO | __main__ | ✅ TRAINING COMPLETE
+2025-11-16 21:26:38 | INFO | __main__ | ================================================================================
+2025-11-16 21:26:38 | INFO | __main__ |   Models saved to: models/
+2025-11-16 21:26:38 | INFO | __main__ |   Training report: models/training_report_*.json
+2025-11-16 21:26:38 | INFO | __main__ | ================================================================================
+

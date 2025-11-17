@@ -101,9 +101,27 @@ class ForecastCalibrator:
         logger.info("\n✅ Calibration complete\n"+"="*80+"\n")
         return True
     def calibrate(self,raw_forecast,current_vix,cohort=None):
-        if not self.fitted:logger.debug("⚠️  Calibrator not fitted - using raw forecasts")
-        else:logger.debug("⚠️  Calibration temporarily disabled - using raw forecasts until models retrained")
-        return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"method":"disabled_pending_retrain","raw_forecast":raw_forecast,"note":"Calibration disabled - target mismatch fix in progress"}
+        if not self.fitted:
+            logger.debug("⚠️  Calibrator not fitted - using raw forecasts")
+            return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"method":"not_fitted","raw_forecast":raw_forecast}
+        vix_regime=self._classify_vix_regime(current_vix)
+        model=None;method="global"
+        if self.cohort_specific and cohort and cohort in self.cohort_models:model=self.cohort_models[cohort];method=f"cohort_{cohort}"
+        elif self.regime_specific and vix_regime in self.regime_models:model=self.regime_models[vix_regime];method=f"regime_{vix_regime}"
+        else:model=self.global_model;method="global"
+        if model is None:
+            logger.warning("⚠️  No calibration model available - using raw forecast")
+            return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"method":"no_model","raw_forecast":raw_forecast}
+        X=np.array([[raw_forecast,current_vix]])
+        adjustment=float(model.predict(X)[0])
+        calibrated_forecast=raw_forecast+adjustment
+        logger.debug(f"🎯 Calibration applied: {raw_forecast:+.2f}% → {calibrated_forecast:+.2f}% (Δ{adjustment:+.2f}%) via {method}")
+        return{"calibrated_forecast":calibrated_forecast,"adjustment":adjustment,"method":method,"raw_forecast":raw_forecast}
+    def _classify_vix_regime(self,vix):
+        if vix<16.77:return"low"
+        elif vix<24.40:return"normal"
+        elif vix<39.67:return"elevated"
+        else:return"crisis"
     def get_diagnostics(self):
         if not self.fitted:return{"error":"Calibrator not fitted"}
         diagnostics={"fitted":self.fitted,"timestamp":datetime.now().isoformat(),"config":{"min_samples":self.min_samples,"use_robust":self.use_robust,"cohort_specific":self.cohort_specific,"regime_specific":self.regime_specific},"statistics":self.calibration_stats,"models":{"global":self.global_model is not None,"cohorts":list(self.cohort_models.keys()),"regimes":list(self.regime_models.keys())}}
@@ -130,17 +148,3 @@ class ForecastCalibrator:
     @classmethod
     def load(cls,input_dir="models"):
         calibrator=cls();return calibrator if calibrator.load_calibrator(input_dir)else None
-def test_calibrator():
-    print("\n"+"="*80+"\nTESTING FORECAST CALIBRATOR V3\n"+"="*80)
-    np.random.seed(42);n_samples=200;dates=pd.date_range("2020-01-01",periods=n_samples,freq="D");true_changes=np.random.randn(n_samples)*5;forecasts=true_changes+1.0+np.random.randn(n_samples)*2;vix_levels=15+np.random.randn(n_samples)*5;vix_levels=np.clip(vix_levels,10,40)
-    df=pd.DataFrame({"forecast_date":dates,"median_forecast":forecasts,"actual_vix_change":true_changes,"current_vix":vix_levels,"calendar_cohort":np.random.choice(["start_month","mid_month","end_month"],n_samples)})
-    class MockDatabase:
-        def get_predictions(self,with_actuals=False):return df
-    mock_db=MockDatabase();calibrator=ForecastCalibrator(min_samples=50,use_robust=True,cohort_specific=True,regime_specific=True);success=calibrator.fit_from_database(mock_db)
-    if success:
-        print("\n✅ Calibrator fitted successfully");diag=calibrator.get_diagnostics();print(f"✅ Overall improvement: {diag['overall_improvement']:+.1f}%");print(f"✅ Bias correction: {diag['bias_correction']:+.2f}%")
-        result=calibrator.calibrate(raw_forecast=2.5,current_vix=18.0,cohort="mid_month");print(f"\n✅ Test calibration:");print(f"   Raw: {result['raw_forecast']:+.2f}%");print(f"   Calibrated: {result['calibrated_forecast']:+.2f}%");print(f"   Adjustment: {result['adjustment']:+.2f}%");print(f"   Method: {result['method']}")
-        calibrator.save_calibrator(output_dir="/home/claude/test_output");print(f"\n✅ Calibrator saved")
-    else:print("\n❌ Calibrator fitting failed")
-    print("\n"+"="*80+"\nTEST COMPLETE\n"+"="*80")
-if __name__=="__main__":test_calibrator()
