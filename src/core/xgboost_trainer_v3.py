@@ -82,13 +82,100 @@ class ProbabilisticVIXForecaster:
             if y_binary.sum()>0 and y_binary.sum()<len(y_binary):calibrator=IsotonicRegression(out_of_bounds="clip");calibrator.fit(y_proba[:,class_idx],y_binary);calibrators.append(calibrator)
             else:calibrators.append(None)
         return calibrators
-    def predict(self,X,cohort,current_vix):
-        if cohort not in self.models:raise ValueError(f"Cohort {cohort} not trained. Available: {list(self.models.keys())}")
-        X_features=X[self.feature_names];quantiles_log={}
-        for q in self.quantiles:q_name=f"q{int(q*100)}";pred_log=self.models[cohort][q_name].predict(X_features)[0];quantiles_log[q_name]=pred_log
-        q_keys=["q10","q25","q50","q75","q90"];quantiles_pct={k:(np.exp(quantiles_log[k])-1)*100 for k in q_keys};q_values=[quantiles_pct[k]for k in q_keys];q_values_sorted=sorted(q_values);quantiles_pct_monotonic=dict(zip(q_keys,q_values_sorted))
-        for k in q_keys:quantiles_pct_monotonic[k]=np.clip(quantiles_pct_monotonic[k],-50,100)
-        prob_up=float(self.models[cohort]["direction"].predict_proba(X_features)[0][1]);prob_down=1.0-prob_up;confidence=np.clip(self.models[cohort]["confidence"].predict(X_features)[0],0,1);median_forecast=quantiles_pct_monotonic["q50"];return{"median_forecast":float(median_forecast),"quantiles":{k:float(v)for k,v in quantiles_pct_monotonic.items()},"q10":float(quantiles_pct_monotonic["q10"]),"q25":float(quantiles_pct_monotonic["q25"]),"q50":float(quantiles_pct_monotonic["q50"]),"q75":float(quantiles_pct_monotonic["q75"]),"q90":float(quantiles_pct_monotonic["q90"]),"prob_up":float(prob_up),"prob_down":float(prob_down),"direction_probability":float(prob_up),"confidence_score":float(confidence),"cohort":cohort,"metadata":{"current_vix":current_vix,"prediction_type":"vix_pct_change","target_space":"log_transformed","output_space":"percentage","target_aligned":True}}
+
+
+    def predict(self, X, cohort, current_vix):
+        """
+        Generate probabilistic forecast with quantile calibration.
+
+        FIXED: Now applies QuantileCalibrator before converting to percentages.
+
+        Flow:
+        1. Get raw log-space predictions from XGBoost quantile models
+        2. Apply QuantileCalibrator to correct log-space predictions
+        3. Convert calibrated log-space predictions to percentage space
+        4. Enforce monotonicity and clip bounds
+        5. Get direction and confidence predictions
+        """
+        if cohort not in self.models:
+            raise ValueError(
+                f"Cohort {cohort} not trained. Available: {list(self.models.keys())}"
+            )
+
+        X_features = X[self.feature_names]
+
+        # Step 1: Get raw log-space predictions from XGBoost
+        quantiles_log = {}
+        for q in self.quantiles:
+            q_name = f"q{int(q*100)}"
+            pred_log = self.models[cohort][q_name].predict(X_features)[0]
+            quantiles_log[q_name] = pred_log
+
+        # Step 2: Apply quantile calibration in log-space (CRITICAL FIX!)
+        if cohort in self.calibrators and 'quantile' in self.calibrators[cohort]:
+            calibrator = self.calibrators[cohort]['quantile']
+            logger.debug(f"   Applying quantile calibrator for cohort: {cohort}")
+
+            # Calibrator expects dict of quantile predictions
+            quantiles_log = calibrator.transform(quantiles_log)
+            logger.debug(f"   ✅ Quantile calibration applied")
+        else:
+            logger.debug(f"   ⚠️  No quantile calibrator available for cohort: {cohort}")
+
+        # Step 3: Convert from log-space to percentage-space
+        q_keys = ["q10", "q25", "q50", "q75", "q90"]
+        quantiles_pct = {
+            k: (np.exp(quantiles_log[k]) - 1) * 100
+            for k in q_keys
+        }
+
+        # Step 4: Enforce monotonicity in percentage space
+        q_values = [quantiles_pct[k] for k in q_keys]
+        q_values_sorted = sorted(q_values)
+        quantiles_pct_monotonic = dict(zip(q_keys, q_values_sorted))
+
+        # Step 5: Clip to reasonable bounds
+        for k in q_keys:
+            quantiles_pct_monotonic[k] = np.clip(
+                quantiles_pct_monotonic[k], -50, 100
+            )
+
+        # Step 6: Direction and confidence predictions (unchanged)
+        prob_up = float(
+            self.models[cohort]["direction"].predict_proba(X_features)[0][1]
+        )
+        prob_down = 1.0 - prob_up
+
+        confidence = np.clip(
+            self.models[cohort]["confidence"].predict(X_features)[0], 0, 1
+        )
+
+        median_forecast = quantiles_pct_monotonic["q50"]
+
+        return {
+            "median_forecast": float(median_forecast),
+            "quantiles": {k: float(v) for k, v in quantiles_pct_monotonic.items()},
+            "q10": float(quantiles_pct_monotonic["q10"]),
+            "q25": float(quantiles_pct_monotonic["q25"]),
+            "q50": float(quantiles_pct_monotonic["q50"]),
+            "q75": float(quantiles_pct_monotonic["q75"]),
+            "q90": float(quantiles_pct_monotonic["q90"]),
+            "prob_up": float(prob_up),
+            "prob_down": float(prob_down),
+            "direction_probability": float(prob_up),
+            "confidence_score": float(confidence),
+            "cohort": cohort,
+            "metadata": {
+                "current_vix": current_vix,
+                "prediction_type": "vix_pct_change",
+                "target_space": "log_transformed",
+                "output_space": "percentage",
+                "target_aligned": True,
+                "quantile_calibrated": True  # NEW: Flag that calibration was applied
+            }
+        }
+
+
     def load(self,cohort,models_dir):
         models_path=Path(models_dir);file_path=models_path/f"probabilistic_forecaster_{cohort}.pkl"
         if not file_path.exists():raise FileNotFoundError(f"No saved model found for cohort: {cohort}")

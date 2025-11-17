@@ -1,6 +1,6 @@
 {
   "fitted": true,
-  "timestamp": "2025-11-17T14:28:58.155046",
+  "timestamp": "2025-11-17T15:17:30.101818",
   "config": {
     "min_samples": 50,
     "use_robust": true,
@@ -10,45 +10,45 @@
   "statistics": {
     "global": {
       "samples": 371,
-      "mae_before": 9.427613768989414,
-      "mae_after": 8.515988522932467,
-      "improvement_pct": 9.669734764226211,
-      "mean_error": -2.664879697505732
+      "mae_before": 9.832233660084716,
+      "mae_after": 8.536588615707283,
+      "improvement_pct": 13.177524956890316,
+      "mean_error": -3.2949975368438853
     },
     "cohort_fomc_period": {
       "samples": 214,
-      "mae_before": 9.65628502173462,
-      "mae_after": 7.986081139977782,
-      "improvement_pct": 17.29654704679387,
-      "mean_error": -4.493181444175403
+      "mae_before": 10.344876281989928,
+      "mae_after": 8.016014830668341,
+      "improvement_pct": 22.512221391917983,
+      "mean_error": -5.564653010594172
     },
     "cohort_opex_week": {
       "samples": 63,
-      "mae_before": 7.230654065929825,
-      "mae_after": 6.931676718955075,
-      "improvement_pct": 4.134858952573916,
-      "mean_error": -0.6622262285566671
+      "mae_before": 7.177533163408382,
+      "mae_after": 6.914154176989251,
+      "improvement_pct": 3.669491737939408,
+      "mean_error": -0.5360058039915967
     },
     "cohort_mid_cycle": {
       "samples": 82,
-      "mae_before": 10.27522704857853,
-      "mae_after": 10.07547229263496,
-      "improvement_pct": 1.9440422581338994,
-      "mean_error": 1.4603544612743953
+      "mae_before": 10.299822858155014,
+      "mae_after": 10.067555437274606,
+      "improvement_pct": 2.2550622867897907,
+      "mean_error": 1.358737745166991
     },
     "regime_low": {
       "samples": 193,
-      "mae_before": 8.228270593639893,
-      "mae_after": 6.529595889456189,
-      "improvement_pct": 20.644370950764646,
-      "mean_error": -2.224511802206546
+      "mae_before": 9.002171794804028,
+      "mae_after": 6.5107527069925295,
+      "improvement_pct": 27.67575585759786,
+      "mean_error": -3.43436024906973
     },
     "regime_normal": {
       "samples": 175,
-      "mae_before": 10.684092996383399,
-      "mae_after": 10.106637906165053,
-      "improvement_pct": 5.404811530691616,
-      "mean_error": -2.9683850319616276
+      "mae_before": 10.708729373861692,
+      "mae_after": 10.117219069453936,
+      "improvement_pct": 5.523627348838772,
+      "mean_error": -2.9902895258866646
     }
   },
   "models": {
@@ -63,7 +63,7 @@
       "normal"
     ]
   },
-  "overall_improvement": 9.669734764226211,
+  "overall_improvement": 13.177524956890316,
   "training_samples": 371,
-  "bias_correction": -2.664879697505732
+  "bias_correction": -3.2949975368438853
 }

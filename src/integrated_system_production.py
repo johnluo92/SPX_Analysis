@@ -102,15 +102,52 @@ class IntegratedForecastingSystem:
         except Exception as e:
             logger.error(f"❌ Prediction failed: {e}")
             raise
+
         if self.calibrator:
-            raw_median=distribution["median_forecast"]
-            current_vix=float(observation["vix"])
-            cohort=observation.get("calendar_cohort",None)
-            calib_result=self.calibrator.calibrate(raw_forecast=raw_median,current_vix=current_vix,cohort=cohort)
-            adjustment=calib_result["adjustment"]
-            distribution["median_forecast"]=calib_result["calibrated_forecast"];distribution["q10"]+=adjustment;distribution["q25"]+=adjustment;distribution["q50"]+=adjustment;distribution["q75"]+=adjustment;distribution["q90"]+=adjustment;distribution["point_estimate"]=distribution["median_forecast"]
-            logger.info(f"🎯 Applied calibration: {raw_median:+.2f}% → {calib_result['calibrated_forecast']:+.2f}% (Δ{adjustment:+.2f}%)")
+            raw_median = distribution["median_forecast"]
+            current_vix = float(observation["vix"])
+            cohort = observation.get("calendar_cohort", None)
+
+            calib_result = self.calibrator.calibrate(
+                raw_forecast=raw_median,
+                current_vix=current_vix,
+                cohort=cohort
+            )
+
+            adjustment = calib_result["adjustment"]
+
+            # Calculate adjustment ratio (not absolute adjustment)
+            ratio = calib_result["calibrated_forecast"] / raw_median if raw_median != 0 else 1.0
+
+            # Apply proportional scaling to preserve distribution shape
+            distribution["median_forecast"] = calib_result["calibrated_forecast"]
+            distribution["q50"] = calib_result["calibrated_forecast"]
+            distribution["q10"] = distribution["q10"] * ratio
+            distribution["q25"] = distribution["q25"] * ratio
+            distribution["q75"] = distribution["q75"] * ratio
+            distribution["q90"] = distribution["q90"] * ratio
+            distribution["point_estimate"] = calib_result["calibrated_forecast"]
+
+            # Ensure monotonicity after scaling
+            quantile_values = [
+                distribution["q10"],
+                distribution["q25"],
+                distribution["q50"],
+                distribution["q75"],
+                distribution["q90"]
+            ]
+            quantile_values_sorted = sorted(quantile_values)
+            distribution["q10"] = quantile_values_sorted[0]
+            distribution["q25"] = quantile_values_sorted[1]
+            distribution["q50"] = quantile_values_sorted[2]
+            distribution["q75"] = quantile_values_sorted[3]
+            distribution["q90"] = quantile_values_sorted[4]
+
+            logger.info(f"🎯 Applied calibration: {raw_median:+.2f}% → "
+                        f"{calib_result['calibrated_forecast']:+.2f}% (ratio: {ratio:.3f})")
             logger.info(f"   Method: {calib_result['method']}")
+
+
         distribution["confidence_score"]*=2-cohort_weight
         distribution["confidence_score"]=np.clip(distribution["confidence_score"],0,1)
         forecast_date=target_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
@@ -237,11 +274,51 @@ class IntegratedForecastingSystem:
                 X_df=pd.DataFrame(feature_array.reshape(1,-1),columns=self.forecaster.feature_names,dtype=np.float64).fillna(0.0)
                 current_vix=float(observation["vix"])
                 distribution=self.forecaster.predict(X_df,cohort,current_vix)
+
                 if self.calibrator:
-                    raw_median=distribution["median_forecast"]
-                    calib_result=self.calibrator.calibrate(raw_forecast=raw_median,current_vix=current_vix,cohort=cohort)
-                    adjustment=calib_result["adjustment"]
-                    distribution["median_forecast"]=calib_result["calibrated_forecast"];distribution["q10"]+=adjustment;distribution["q25"]+=adjustment;distribution["q50"]+=adjustment;distribution["q75"]+=adjustment;distribution["q90"]+=adjustment;distribution["point_estimate"]=distribution["median_forecast"]
+                    raw_median = distribution["median_forecast"]
+                    current_vix = float(observation["vix"])
+                    cohort = observation.get("calendar_cohort", None)
+
+                    calib_result = self.calibrator.calibrate(
+                        raw_forecast=raw_median,
+                        current_vix=current_vix,
+                        cohort=cohort
+                    )
+
+                    adjustment = calib_result["adjustment"]
+
+                    # Calculate adjustment ratio (not absolute adjustment)
+                    ratio = calib_result["calibrated_forecast"] / raw_median if raw_median != 0 else 1.0
+
+                    # Apply proportional scaling to preserve distribution shape
+                    distribution["median_forecast"] = calib_result["calibrated_forecast"]
+                    distribution["q50"] = calib_result["calibrated_forecast"]
+                    distribution["q10"] = distribution["q10"] * ratio
+                    distribution["q25"] = distribution["q25"] * ratio
+                    distribution["q75"] = distribution["q75"] * ratio
+                    distribution["q90"] = distribution["q90"] * ratio
+                    distribution["point_estimate"] = calib_result["calibrated_forecast"]
+
+                    # Ensure monotonicity after scaling
+                    quantile_values = [
+                        distribution["q10"],
+                        distribution["q25"],
+                        distribution["q50"],
+                        distribution["q75"],
+                        distribution["q90"]
+                    ]
+                    quantile_values_sorted = sorted(quantile_values)
+                    distribution["q10"] = quantile_values_sorted[0]
+                    distribution["q25"] = quantile_values_sorted[1]
+                    distribution["q50"] = quantile_values_sorted[2]
+                    distribution["q75"] = quantile_values_sorted[3]
+                    distribution["q90"] = quantile_values_sorted[4]
+
+                    logger.info(f"🎯 Applied calibration: {raw_median:+.2f}% → "
+                               f"{calib_result['calibrated_forecast']:+.2f}% (ratio: {ratio:.3f})")
+                    logger.info(f"   Method: {calib_result['method']}")
+
                 distribution["confidence_score"]*=2-cohort_weight
                 distribution["confidence_score"]=np.clip(distribution["confidence_score"],0,1)
                 forecast_date=date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
