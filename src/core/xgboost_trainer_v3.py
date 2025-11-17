@@ -12,30 +12,22 @@ from xgboost import XGBClassifier,XGBRegressor
 from config import TARGET_CONFIG,XGBOOST_CONFIG
 warnings.filterwarnings("ignore");logging.basicConfig(level=logging.INFO);logger=logging.getLogger(__name__)
 class ProbabilisticVIXForecaster:
-    def __init__(self):
-        self.horizon=TARGET_CONFIG["horizon_days"];self.quantiles=TARGET_CONFIG["quantiles"]["levels"];self.models={};self.calibrators={};self.feature_names=None;self.vix_floor=10.0;self.vix_ceiling=90.0
+    def __init__(self):self.horizon=TARGET_CONFIG["horizon_days"];self.quantiles=TARGET_CONFIG["quantiles"]["levels"];self.models={};self.calibrators={};self.feature_names=None;self.vix_floor=10.0;self.vix_ceiling=90.0
     def train(self,df,save_dir="models"):
         logger.info("="*80);logger.info("REFACTORED QUANTILE REGRESSION TRAINING");logger.info("="*80)
         if "calendar_cohort"not in df.columns:raise ValueError("Missing calendar_cohort column")
-        df=self._create_targets(df)
-        exclude_cols=["vix","spx","calendar_cohort","feature_quality","cohort_weight","future_vix","target_vix_pct_change","target_direction","target_confidence"]
-        feature_cols=[c for c in df.columns if c not in exclude_cols];self.feature_names=feature_cols;cohorts=sorted(df["calendar_cohort"].unique());logger.info(f"\nTraining {len(cohorts)} cohorts: {cohorts}");cohort_metrics={}
-        for cohort in cohorts:
-            cohort_df=df[df["calendar_cohort"]==cohort].copy();logger.info(f"\n{'─'*80}");logger.info(f"Cohort: {cohort} ({len(cohort_df)} samples)");logger.info(f"{'─'*80}");metrics=self._train_cohort_models(cohort,cohort_df);cohort_metrics[cohort]=metrics;self._save_cohort_models(cohort,save_dir);logger.info(f"✅ Saved: {cohort}")
+        df=self._create_targets(df);exclude_cols=["vix","spx","calendar_cohort","feature_quality","cohort_weight","future_vix","target_vix_pct_change","target_log_vix_change","log_current_vix","log_future_vix","target_direction","target_confidence"];feature_cols=[c for c in df.columns if c not in exclude_cols];self.feature_names=feature_cols;cohorts=sorted(df["calendar_cohort"].unique());logger.info(f"\nTraining {len(cohorts)} cohorts: {cohorts}");cohort_metrics={}
+        for cohort in cohorts:cohort_df=df[df["calendar_cohort"]==cohort].copy();logger.info(f"\n{'─'*80}");logger.info(f"Cohort: {cohort} ({len(cohort_df)} samples)");logger.info(f"{'─'*80}");metrics=self._train_cohort_models(cohort,cohort_df);cohort_metrics[cohort]=metrics;self._save_cohort_models(cohort,save_dir);logger.info(f"✅ Saved: {cohort}")
         self._generate_diagnostics(cohort_metrics,save_dir);logger.info(f"\n{'='*80}");logger.info("TRAINING COMPLETE");logger.info(f"{'='*80}");return self
     def _create_targets(self,df):
-        logger.info("  Target creation:");logger.info(f"    Total samples: {len(df)}")
-        df=df.copy();future_vix_list=[]
-        for i in range(len(df)):
-            if i+self.horizon<len(df):future_vix_list.append(df["vix"].iloc[i+self.horizon])
-            else:future_vix_list.append(np.nan)
-        df["future_vix"]=future_vix_list;df["target_vix_pct_change"]=((df["future_vix"]-df["vix"])/df["vix"])*100;future_vix_series=df["vix"].shift(-self.horizon);df["target_direction"]=(future_vix_series>df["vix"]).astype(int);regime_volatility=df["vix"].rolling(21,min_periods=10).std();regime_stability=1/(1+regime_volatility/df["vix"].rolling(21,min_periods=10).mean());regime_stability=regime_stability.fillna(0.5);df["target_confidence"]=(0.5*df.get("feature_quality",0.5).fillna(0.5)+0.5*regime_stability).clip(0,1);valid_targets=(~df["target_vix_pct_change"].isna()).sum();logger.info(f"    Valid targets: {valid_targets}");logger.info(f"    NaN targets: {len(df)-valid_targets} (last {self.horizon} days)");logger.info("");return df
+        logger.info("  Target creation:");logger.info(f"    Total samples: {len(df)}");df=df.copy();future_vix_list=[]
+        for i in range(len(df)):future_vix_list.append(df["vix"].iloc[i+self.horizon]if i+self.horizon<len(df)else np.nan)
+        df["future_vix"]=future_vix_list;df["log_current_vix"]=np.log(df["vix"]);df["log_future_vix"]=np.log(df["future_vix"]);df["target_log_vix_change"]=df["log_future_vix"]-df["log_current_vix"];df["target_vix_pct_change"]=((df["future_vix"]-df["vix"])/df["vix"])*100;future_vix_series=df["vix"].shift(-self.horizon);df["target_direction"]=(future_vix_series>df["vix"]).astype(int);regime_volatility=df["vix"].rolling(21,min_periods=10).std();regime_stability=1/(1+regime_volatility/df["vix"].rolling(21,min_periods=10).mean());regime_stability=regime_stability.fillna(0.5);df["target_confidence"]=(0.5*df.get("feature_quality",0.5).fillna(0.5)+0.5*regime_stability).clip(0,1);valid_targets=(~df["target_log_vix_change"].isna()).sum();logger.info(f"    Valid targets: {valid_targets}");logger.info(f"    NaN targets: {len(df)-valid_targets} (last {self.horizon} days)");logger.info(f"    Training in: LOG-SPACE");logger.info(f"    Output in: PERCENTAGE-SPACE");logger.info("");return df
     def _train_cohort_models(self,cohort,df):
         df=df.copy();X=df[self.feature_names]
         if len(df)<30:raise ValueError(f"Insufficient samples for cohort {cohort}: {len(df)}")
-        self.models[cohort]={};self.calibrators[cohort]={};metrics={};y_target=df["target_vix_pct_change"];logger.info("  Training quantile regression models...");raw_predictions={}
-        for q in self.quantiles:
-            q_name=f"q{int(q*100)}";model,metric=self._train_quantile_regressor(X,y_target,quantile_alpha=q);self.models[cohort][q_name]=model;metrics[q_name]=metric;raw_predictions[q_name]=model.predict(X);logger.info(f"    {q_name}: MAE={metric['mae']:.4f}")
+        self.models[cohort]={};self.calibrators[cohort]={};metrics={};y_target=df["target_log_vix_change"];logger.info(f"  Training on LOG-SPACE target (will convert to % for output)");logger.info("  Training quantile regression models...");raw_predictions={}
+        for q in self.quantiles:q_name=f"q{int(q*100)}";model,metric=self._train_quantile_regressor(X,y_target,quantile_alpha=q);self.models[cohort][q_name]=model;metrics[q_name]=metric;raw_predictions[q_name]=model.predict(X);logger.info(f"    {q_name}: MAE={metric['mae']:.4f} (log-space)")
         logger.info("  Calibrating quantile predictions...");valid_mask=~y_target.isna();y_valid=y_target[valid_mask].values;calib_predictions={q_name:raw_predictions[q_name][valid_mask]for q_name in raw_predictions.keys()};quantile_calibrator=QuantileCalibrator(quantiles=self.quantiles);quantile_calibrator.fit(calib_predictions,y_valid);self.calibrators[cohort]['quantile']=quantile_calibrator;logger.info("  ✅ Quantile calibration complete");logger.info("  Training direction classifier...");y_direction=df["target_direction"];model_direction,metric_direction=self._train_classifier(X,y_direction,num_classes=2);self.models[cohort]["direction"]=model_direction;metrics["direction"]=metric_direction;logger.info(f"    Accuracy: {metric_direction.get('accuracy',0):.3f}");logger.info("  Calibrating direction probabilities...");calibrators=self._calibrate_probabilities(model_direction,X,y_direction);self.calibrators[cohort]["direction"]=calibrators;logger.info("  Training confidence model...");y_confidence=df["target_confidence"];model_conf,metric_conf=self._train_regressor(X,y_confidence,objective="reg:squarederror",eval_metric="rmse");self.models[cohort]["confidence"]=model_conf;metrics["confidence"]=metric_conf;logger.info(f"    RMSE: {metric_conf['rmse']:.3f}");return metrics
     def _train_quantile_regressor(self,X,y,quantile_alpha):
         params=XGBOOST_CONFIG["shared_params"].copy();params.update({"objective":"reg:quantileerror","quantile_alpha":quantile_alpha});n_splits,test_size=self._get_adaptive_cv_config(len(X));val_maes=[]
@@ -92,13 +84,11 @@ class ProbabilisticVIXForecaster:
         return calibrators
     def predict(self,X,cohort,current_vix):
         if cohort not in self.models:raise ValueError(f"Cohort {cohort} not trained. Available: {list(self.models.keys())}")
-        X_features=X[self.feature_names];quantiles_pct={}
-        for q in self.quantiles:
-            q_name=f"q{int(q*100)}";pred_pct=self.models[cohort][q_name].predict(X_features)[0];quantiles_pct[q_name]=pred_pct
-        q_keys=["q10","q25","q50","q75","q90"];q_values=[quantiles_pct[k]for k in q_keys];q_values_sorted=sorted(q_values);quantiles_pct_monotonic=dict(zip(q_keys,q_values_sorted))
+        X_features=X[self.feature_names];quantiles_log={}
+        for q in self.quantiles:q_name=f"q{int(q*100)}";pred_log=self.models[cohort][q_name].predict(X_features)[0];quantiles_log[q_name]=pred_log
+        q_keys=["q10","q25","q50","q75","q90"];quantiles_pct={k:(np.exp(quantiles_log[k])-1)*100 for k in q_keys};q_values=[quantiles_pct[k]for k in q_keys];q_values_sorted=sorted(q_values);quantiles_pct_monotonic=dict(zip(q_keys,q_values_sorted))
         for k in q_keys:quantiles_pct_monotonic[k]=np.clip(quantiles_pct_monotonic[k],-50,100)
-        prob_up=float(self.models[cohort]["direction"].predict_proba(X_features)[0][1]);prob_down=1.0-prob_up;confidence=np.clip(self.models[cohort]["confidence"].predict(X_features)[0],0,1);median_forecast=quantiles_pct_monotonic["q50"]
-        return {"median_forecast":float(median_forecast),"quantiles":{k:float(v)for k,v in quantiles_pct_monotonic.items()},"q10":float(quantiles_pct_monotonic["q10"]),"q25":float(quantiles_pct_monotonic["q25"]),"q50":float(quantiles_pct_monotonic["q50"]),"q75":float(quantiles_pct_monotonic["q75"]),"q90":float(quantiles_pct_monotonic["q90"]),"prob_up":float(prob_up),"prob_down":float(prob_down),"direction_probability":float(prob_up),"confidence_score":float(confidence),"cohort":cohort,"metadata":{"current_vix":current_vix,"prediction_type":"vix_pct_change","target_aligned":True}}
+        prob_up=float(self.models[cohort]["direction"].predict_proba(X_features)[0][1]);prob_down=1.0-prob_up;confidence=np.clip(self.models[cohort]["confidence"].predict(X_features)[0],0,1);median_forecast=quantiles_pct_monotonic["q50"];return{"median_forecast":float(median_forecast),"quantiles":{k:float(v)for k,v in quantiles_pct_monotonic.items()},"q10":float(quantiles_pct_monotonic["q10"]),"q25":float(quantiles_pct_monotonic["q25"]),"q50":float(quantiles_pct_monotonic["q50"]),"q75":float(quantiles_pct_monotonic["q75"]),"q90":float(quantiles_pct_monotonic["q90"]),"prob_up":float(prob_up),"prob_down":float(prob_down),"direction_probability":float(prob_up),"confidence_score":float(confidence),"cohort":cohort,"metadata":{"current_vix":current_vix,"prediction_type":"vix_pct_change","target_space":"log_transformed","output_space":"percentage","target_aligned":True}}
     def load(self,cohort,models_dir):
         models_path=Path(models_dir);file_path=models_path/f"probabilistic_forecaster_{cohort}.pkl"
         if not file_path.exists():raise FileNotFoundError(f"No saved model found for cohort: {cohort}")
@@ -114,9 +104,7 @@ class ProbabilisticVIXForecaster:
         logger.info(f"  Saved metrics: {metrics_file}")
         try:
             cohorts=list(cohort_metrics.keys());fig,axes=plt.subplots(2,3,figsize=(15,10));fig.suptitle("Model Performance (Log-RV Quantile Regression) by Cohort",fontsize=16)
-            for idx,q in enumerate([10,25,50,75,90]):
-                q_name=f"q{q}";row=idx//3;col=idx%3;maes=[cohort_metrics[c][q_name]["mae"]for c in cohorts];axes[row,col].bar(range(len(cohorts)),maes,color="steelblue");axes[row,col].set_xticks(range(len(cohorts)));axes[row,col].set_xticklabels(cohorts,rotation=45,ha="right");axes[row,col].set_ylabel("MAE (log space)");axes[row,col].set_title(f"{q}th Percentile");axes[row,col].grid(True,alpha=0.3)
+            for idx,q in enumerate([10,25,50,75,90]):q_name=f"q{q}";row=idx//3;col=idx%3;maes=[cohort_metrics[c][q_name]["mae"]for c in cohorts];axes[row,col].bar(range(len(cohorts)),maes,color="steelblue");axes[row,col].set_xticks(range(len(cohorts)));axes[row,col].set_xticklabels(cohorts,rotation=45,ha="right");axes[row,col].set_ylabel("MAE (log space)");axes[row,col].set_title(f"{q}th Percentile");axes[row,col].grid(True,alpha=0.3)
             dir_accs=[cohort_metrics[c]["direction"]["accuracy"]for c in cohorts];axes[1,2].bar(range(len(cohorts)),dir_accs,color="forestgreen");axes[1,2].set_xticks(range(len(cohorts)));axes[1,2].set_xticklabels(cohorts,rotation=45,ha="right");axes[1,2].set_ylabel("Accuracy");axes[1,2].set_title("Direction Classifier");axes[1,2].set_ylim([0,1]);axes[1,2].grid(True,alpha=0.3);plt.tight_layout();plot_file=save_path/"model_performance.png";plt.savefig(plot_file,dpi=150,bbox_inches="tight");plt.close();logger.info(f"  Saved plots: {plot_file}")
         except Exception as e:logger.warning(f"  Could not generate plots: {e}")
-def train_probabilistic_forecaster(df,save_dir="models"):
-    forecaster=ProbabilisticVIXForecaster();forecaster.train(df,save_dir=save_dir);return forecaster
+def train_probabilistic_forecaster(df,save_dir="models"):forecaster=ProbabilisticVIXForecaster();forecaster.train(df,save_dir=save_dir);return forecaster
