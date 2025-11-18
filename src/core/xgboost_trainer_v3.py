@@ -70,7 +70,8 @@ class SimplifiedVIXForecaster:
         logger.info(f"Target: Log-space VIX change (5-day)")
 
         # Step 1: Create cohort binary features
-        logger.info("\n[1/6] Cohort features created in feature engineer...")
+        logger.info("\n[1/6] Creating cohort features...")
+        df = self._create_cohort_features(df)
 
         # Step 2: Create targets
         logger.info("\n[2/6] Creating targets...")
@@ -83,16 +84,7 @@ class SimplifiedVIXForecaster:
 
         # Step 4: Split train/test
         logger.info("\n[4/6] Splitting train/test...")
-        training_end = pd.Timestamp(TRAINING_END_DATE)
-        if df.index.max() > training_end:
-            # Data exists after cutoff, use normal split
-            train_mask = df.index <= training_end
-        else:
-            # No data after cutoff, use 80/20 split preserving temporal order
-            split_idx = int(len(df) * 0.8)
-            train_mask = pd.Series(False, index=df.index)
-            train_mask.iloc[:split_idx] = True
-
+        train_mask = df.index <= pd.Timestamp(TRAINING_END_DATE)
         X_train = X[train_mask]
         X_test = X[~train_mask]
 
@@ -144,6 +136,25 @@ class SimplifiedVIXForecaster:
         self._print_summary()
 
         return self
+
+    def _create_cohort_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create binary cohort indicator features.
+        """
+        df = df.copy()
+
+        # Create binary flags for each cohort
+        df["is_fomc_period"] = (df["calendar_cohort"] == "fomc_period").astype(int)
+        df["is_opex_week"] = (df["calendar_cohort"] == "opex_week").astype(int)
+        df["is_earnings_heavy"] = (df["calendar_cohort"] == "earnings_heavy").astype(int)
+        # mid_cycle is the baseline (all flags = 0)
+
+        logger.info(f"  Cohort distribution:")
+        cohort_counts = df["calendar_cohort"].value_counts()
+        for cohort, count in cohort_counts.items():
+            logger.info(f"    {cohort}: {count} samples")
+
+        return df
 
     def _create_targets(self, df: pd.DataFrame) -> pd.DataFrame:
         """
