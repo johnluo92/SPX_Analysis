@@ -47,93 +47,62 @@ class IntegratedForecastingSystem:
             self.forecaster.load(cohort,self.models_dir)
             logger.info(f"   ✅ Loaded: {cohort}")
         logger.info(f"📊 Total cohorts loaded: {len(self.forecaster.models)}")
-
-
-    def generate_forecast(self, date=None, store_prediction=True):
-        logger.info("\n" + "=" * 80)
-        logger.info("GENERATING PROBABILISTIC FORECAST")
-        logger.info("=" * 80)
-
+    def generate_forecast(self,date=None,store_prediction=True):
+        logger.info("\n"+"="*80);logger.info("GENERATING PROBABILISTIC FORECAST");logger.info("="*80)
         if date is not None:
-            target_date = pd.Timestamp(date)
+            target_date=pd.Timestamp(date)
             logger.info(f"📅 Forecast date: {target_date.strftime('%Y-%m-%d')}")
             logger.info("🔧 Building features (historical mode)...")
-            feature_data = self.feature_engine.build_complete_features(
-                years=TRAINING_YEARS,
-                end_date=target_date.strftime("%Y-%m-%d")
-            )
-            df = feature_data["features"]
-            metadata_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
-            numeric_cols = [c for c in df.columns if c not in metadata_cols]
+            feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=target_date.strftime("%Y-%m-%d"))
+            df=feature_data["features"]
+            metadata_cols=["calendar_cohort","cohort_weight","feature_quality"]
+            numeric_cols=[c for c in df.columns if c not in metadata_cols]
             logger.info(f"   Applying nuclear dtype fix to {len(numeric_cols)} columns...")
             for col in numeric_cols:
-                if df[col].dtype == object:
-                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
-                df[col] = df[col].astype(np.float64)
-            logger.info("✅ Features validated and cached")
-            logger.info(f"   Shape: {df.shape}")
-            logger.info(f"   All {len(numeric_cols)} numeric cols are float64")
+                if df[col].dtype==object:df[col]=pd.to_numeric(df[col],errors="coerce").fillna(0.0)
+                df[col]=df[col].astype(np.float64)
+            logger.info("✅ Features validated and cached");logger.info(f"   Shape: {df.shape}");logger.info(f"   All {len(numeric_cols)} numeric cols are float64")
         else:
-            df = self._get_features()
-            target_date = df.index[-1]
+            df=self._get_features()
+            target_date=df.index[-1]
             logger.info(f"📅 Using latest date: {target_date.strftime('%Y-%m-%d')}")
-
         if target_date not in df.index:
-            available_range = f"{df.index[0].date()} to {df.index[-1].date()}"
+            available_range=f"{df.index[0].date()} to {df.index[-1].date()}"
             raise ValueError(f"Date {target_date.date()} not in feature data. Available range: {available_range}")
-
-        observation = df.loc[target_date]
-
+        observation=df.loc[target_date]
         logger.info("🔍 Checking data quality...")
-        feature_dict = observation.to_dict()
-        quality_score = self.validator.compute_feature_quality(feature_dict, target_date)
-        usable, quality_msg = self.validator.check_quality_threshold(quality_score)
-        logger.info(f"   Quality Score: {quality_score:.2f}")
-        logger.info(f"   Status: {quality_msg}")
-
+        feature_dict=observation.to_dict()
+        quality_score=self.validator.compute_feature_quality(feature_dict,target_date)
+        usable,quality_msg=self.validator.check_quality_threshold(quality_score)
+        logger.info(f"   Quality Score: {quality_score:.2f}");logger.info(f"   Status: {quality_msg}")
         if not usable:
-            report = self.validator.get_quality_report(feature_dict, target_date)
+            report=self.validator.get_quality_report(feature_dict,target_date)
             logger.error("❌ Data quality insufficient:")
-            for issue in report["issues"]:
-                logger.error(f"   • {issue}")
+            for issue in report["issues"]:logger.error(f"   • {issue}")
             raise ValueError(f"Cannot forecast: {quality_msg}")
-
-        cohort = observation.get("calendar_cohort", "mid_cycle")
-        cohort_weight = observation.get("cohort_weight", 1.0)
+        cohort=observation.get("calendar_cohort","mid_cycle")
+        cohort_weight=observation.get("cohort_weight",1.0)
         logger.info(f"📅 Calendar Cohort: {cohort} (weight: {cohort_weight:.2f})")
-
         if cohort not in self.forecaster.models:
-            logger.warning(f"⚠️  Cohort {cohort} not trained, falling back to mid_cycle")
-            cohort = "mid_cycle"
-            if cohort not in self.forecaster.models:
-                raise ValueError("No trained models available. Run training first.")
-
+            logger.warning(f"⚠️  Cohort {cohort} not trained, falling back to mid_cycle");cohort="mid_cycle"
+            if cohort not in self.forecaster.models:raise ValueError("No trained models available. Run training first.")
         logger.info("🎯 Preparing features for prediction...")
-        feature_values = observation[self.forecaster.feature_names]
-        feature_array = pd.to_numeric(feature_values, errors="coerce").values
-        X_df = pd.DataFrame(
-            feature_array.reshape(1, -1),
-            columns=self.forecaster.feature_names,
-            dtype=np.float64
-        )
-        X_df = X_df.fillna(0.0)
-        current_vix = float(observation["vix"])
-
-        non_numeric = X_df.select_dtypes(include=["object"]).columns.tolist()
+        feature_values=observation[self.forecaster.feature_names]
+        feature_array=pd.to_numeric(feature_values,errors="coerce").values
+        X_df=pd.DataFrame(feature_array.reshape(1,-1),columns=self.forecaster.feature_names,dtype=np.float64)
+        X_df=X_df.fillna(0.0)
+        current_vix=float(observation["vix"])
+        non_numeric=X_df.select_dtypes(include=["object"]).columns.tolist()
         if non_numeric:
             logger.error(f"❌ Non-numeric columns detected: {non_numeric}")
             raise ValueError(f"Feature DataFrame contains {len(non_numeric)} object columns")
-
         logger.info(f"✅ Features prepared: shape={X_df.shape}, dtype={X_df.dtypes.unique()[0]}")
-
         logger.info("🎯 Generating probabilistic forecast...")
-        try:
-            distribution = self.forecaster.predict(X_df, cohort, current_vix)
+        try:distribution=self.forecaster.predict(X_df,cohort,current_vix)
         except Exception as e:
             logger.error(f"❌ Prediction failed: {e}")
             raise
 
-        # FIXED: Damped tail adjustment
         if self.calibrator:
             raw_median = distribution["median_forecast"]
             current_vix = float(observation["vix"])
@@ -145,21 +114,21 @@ class IntegratedForecastingSystem:
                 cohort=cohort
             )
 
-            adjustment = calib_result["calibrated_forecast"] - raw_median
+            adjustment = calib_result["adjustment"]
 
-            # Full adjustment to median
+            # Calculate adjustment ratio (not absolute adjustment)
+            ratio = calib_result["calibrated_forecast"] / raw_median if raw_median != 0 else 1.0
+
+            # Apply proportional scaling to preserve distribution shape
             distribution["median_forecast"] = calib_result["calibrated_forecast"]
             distribution["q50"] = calib_result["calibrated_forecast"]
+            distribution["q10"] = distribution["q10"] * ratio
+            distribution["q25"] = distribution["q25"] * ratio
+            distribution["q75"] = distribution["q75"] * ratio
+            distribution["q90"] = distribution["q90"] * ratio
             distribution["point_estimate"] = calib_result["calibrated_forecast"]
 
-            # Damped adjustment to tails (30% of median's shift)
-            tail_dampening = 0.3
-            distribution["q10"] += adjustment * tail_dampening
-            distribution["q25"] += adjustment * tail_dampening
-            distribution["q75"] += adjustment * tail_dampening
-            distribution["q90"] += adjustment * tail_dampening
-
-            # Enforce monotonicity
+            # Ensure monotonicity after scaling
             quantile_values = [
                 distribution["q10"],
                 distribution["q25"],
@@ -175,40 +144,31 @@ class IntegratedForecastingSystem:
             distribution["q90"] = quantile_values_sorted[4]
 
             logger.info(f"🎯 Applied calibration: {raw_median:+.2f}% → "
-                        f"{calib_result['calibrated_forecast']:+.2f}% (adj: {adjustment:+.2f}%)")
+                        f"{calib_result['calibrated_forecast']:+.2f}% (ratio: {ratio:.3f})")
             logger.info(f"   Method: {calib_result['method']}")
 
-        distribution["confidence_score"] *= 2 - cohort_weight
-        distribution["confidence_score"] = np.clip(distribution["confidence_score"], 0, 1)
 
-        forecast_date = target_date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
-        distribution["metadata"] = {
-            "observation_date": target_date.strftime("%Y-%m-%d"),
-            "forecast_date": forecast_date.strftime("%Y-%m-%d"),
-            "horizon_days": TARGET_CONFIG["horizon_days"],
-            "feature_quality": float(quality_score),
-            "cohort_weight": float(cohort_weight),
-            "current_vix": float(observation["vix"]),
-            "features_used": len(self.forecaster.feature_names)
+        distribution["confidence_score"]*=2-cohort_weight
+        distribution["confidence_score"]=np.clip(distribution["confidence_score"],0,1)
+        forecast_date=target_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+        distribution["metadata"]={
+            "observation_date":target_date.strftime("%Y-%m-%d"),
+            "forecast_date":forecast_date.strftime("%Y-%m-%d"),
+            "horizon_days":TARGET_CONFIG["horizon_days"],
+            "feature_quality":float(quality_score),
+            "cohort_weight":float(cohort_weight),
+            "current_vix":float(observation["vix"]),
+            "features_used":len(self.forecaster.feature_names)
         }
-
         self._log_forecast_summary(distribution)
-
         if store_prediction:
-            prediction_id = self._store_prediction(distribution, observation, target_date)
-            distribution["prediction_id"] = prediction_id
+            prediction_id=self._store_prediction(distribution,observation,target_date)
+            distribution["prediction_id"]=prediction_id
             logger.info(f"💾 Stored prediction: {prediction_id}")
-
-        self.last_forecast = distribution
-        self.forecast_history.append({"date": target_date, "distribution": distribution})
-
-        logger.info("=" * 80)
-        logger.info("✅ FORECAST COMPLETE")
-        logger.info("=" * 80)
-
+        self.last_forecast=distribution
+        self.forecast_history.append({"date":target_date,"distribution":distribution})
+        logger.info("="*80);logger.info("✅ FORECAST COMPLETE");logger.info("="*80)
         return distribution
-
-
     def _log_forecast_summary(self,distribution:Dict):
         logger.info("\n"+"─"*80);logger.info("FORECAST DISTRIBUTION");logger.info("─"*80)
         logger.info(f"  Median Forecast (q50): {distribution['median_forecast']:+.2f}%")
@@ -276,76 +236,45 @@ class IntegratedForecastingSystem:
         vix_series=feature_data["vix"]
         self.prediction_db.backfill_actuals(vix_series)
         logger.info("="*80+"\n")
-
-    def generate_forecast_batch(self, start_date: str, end_date: str, frequency: str = "daily"):
-        logger.info(f"\n{'=' * 80}")
-        logger.info(f"BATCH FORECASTING: {start_date} to {end_date}")
-        logger.info(f"{'=' * 80}")
-
+    def generate_forecast_batch(self,start_date:str,end_date:str,frequency:str="daily"):
+        logger.info(f"\n{'='*80}");logger.info(f"BATCH FORECASTING: {start_date} to {end_date}");logger.info(f"{'='*80}")
         logger.info("🔧 Building features for batch...")
-        feature_data = self.feature_engine.build_complete_features(
-            years=TRAINING_YEARS,
-            end_date=end_date
-        )
-        df = feature_data["features"]
-
-        metadata_cols = ["calendar_cohort", "cohort_weight", "feature_quality"]
-        numeric_cols = [c for c in df.columns if c not in metadata_cols]
+        feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=end_date)
+        df=feature_data["features"]
+        metadata_cols=["calendar_cohort","cohort_weight","feature_quality"]
+        numeric_cols=[c for c in df.columns if c not in metadata_cols]
         logger.info(f"   Applying nuclear dtype fix to {len(numeric_cols)} columns...")
         for col in numeric_cols:
-            if df[col].dtype == object:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
-            df[col] = df[col].astype(np.float64)
-
-        object_cols = df.select_dtypes(include=["object"]).columns.tolist()
-        unexpected = [c for c in object_cols if c not in metadata_cols]
+            if df[col].dtype==object:df[col]=pd.to_numeric(df[col],errors="coerce").fillna(0.0)
+            df[col]=df[col].astype(np.float64)
+        object_cols=df.select_dtypes(include=["object"]).columns.tolist()
+        unexpected=[c for c in object_cols if c not in metadata_cols]
         if unexpected:
             logger.error(f"❌ {len(unexpected)} non-numeric columns remain")
             raise ValueError(f"DataFrame still has object columns: {unexpected[:5]}")
-
-        logger.info("✅ Features validated and cached")
-        logger.info(f"   Shape: {df.shape}")
-        logger.info(f"   All {len(numeric_cols)} numeric cols are float64")
-
-        start = pd.Timestamp(start_date)
-        end = pd.Timestamp(end_date)
-        date_range = df[(df.index >= start) & (df.index <= end)].index
-
-        logger.info(f"📅 Forecasting {len(date_range)} dates")
-        logger.info(f"   Range: {date_range[0].date()} to {date_range[-1].date()}")
-
-        forecasts = []
-        commit_interval = 50
-
-        for i, date in enumerate(date_range):
+        logger.info("✅ Features validated and cached");logger.info(f"   Shape: {df.shape}");logger.info(f"   All {len(numeric_cols)} numeric cols are float64")
+        start=pd.Timestamp(start_date);end=pd.Timestamp(end_date)
+        date_range=df[(df.index>=start)&(df.index<=end)].index
+        logger.info(f"📅 Forecasting {len(date_range)} dates");logger.info(f"   Range: {date_range[0].date()} to {date_range[-1].date()}")
+        forecasts=[];commit_interval=50
+        for i,date in enumerate(date_range):
             try:
-                observation = df.loc[date]
-
-                feature_dict = observation.to_dict()
-                quality_score = self.validator.compute_feature_quality(feature_dict, date)
-                usable, _ = self.validator.check_quality_threshold(quality_score)
-
+                observation=df.loc[date]
+                feature_dict=observation.to_dict()
+                quality_score=self.validator.compute_feature_quality(feature_dict,date)
+                usable,_=self.validator.check_quality_threshold(quality_score)
                 if not usable:
                     logger.warning(f"   Skipped {date.date()}: low quality ({quality_score:.2f})")
                     continue
+                cohort=observation.get("calendar_cohort","mid_cycle")
+                cohort_weight=observation.get("cohort_weight",1.0)
+                if cohort not in self.forecaster.models:cohort="mid_cycle"
+                feature_values=observation[self.forecaster.feature_names]
+                feature_array=pd.to_numeric(feature_values,errors="coerce").values
+                X_df=pd.DataFrame(feature_array.reshape(1,-1),columns=self.forecaster.feature_names,dtype=np.float64).fillna(0.0)
+                current_vix=float(observation["vix"])
+                distribution=self.forecaster.predict(X_df,cohort,current_vix)
 
-                cohort = observation.get("calendar_cohort", "mid_cycle")
-                cohort_weight = observation.get("cohort_weight", 1.0)
-                if cohort not in self.forecaster.models:
-                    cohort = "mid_cycle"
-
-                feature_values = observation[self.forecaster.feature_names]
-                feature_array = pd.to_numeric(feature_values, errors="coerce").values
-                X_df = pd.DataFrame(
-                    feature_array.reshape(1, -1),
-                    columns=self.forecaster.feature_names,
-                    dtype=np.float64
-                ).fillna(0.0)
-
-                current_vix = float(observation["vix"])
-                distribution = self.forecaster.predict(X_df, cohort, current_vix)
-
-                # FIXED: Damped tail adjustment
                 if self.calibrator:
                     raw_median = distribution["median_forecast"]
                     current_vix = float(observation["vix"])
@@ -357,21 +286,21 @@ class IntegratedForecastingSystem:
                         cohort=cohort
                     )
 
-                    adjustment = calib_result["calibrated_forecast"] - raw_median
+                    adjustment = calib_result["adjustment"]
 
-                    # Full adjustment to median
+                    # Calculate adjustment ratio (not absolute adjustment)
+                    ratio = calib_result["calibrated_forecast"] / raw_median if raw_median != 0 else 1.0
+
+                    # Apply proportional scaling to preserve distribution shape
                     distribution["median_forecast"] = calib_result["calibrated_forecast"]
                     distribution["q50"] = calib_result["calibrated_forecast"]
+                    distribution["q10"] = distribution["q10"] * ratio
+                    distribution["q25"] = distribution["q25"] * ratio
+                    distribution["q75"] = distribution["q75"] * ratio
+                    distribution["q90"] = distribution["q90"] * ratio
                     distribution["point_estimate"] = calib_result["calibrated_forecast"]
 
-                    # Damped adjustment to tails (30% of median's shift)
-                    tail_dampening = 0.3
-                    distribution["q10"] += adjustment * tail_dampening
-                    distribution["q25"] += adjustment * tail_dampening
-                    distribution["q75"] += adjustment * tail_dampening
-                    distribution["q90"] += adjustment * tail_dampening
-
-                    # Enforce monotonicity
+                    # Ensure monotonicity after scaling
                     quantile_values = [
                         distribution["q10"],
                         distribution["q25"],
@@ -387,57 +316,42 @@ class IntegratedForecastingSystem:
                     distribution["q90"] = quantile_values_sorted[4]
 
                     logger.info(f"🎯 Applied calibration: {raw_median:+.2f}% → "
-                               f"{calib_result['calibrated_forecast']:+.2f}% (adj: {adjustment:+.2f}%)")
+                               f"{calib_result['calibrated_forecast']:+.2f}% (ratio: {ratio:.3f})")
                     logger.info(f"   Method: {calib_result['method']}")
 
-                distribution["confidence_score"] *= 2 - cohort_weight
-                distribution["confidence_score"] = np.clip(distribution["confidence_score"], 0, 1)
-
-                forecast_date = date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
-                distribution["metadata"] = {
-                    "observation_date": date.strftime("%Y-%m-%d"),
-                    "forecast_date": forecast_date.strftime("%Y-%m-%d"),
-                    "horizon_days": TARGET_CONFIG["horizon_days"],
-                    "feature_quality": float(quality_score),
-                    "cohort_weight": float(cohort_weight),
-                    "current_vix": float(observation["vix"]),
-                    "features_used": len(self.forecaster.feature_names)
+                distribution["confidence_score"]*=2-cohort_weight
+                distribution["confidence_score"]=np.clip(distribution["confidence_score"],0,1)
+                forecast_date=date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+                distribution["metadata"]={
+                    "observation_date":date.strftime("%Y-%m-%d"),
+                    "forecast_date":forecast_date.strftime("%Y-%m-%d"),
+                    "horizon_days":TARGET_CONFIG["horizon_days"],
+                    "feature_quality":float(quality_score),
+                    "cohort_weight":float(cohort_weight),
+                    "current_vix":float(observation["vix"]),
+                    "features_used":len(self.forecaster.feature_names)
                 }
-
-                forecast_date = date + pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
-                prediction_id = self._store_prediction(distribution, observation, date)
-                distribution["prediction_id"] = prediction_id
+                forecast_date=date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+                prediction_id=self._store_prediction(distribution,observation,date)
+                distribution["prediction_id"]=prediction_id
                 forecasts.append(distribution)
-
-                if (i + 1) % commit_interval == 0:
+                if(i+1)%commit_interval==0:
                     logger.info(f"   Progress: {i+1}/{len(date_range)} forecasts")
                     self.prediction_db.commit()
                     logger.info(f"   ✅ Committed batch of {commit_interval}")
-
             except Exception as e:
                 logger.warning(f"   Failed {date.date()}: {e}")
                 continue
-
-        if len(forecasts) % commit_interval != 0:
+        if len(forecasts)%commit_interval!=0:
             self.prediction_db.commit()
             logger.info(f"   ✅ Committed final batch")
-
-        logger.info("=" * 80)
-        logger.info(f"✅ Generated {len(forecasts)} forecasts")
-        logger.info("=" * 80)
-
-        status = self.prediction_db.get_commit_status()
-        if status["pending_writes"] > 0:
+        logger.info("="*80);logger.info(f"✅ Generated {len(forecasts)} forecasts");logger.info("="*80)
+        status=self.prediction_db.get_commit_status()
+        if status["pending_writes"]>0:
             logger.error(f"🚨 WARNING: {status['pending_writes']} uncommitted writes!")
             raise RuntimeError(f"Lost {status['pending_writes']} forecasts - commit failed!")
-        else:
-            logger.info("✅ All forecasts committed to database")
-
+        else:logger.info("✅ All forecasts committed to database")
         return forecasts
-
-
-
-
     def train(self,years:int=TRAINING_YEARS,real_time_vix:bool=True,verbose:bool=False,enable_anomaly:bool=False):
         print(f"\n{'='*80}\nINTEGRATED SYSTEM V3.1 - TRAINING MODE\n{'='*80}")
         print(f"Config: {years}y training | Real-time VIX: {real_time_vix} | Anomaly: {enable_anomaly}")
