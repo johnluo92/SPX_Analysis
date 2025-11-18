@@ -315,10 +315,6 @@ class IntegratedForecastingSystem:
                     distribution["q75"] = quantile_values_sorted[3]
                     distribution["q90"] = quantile_values_sorted[4]
 
-                    logger.info(f"🎯 Applied calibration: {raw_median:+.2f}% → "
-                               f"{calib_result['calibrated_forecast']:+.2f}% (ratio: {ratio:.3f})")
-                    logger.info(f"   Method: {calib_result['method']}")
-
                 distribution["confidence_score"]*=2-cohort_weight
                 distribution["confidence_score"]=np.clip(distribution["confidence_score"],0,1)
                 forecast_date=date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
