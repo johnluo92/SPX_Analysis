@@ -4,7 +4,6 @@ from typing import Dict,List,Optional,Tuple
 import numpy as np
 import pandas as pd
 from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG,MACRO_EVENT_CONFIG
-
 from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,VIX_REGIME_BINS,VIX_REGIME_LABELS,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
 warnings.filterwarnings("ignore")
 try:
@@ -231,18 +230,14 @@ class FeatureEngineer:
             wom=(date.day-1)//7+1
             if wom in [2,3,4]:return 0.25
         return 0.05
-
-
     def _is_cpi_release_day(self, date):
         target = MACRO_EVENT_CONFIG["cpi_release"]["day_of_month_target"]
         window = MACRO_EVENT_CONFIG["cpi_release"]["window_days"]
         return abs(date.day - target) <= window
-
     def _is_pce_release_day(self, date):
         target = MACRO_EVENT_CONFIG["pce_release"]["day_of_month_target"]
         window = MACRO_EVENT_CONFIG["pce_release"]["window_days"]
         return abs(date.day - target) <= window
-
     def _is_fomc_minutes_day(self, date):
         if self.fomc_calendar is None or len(self.fomc_calendar) == 0:
             return False
@@ -253,11 +248,6 @@ class FeatureEngineer:
             if abs((date - minutes_date).days) <= window:
                 return True
         return False
-
-
-
-
-
     def _compute_feature_quality_vectorized(self,df):
         if not FEATURE_QUALITY_CONFIG:return pd.Series(1.0,index=df.index)
         qs=[]
