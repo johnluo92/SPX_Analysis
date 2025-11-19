@@ -2,7 +2,7 @@ import json
 import logging
 import pickle
 from pathlib import Path
-from typing import Dict,Tuple
+from typing import Dict,List,Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -11,16 +11,21 @@ from sklearn.metrics import accuracy_score,log_loss,mean_absolute_error,mean_squ
 from sklearn.model_selection import TimeSeriesSplit
 from xgboost import XGBClassifier,XGBRegressor
 from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE
+from core.target_calculator import TargetCalculator
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 class SimplifiedVIXForecaster:
     def __init__(self):
-        self.horizon=TARGET_CONFIG["horizon_days"];self.direction_model=None;self.magnitude_model=None;self.feature_names=None;self.metrics={}
-    def train(self,df,save_dir="models"):
+        self.horizon=TARGET_CONFIG["horizon_days"];self.direction_model=None;self.magnitude_model=None;self.feature_names=None;self.metrics={};self.target_calculator=TargetCalculator()
+    def train(self,df,selected_features=None,save_dir="models"):
         logger.info("[1/5] Creating targets (Cohort features ready)")
-        df=self._create_targets(df)
+        df=self.target_calculator.calculate_all_targets(df,vix_col="vix")
+        validation=self.target_calculator.validate_targets(df)
+        if not validation["valid"]:logger.error(f"❌ Target validation failed: {validation['warnings']}");raise ValueError("Invalid targets")
+        for warning in validation["warnings"]:logger.warning(f"  ⚠️  {warning}")
+        stats=validation["stats"];logger.info(f"  Valid targets: {stats['count']} | UP: {df['target_direction'].sum()} ({df['target_direction'].mean():.1%}) | DOWN: {len(df)-df['target_direction'].sum()}")
         logger.info("[2/5] Preparing feature matrix...")
-        X,feature_names=self._prepare_features(df);self.feature_names=feature_names
+        X,feature_names=self._prepare_features(df,selected_features);self.feature_names=feature_names
         logger.info("[3/5] Splitting train/test...")
         training_end=pd.Timestamp(TRAINING_END_DATE)
         if df.index.max()>training_end:train_mask=df.index<=training_end
@@ -39,18 +44,19 @@ class SimplifiedVIXForecaster:
         self._save_models(save_dir);self._generate_diagnostics(X_test,y_direction_test,y_magnitude_test,save_dir)
         logger.info("✅ Training complete");self._print_summary()
         return self
-    def _create_targets(self,df):
-        df=df.copy();future_vix=df["vix"].shift(-self.horizon);df["future_vix"]=future_vix
-        df["target_log_vix_change"]=np.log(df["future_vix"])-np.log(df["vix"]);df["target_direction"]=(df["target_log_vix_change"]>0).astype(int)
-        df["target_vix_pct_change"]=((df["future_vix"]-df["vix"])/df["vix"])*100
-        valid_targets=(~df["target_log_vix_change"].isna()).sum();up_count=df['target_direction'].sum();down_count=len(df)-up_count
-        logger.info(f"  Valid targets: {valid_targets} | UP: {up_count} ({df['target_direction'].mean():.1%}) | DOWN: {down_count}")
-        return df
-    def _prepare_features(self,df):
+    def _prepare_features(self,df,selected_features=None):
         exclude_cols=["vix","spx","calendar_cohort","cohort_weight","feature_quality","future_vix","target_vix_pct_change","target_log_vix_change","target_direction"]
-        cohort_features=["is_fomc_period","is_opex_week","is_earnings_heavy"];all_cols=df.columns.tolist();feature_cols=[c for c in all_cols if c not in exclude_cols]
-        for cf in cohort_features:
-            if cf not in feature_cols and cf in df.columns:feature_cols.append(cf)
+        cohort_features=["is_fomc_period","is_opex_week","is_earnings_heavy"]
+        if selected_features is not None:
+            logger.info(f"  Using {len(selected_features)} selected features")
+            feature_cols=[f for f in selected_features if f in df.columns and f not in exclude_cols]
+            for cf in cohort_features:
+                if cf in df.columns and cf not in feature_cols:feature_cols.append(cf);logger.info(f"  Added cohort feature: {cf}")
+        else:
+            logger.info("  Using all available features")
+            all_cols=df.columns.tolist();feature_cols=[c for c in all_cols if c not in exclude_cols]
+            for cf in cohort_features:
+                if cf not in feature_cols and cf in df.columns:feature_cols.append(cf)
         feature_cols=list(dict.fromkeys(feature_cols))
         for cf in cohort_features:
             if cf not in df.columns:logger.warning(f"  Missing cohort feature: {cf}, setting to 0");df[cf]=0
@@ -127,6 +133,6 @@ class SimplifiedVIXForecaster:
         print(f"\nDirection Performance:");print(f"  Test Accuracy:  {self.metrics['direction']['test']['accuracy']:.1%}");print(f"  Test Precision: {self.metrics['direction']['test']['precision']:.1%}");print(f"  Test Recall:    {self.metrics['direction']['test']['recall']:.1%}")
         print(f"\nMagnitude Performance:");print(f"  Test MAE:  {self.metrics['magnitude']['test']['mae_pct']:.2f}%");print(f"  Test Bias: {self.metrics['magnitude']['test']['bias_pct']:+.2f}%");print(f"  Test RMSE: {self.metrics['magnitude']['test']['rmse_log']:.4f} (log)")
         print("="*60+"\n")
-def train_simplified_forecaster(df,save_dir="models"):
-    forecaster=SimplifiedVIXForecaster();forecaster.train(df,save_dir=save_dir)
+def train_simplified_forecaster(df,selected_features=None,save_dir="models"):
+    forecaster=SimplifiedVIXForecaster();forecaster.train(df,selected_features=selected_features,save_dir=save_dir)
     return forecaster

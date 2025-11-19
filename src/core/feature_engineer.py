@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG,MACRO_EVENT_CONFIG
 from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,VIX_REGIME_BINS,VIX_REGIME_LABELS,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
+from core.temporal_validator import TemporalSafetyValidator
+from core.regime_classifier import RegimeClassifier
 warnings.filterwarnings("ignore")
 try:
     from config import CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG
@@ -89,6 +91,7 @@ class FuturesFeatureEngine:
         if "DX1-DX2" in dd:dxs=dd["DX1-DX2"];f["DX1-DX2"]=dxs;f["DX1-DX2_velocity_5d"]=dxs.diff(5);f["DX1-DX2_zscore_63d"]=calculate_robust_zscore(dxs,63)
         if "Dollar_Index" in dd:
             dxy=dd["Dollar_Index"]
+            for w in [10,21,63]:f[f"dxy_ret_{w}d"]=dxy.pct_change(w)*100
             for w in [50,200]:ma=dxy.rolling(w).mean();f[f"dxy_vs_ma{w}"]=((dxy-ma)/ma.replace(0,np.nan))*100
             f["dxy_vol_21d"]=dxy.pct_change().rolling(21).std()*np.sqrt(252)*100
         return f
@@ -105,11 +108,11 @@ class FuturesFeatureEngine:
 class TreasuryYieldFeatureEngine:
     @staticmethod
     def extract_term_spreads(y:pd.DataFrame)->pd.DataFrame:
-        f=pd.DataFrame(index=y.index);req=["DGS3MO","DGS2","DGS10"]
+        f=pd.DataFrame(index=y.index);req=["3M","2Y","10Y"]
         if not all(c in y.columns for c in req):return f
-        f["yield_10y2y"]=y["DGS10"]-y["DGS2"];f["yield_10y2y_zscore"]=calculate_robust_zscore(f["yield_10y2y"],252);f["yield_10y3m"]=y["DGS10"]-y["DGS3MO"];f["yield_2y3m"]=y["DGS2"]-y["DGS3MO"]
-        if "DGS5" in y.columns:f["yield_5y2y"]=y["DGS5"]-y["DGS2"]
-        if "DGS30" in y.columns:f["yield_30y10y"]=y["DGS30"]-y["DGS10"]
+        f["yield_10y2y"]=y["10Y"]-y["2Y"];f["yield_10y2y_zscore"]=calculate_robust_zscore(f["yield_10y2y"],252);f["yield_10y3m"]=y["10Y"]-y["3M"];f["yield_2y3m"]=y["2Y"]-y["3M"]
+        if "5Y" in y.columns:f["yield_5y2y"]=y["5Y"]-y["2Y"]
+        if "30Y" in y.columns:f["yield_30y10y"]=y["30Y"]-y["10Y"]
         for sn in ["yield_10y2y","yield_10y3m","yield_2y3m"]:
             if sn not in f.columns:continue
             sp=f[sn];f[f"{sn}_velocity_10d"]=sp.diff(10);f[f"{sn}_velocity_21d"]=sp.diff(21);f[f"{sn}_velocity_63d"]=sp.diff(63);f[f"{sn}_acceleration"]=sp.diff(10).diff(10);f[f"{sn}_vs_ma63"]=sp-sp.rolling(63).mean();f[f"{sn}_percentile_252d"]=calculate_percentile_with_validation(sp,252)
@@ -118,23 +121,23 @@ class TreasuryYieldFeatureEngine:
         return f
     @staticmethod
     def extract_curve_shape(y:pd.DataFrame)->pd.DataFrame:
-        f=pd.DataFrame(index=y.index);req=["DGS3MO","DGS2","DGS10"]
+        f=pd.DataFrame(index=y.index);req=["3M","2Y","10Y"]
         if not all(c in y.columns for c in req):return f
-        ay=[c for c in ["DGS3MO","DGS2","DGS5","DGS10","DGS30"] if c in y.columns]
+        ay=[c for c in ["3M","2Y","5Y","10Y","30Y"] if c in y.columns]
         if ay:f["yield_curve_level"]=y[ay].mean(axis=1);f["yield_curve_level_zscore"]=calculate_robust_zscore(f["yield_curve_level"],252)
-        if "DGS5" in y.columns:f["yield_curve_curvature"]=2*y["DGS5"]-y["DGS2"]-y["DGS10"];f["yield_curve_curvature_zscore"]=calculate_robust_zscore(f["yield_curve_curvature"],252)
+        if "5Y" in y.columns:f["yield_curve_curvature"]=2*y["5Y"]-y["2Y"]-y["10Y"];f["yield_curve_curvature_zscore"]=calculate_robust_zscore(f["yield_curve_curvature"],252)
         return f
     @staticmethod
     def extract_rate_volatility(y:pd.DataFrame)->pd.DataFrame:
         f=pd.DataFrame(index=y.index)
-        for c in ["DGS6MO","DGS10","DGS30"]:
+        for c in ["6M","10Y","30Y"]:
             if c in y.columns:f[f"{c.lower()}_vol_63d"]=y[c].diff().rolling(63).std()*np.sqrt(252)
         vc=[c for c in f.columns if "_vol_" in c]
         if vc:f["yield_curve_vol_avg"]=f[vc].mean(axis=1);f["yield_curve_vol_dispersion"]=f[vc].std(axis=1)
         return f
 class FeatureEngineer:
     def __init__(self,data_fetcher):
-        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.fomc_calendar=None;self.opex_calendar=None;self.earnings_calendar=None;self.vix_futures_expiry=None;self._cohort_cache={}
+        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.validator=TemporalSafetyValidator();self.regime_classifier=RegimeClassifier();self.fomc_calendar=None;self.opex_calendar=None;self.earnings_calendar=None;self.vix_futures_expiry=None;self._cohort_cache={}
     def _load_calendar_data(self):
         if self.fomc_calendar is None:
             try:sy,ey=self.training_start_date.year,self.training_end_date.year+1;self.fomc_calendar=self.fetcher.fetch_fomc_calendar(start_year=sy,end_year=ey)
@@ -158,8 +161,6 @@ class FeatureEngineer:
         for od in self.opex_calendar.index:
             ad=od-pd.Timedelta(days=30);dtw=(2-ad.weekday())%7;vd=ad+pd.Timedelta(days=dtw);ve.append({"date":vd,"expiry_type":"vix_futures"})
         return pd.DataFrame(ve).set_index("date").sort_index()
-
-
     def get_calendar_cohort(self, date):
         date = pd.Timestamp(date)
         if date in self._cohort_cache:
@@ -206,7 +207,6 @@ class FeatureEngineer:
                 self._cohort_cache[date] = res
                 return res
         raise ValueError(f"No cohort matched for date {date}")
-
     def _days_to_monthly_opex(self,date):
         if self.opex_calendar is None or len(self.opex_calendar)==0:return None
         fo=self.opex_calendar[self.opex_calendar.index>=date]
@@ -248,19 +248,6 @@ class FeatureEngineer:
             if abs((date - minutes_date).days) <= window:
                 return True
         return False
-    def _compute_feature_quality_vectorized(self,df):
-        if not FEATURE_QUALITY_CONFIG:return pd.Series(1.0,index=df.index)
-        qs=[]
-        for idx,row in df.iterrows():
-            sc=[]
-            for ft in FEATURE_QUALITY_CONFIG.get("missingness_penalty",{}).get("critical_features",[]):
-                if ft in df.columns:sc.append(0.0 if pd.isna(row[ft]) else 1.0)
-            for ft in FEATURE_QUALITY_CONFIG.get("missingness_penalty",{}).get("important_features",[]):
-                if ft in df.columns:sc.append(0.5 if pd.isna(row[ft]) else 1.0)
-            for ft in FEATURE_QUALITY_CONFIG.get("missingness_penalty",{}).get("optional_features",[]):
-                if ft in df.columns:sc.append(0.9 if pd.isna(row[ft]) else 1.0)
-            qs.append(np.mean(sc) if sc else 1.0)
-        return pd.Series(qs,index=df.index)
     def _align_features_for_prediction(self,bf:pd.DataFrame,cf:pd.DataFrame,ff:pd.DataFrame,mf:pd.DataFrame,tf:pd.DataFrame,mi:pd.DatetimeIndex)->pd.DataFrame:
         tfi=tf.reindex(mi,method="ffill",limit=3);cfi=cf.reindex(mi,method="ffill",limit=5);mfi=mf.reindex(mi,method="ffill",limit=45);ffi=ff.reindex(mi,method="ffill",limit=3);ba=bf.reindex(mi);al=pd.concat([ba,cfi,ffi,mfi,tfi],axis=1);return al
     def _validate_term_structure_timing(self,vix:pd.Series,cd:pd.DataFrame,pd_date:datetime=None)->bool:
@@ -291,7 +278,7 @@ class FeatureEngineer:
         bf=self._build_base_features(spx,vix,spx_ohlc,cb);cbf=self._build_cboe_features(cb,vix) if not cb.empty else pd.DataFrame(index=spx.index);ff=self._build_futures_features(ss,es,spx.index,spx,cb);md=self._fetch_macro_data(ss,es,spx.index);mf=self._build_macro_features(md) if md is not None else pd.DataFrame(index=spx.index);tf=self._build_treasury_features(ss,es,spx.index);cmb=pd.concat([bf,cbf],axis=1);mtf=self._build_meta_features(cmb,spx,vix,md);calf=self._build_calendar_features(spx.index)
         af=pd.concat([bf,cbf,ff,mf,tf,mtf,calf],axis=1);af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)
         self._load_calendar_data();cohd=[{"calendar_cohort":self.get_calendar_cohort(dt)[0],"cohort_weight":self.get_calendar_cohort(dt)[1]} for dt in af.index];cohdf=pd.DataFrame(cohd,index=af.index);cohdf["is_fomc_period"]=(cohdf["calendar_cohort"]=="fomc_period").astype(int);cohdf["is_opex_week"]=(cohdf["calendar_cohort"]=="opex_week").astype(int);cohdf["is_earnings_heavy"]=(cohdf["calendar_cohort"]=="earnings_heavy").astype(int);af=pd.concat([af,cohdf],axis=1)
-        af["feature_quality"]=self._compute_feature_quality_vectorized(af);af=self.apply_quality_control(af)
+        af["feature_quality"]=self.validator.compute_feature_quality_batch(af);af=self.apply_quality_control(af)
         if ENABLE_TEMPORAL_SAFETY and not cb.empty:self._validate_term_structure_timing(vix,cb)
         print(f"\n✅ Complete: {len(af.columns)} features | {len(af)} rows");print(f"   Date range: {af.index[0].date()} → {af.index[-1].date()}");print(f"{'='*80}\n");return {"features":af,"spx":spx,"vix":vix,"cboe_data":cb if cbd else None}
     def _build_base_features(self,spx:pd.Series,vix:pd.Series,so:pd.DataFrame,cb:pd.DataFrame=None)->pd.DataFrame:
@@ -305,7 +292,7 @@ class FeatureEngineer:
         for w in [10,21]:mom=vix.diff(w);f[f"vix_momentum_z_{w}d"]=calculate_robust_zscore(mom,63)
         f["vix_accel_5d"]=vix.diff(5).diff(5);vm21,vm63=vix.rolling(21).mean(),vix.rolling(63).mean();f["vix_stretch_ma21"]=(vix-vm21).abs();f["vix_stretch_ma63"]=(vix-vm63).abs()
         for w in [21,63]:ma=vix.rolling(w).mean();f[f"reversion_strength_{w}d"]=(vix-ma).abs()/ma.replace(0,np.nan)
-        bw=20;bma,bstd=vix.rolling(bw).mean(),vix.rolling(bw).std();bu,bl=bma+2*bstd,bma-2*bstd;f["vix_bb_position_20d"]=((vix-bl)/(bu-bl).replace(0,np.nan)).clip(0,1);f["vix_extreme_low_21d"]=(vix<vix.rolling(21).quantile(0.1)).astype(int);f["vix_regime"]=calculate_regime_with_validation(vix,bins=VIX_REGIME_BINS,labels=VIX_REGIME_LABELS,feature_name="vix");rc=f["vix_regime"].diff().fillna(0)!=0;f["days_in_regime"]=(~rc).cumsum()-(~rc).cumsum().where(rc).ffill().fillna(0)
+        bw=20;bma,bstd=vix.rolling(bw).mean(),vix.rolling(bw).std();bu,bl=bma+2*bstd,bma-2*bstd;f["vix_bb_position_20d"]=((vix-bl)/(bu-bl).replace(0,np.nan)).clip(0,1);f["vix_extreme_low_21d"]=(vix<vix.rolling(21).quantile(0.1)).astype(int);f["vix_regime"]=self.regime_classifier.classify_vix_series_numeric(vix);rc=f["vix_regime"].diff().fillna(0)!=0;f["days_in_regime"]=(~rc).cumsum()-(~rc).cumsum().where(rc).ffill().fillna(0)
         if cb is not None and "VIX3M" in cb.columns:f["vix_term_structure"]=((vix/cb["VIX3M"].replace(0,np.nan))-1)*100
         else:f["vix_term_structure"]=np.nan
         for w in [1,5,10,21,63]:f[f"spx_ret_{w}d"]=spx.pct_change(w)*100
@@ -365,7 +352,7 @@ class FeatureEngineer:
         return pd.concat([vxf,comf,dolf,crf],axis=1)
     def _fetch_macro_data(self,ss:str,es:str,idx:pd.DatetimeIndex)->pd.DataFrame:
         fd={}
-        frs={"Dollar_Index":"DTWEXBGS","CPI":"CPIAUCSL"}
+        frs={"CPI":"CPIAUCSL"}
         for n,sid in frs.items():
             try:d=self.fetcher.fetch_fred_series(sid,ss,es);(fd.update({n:d.reindex(idx,method="ffill",limit=5)}) if d is not None and not d.empty else None)
             except:continue
@@ -383,13 +370,26 @@ class FeatureEngineer:
         if "CPI" in m.columns:[f.update({f"CPI_change_{w}d":m["CPI"].diff(w)}) for w in [10,21,63]]
         return f
     def _build_treasury_features(self,ss:str,es:str,idx:pd.DatetimeIndex)->pd.DataFrame:
-        ts={"DGS1MO":"DGS1MO","DGS3MO":"DGS3MO","DGS6MO":"DGS6MO","DGS1":"DGS1","DGS2":"DGS2","DGS5":"DGS5","DGS10":"DGS10","DGS30":"DGS30"}
-        fy={}
-        for n,sid in ts.items():
-            try:d=self.fetcher.fetch_fred_series(sid,ss,es);(fy.update({n:d.reindex(idx,method="ffill",limit=5)}) if d is not None and not d.empty else None)
+        yahoo_yields={}
+        yahoo_tickers={"^IRX":"3M","^FVX":"5Y","^TNX":"10Y","^TYX":"30Y","2YY=F":"2Y"}
+        for ticker,name in yahoo_tickers.items():
+            try:d=self.fetcher.fetch_yahoo(ticker,ss,es);(yahoo_yields.update({name:d["Close"].squeeze()}) if d is not None and "Close" in d.columns else None)
             except:continue
-        if not fy:return pd.DataFrame(index=idx)
-        ydf=pd.DataFrame(fy,index=idx);tsp=self.treasury_engine.extract_term_spreads(ydf);csh=self.treasury_engine.extract_curve_shape(ydf);rvol=self.treasury_engine.extract_rate_volatility(ydf);return pd.concat([tsp,csh,rvol],axis=1)
+        if len(yahoo_yields)>=3:
+            ydf=pd.DataFrame(yahoo_yields,index=idx).ffill(limit=5)
+            if "2Y" not in ydf.columns:
+                print("  2YY=F not available, falling back to FRED DGS2")
+                try:dgs2=self.fetcher.fetch_fred_series("DGS2",ss,es);(ydf.update({"2Y":dgs2.reindex(idx,method="ffill",limit=5)}) if dgs2 is not None else None)
+                except:pass
+            tsp=self.treasury_engine.extract_term_spreads(ydf);csh=self.treasury_engine.extract_curve_shape(ydf);rvol=self.treasury_engine.extract_rate_volatility(ydf);return pd.concat([tsp,csh,rvol],axis=1)
+        else:
+            ts={"DGS1MO":"1M","DGS3MO":"3M","DGS6MO":"6M","DGS1":"1Y","DGS2":"2Y","DGS5":"5Y","DGS10":"10Y","DGS30":"30Y"}
+            fy={}
+            for n,sid in ts.items():
+                try:d=self.fetcher.fetch_fred_series(sid.replace("_",""),ss,es);(fy.update({n:d.reindex(idx,method="ffill",limit=5)}) if d is not None and not d.empty else None)
+                except:continue
+            if not fy:return pd.DataFrame(index=idx)
+            ydf=pd.DataFrame(fy,index=idx);ydf.columns=[c.replace("DGS","").replace("MO","M") for c in ydf.columns];tsp=self.treasury_engine.extract_term_spreads(ydf);csh=self.treasury_engine.extract_curve_shape(ydf);rvol=self.treasury_engine.extract_rate_volatility(ydf);return pd.concat([tsp,csh,rvol],axis=1)
     def _build_meta_features(self,cmb:pd.DataFrame,spx:pd.Series,vix:pd.Series,md:pd.DataFrame)->pd.DataFrame:
         return pd.concat([self.meta_engine.extract_regime_indicators(cmb,vix,spx),self.meta_engine.extract_cross_asset_relationships(cmb,md),self.meta_engine.extract_rate_of_change_features(cmb),self.meta_engine.extract_percentile_rankings(cmb)],axis=1)
     def _build_calendar_features(self,idx:pd.DatetimeIndex)->pd.DataFrame:

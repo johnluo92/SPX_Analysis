@@ -7,15 +7,17 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.model_selection import TimeSeriesSplit
+from core.target_calculator import TargetCalculator
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 class SimplifiedFeatureSelector:
     def __init__(self,horizon:int=5,top_n:int=40,cv_folds:int=3):
-        self.horizon=horizon;self.top_n=top_n;self.cv_folds=cv_folds;self.selected_features=None;self.importance_scores=None;self.metadata=None
+        self.horizon=horizon;self.top_n=top_n;self.cv_folds=cv_folds;self.selected_features=None;self.importance_scores=None;self.metadata=None;self.target_calculator=TargetCalculator()
         logger.info(f"Initialized Feature Selector:");logger.info(f"  Horizon: {horizon} days");logger.info(f"  Target: Log VIX change");logger.info(f"  Top N: {top_n}");logger.info(f"  CV Folds: {cv_folds}")
     def select_features(self,features_df:pd.DataFrame,vix_series:pd.Series)->Tuple[List[str],Dict]:
         logger.info("\n"+"="*80);logger.info("FEATURE SELECTION - LOG VIX CHANGE");logger.info("="*80);logger.info("\n[1/4] Calculating forward log VIX change...")
-        target=self._calculate_target(vix_series,features_df.index)
+        target=self.target_calculator.calculate_log_vix_change(vix_series,dates=features_df.index)
+        stats=self.target_calculator.get_target_stats(target);logger.info(f"  Valid targets: {stats['count']}");logger.info(f"  Target range: [{stats['min']:.4f}, {stats['max']:.4f}]");logger.info(f"  Target mean: {stats['mean']:.4f}");logger.info(f"  Target std: {stats['std']:.4f}")
         if len(target)==0:logger.error("❌ No valid targets calculated");return[],{}
         logger.info("\n[2/4] Aligning features with targets...")
         common_dates=features_df.index.intersection(target.index)
@@ -30,23 +32,6 @@ class SimplifiedFeatureSelector:
         self.metadata={"timestamp":datetime.now().isoformat(),"target":"log_vix_change","horizon":self.horizon,"samples":len(X),"total_features":len(X.columns),"selected_features":len(selected),"top_n":self.top_n,"cv_folds":self.cv_folds,"target_statistics":{"mean":float(y.mean()),"std":float(y.std()),"min":float(y.min()),"max":float(y.max())},"top_20_features":[{"feature":f,"importance":float(importance_scores[f])}for f in selected[:20]]}
         self._print_summary(selected,importance_scores)
         return selected,self.metadata
-    def _calculate_target(self,vix_series:pd.Series,dates:pd.DatetimeIndex)->pd.Series:
-        target=pd.Series(index=dates,dtype=float);vix_series=vix_series.sort_index();valid_count=0;insufficient_data=0
-        for date in dates:
-            if date not in vix_series.index:continue
-            try:
-                date_pos=vix_series.index.get_loc(date)
-                if not isinstance(date_pos,int):continue
-            except KeyError:continue
-            end_pos=date_pos+self.horizon
-            if end_pos>=len(vix_series):insufficient_data+=1;continue
-            current_vix=vix_series.iloc[date_pos];future_vix=vix_series.iloc[end_pos]
-            if pd.isna(current_vix)or pd.isna(future_vix):insufficient_data+=1;continue
-            if current_vix<=0 or future_vix<=0:insufficient_data+=1;continue
-            log_change=np.log(future_vix/current_vix);target[date]=log_change;valid_count+=1
-        target=target.dropna()
-        logger.info(f"  Target calculation:");logger.info(f"    Valid: {valid_count}");logger.info(f"    Insufficient data: {insufficient_data}");logger.info(f"    Target range: [{target.min():.4f}, {target.max():.4f}]");logger.info(f"    Target mean: {target.mean():.4f}");logger.info(f"    Target std: {target.std():.4f}")
-        return target
     def _compute_importance(self,X:pd.DataFrame,y:pd.Series)->Dict[str,float]:
         tscv=TimeSeriesSplit(n_splits=self.cv_folds);importance_accumulator=np.zeros(len(X.columns))
         for fold_idx,(train_idx,val_idx)in enumerate(tscv.split(X)):

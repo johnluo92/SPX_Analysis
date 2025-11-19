@@ -6,6 +6,7 @@ from scipy.interpolate import interp1d
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import HuberRegressor,LinearRegression
 from sklearn.metrics import mean_absolute_error,mean_squared_error
+from core.regime_classifier import classify_vix_regime
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 class QuantileCalibrator:
@@ -92,7 +93,7 @@ class ForecastCalibrator:
         if len(df)<self.min_samples:logger.warning(f"⚠️  Only {len(df)} samples available, need {self.min_samples}\n   Calibration may be unreliable")
         logger.info(f"  Loaded {len(df)} predictions\n  Date range: {df['forecast_date'].min().date()} to {df['forecast_date'].max().date()}");logger.info("\n[2/5] Preparing calibration data...");required_cols=["median_forecast","actual_vix_change","current_vix"];missing=[col for col in required_cols if col not in df.columns]
         if missing:logger.error(f"❌ Missing required columns: {missing}");return False
-        calib_df=df[required_cols].copy();calib_df["cohort"]=df["calendar_cohort"]if"calendar_cohort"in df.columns and self.cohort_specific else"all";calib_df=calib_df.dropna();calib_df["error"]=calib_df["actual_vix_change"]-calib_df["median_forecast"];calib_df["vix_regime"]=pd.cut(calib_df["current_vix"],bins=[0,15,25,40,100],labels=["low","normal","elevated","crisis"]);logger.info(f"  Calibration samples: {len(calib_df)}\n  Mean error: {calib_df['error'].mean():+.2f}%\n  Mean absolute error: {calib_df['error'].abs().mean():.2f}%")
+        calib_df=df[required_cols].copy();calib_df["cohort"]=df["calendar_cohort"]if"calendar_cohort"in df.columns and self.cohort_specific else"all";calib_df=calib_df.dropna();calib_df["error"]=calib_df["actual_vix_change"]-calib_df["median_forecast"];calib_df["vix_regime"]=calib_df["current_vix"].apply(lambda x:classify_vix_regime(x,numeric=False));logger.info(f"  Calibration samples: {len(calib_df)}\n  Mean error: {calib_df['error'].mean():+.2f}%\n  Mean absolute error: {calib_df['error'].abs().mean():.2f}%")
         if abs(calib_df["error"].mean())>0.5:logger.warning("⚠️  Systematic underestimation detected"if calib_df["error"].mean()>0 else"⚠️  Systematic overestimation detected")
         logger.info("\n[3/5] Fitting global calibration model...");X_global=calib_df[["median_forecast","current_vix"]].values;y_global=calib_df["error"].values;self.global_model=HuberRegressor()if self.use_robust else LinearRegression();self.global_model.fit(X_global,y_global);y_pred=self.global_model.predict(X_global);mae_before=mean_absolute_error(calib_df["actual_vix_change"],calib_df["median_forecast"]);calibrated_forecast=calib_df["median_forecast"]+y_pred;mae_after=mean_absolute_error(calib_df["actual_vix_change"],calibrated_forecast);improvement_pct=(mae_before-mae_after)/mae_before*100;logger.info(f"  MAE before calibration: {mae_before:.2f}%\n  MAE after calibration:  {mae_after:.2f}%\n  Improvement: {improvement_pct:+.1f}%");self.calibration_stats["global"]={"samples":len(calib_df),"mae_before":float(mae_before),"mae_after":float(mae_after),"improvement_pct":float(improvement_pct),"mean_error":float(calib_df["error"].mean())}
         if self.cohort_specific and"cohort"in calib_df.columns:
@@ -105,7 +106,7 @@ class ForecastCalibrator:
         else:logger.info("\n[4/5] Cohort-specific calibration disabled")
         if self.regime_specific:
             logger.info("\n[5/5] Fitting regime-specific calibration...")
-            for regime in["low","normal","elevated","crisis"]:
+            for regime in["low_vol","normal","elevated","crisis"]:
                 regime_df=calib_df[calib_df["vix_regime"]==regime]
                 if len(regime_df)<20:logger.warning(f"  ⚠️  {regime}: Only {len(regime_df)} samples, skipping");continue
                 X_regime=regime_df[["median_forecast","current_vix"]].values;y_regime=regime_df["error"].values;regime_model=HuberRegressor()if self.use_robust else LinearRegression();regime_model.fit(X_regime,y_regime);self.regime_models[regime]=regime_model;y_pred_regime=regime_model.predict(X_regime);mae_before=mean_absolute_error(regime_df["actual_vix_change"],regime_df["median_forecast"]);calibrated=regime_df["median_forecast"]+y_pred_regime;mae_after=mean_absolute_error(regime_df["actual_vix_change"],calibrated);improvement=(mae_before-mae_after)/mae_before*100;logger.info(f"  {regime} VIX: {len(regime_df)} samples, improvement: {improvement:+.1f}%");self.calibration_stats[f"regime_{regime}"]={"samples":len(regime_df),"mae_before":float(mae_before),"mae_after":float(mae_after),"improvement_pct":float(improvement),"mean_error":float(regime_df["error"].mean())}
@@ -113,17 +114,12 @@ class ForecastCalibrator:
         self.fitted=True;logger.info("\n✅ Calibration complete\n"+"="*80+"\n");return True
     def calibrate(self,raw_forecast,current_vix,cohort=None):
         if not self.fitted:logger.debug("⚠️  Calibrator not fitted - using raw forecasts");return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"method":"not_fitted","raw_forecast":raw_forecast}
-        vix_regime=self._classify_vix_regime(current_vix);model=None;method="global"
+        vix_regime=classify_vix_regime(current_vix,numeric=False);model=None;method="global"
         if self.cohort_specific and cohort and cohort in self.cohort_models:model=self.cohort_models[cohort];method=f"cohort_{cohort}"
         elif self.regime_specific and vix_regime in self.regime_models:model=self.regime_models[vix_regime];method=f"regime_{vix_regime}"
         else:model=self.global_model;method="global"
         if model is None:logger.warning("⚠️  No calibration model available - using raw forecast");return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"method":"no_model","raw_forecast":raw_forecast}
         X=np.array([[raw_forecast,current_vix]]);adjustment=float(model.predict(X)[0]);calibrated_forecast=raw_forecast+adjustment;logger.debug(f"🎯 Calibration applied: {raw_forecast:+.2f}% → {calibrated_forecast:+.2f}% (Δ{adjustment:+.2f}%) via {method}");return{"calibrated_forecast":calibrated_forecast,"adjustment":adjustment,"method":method,"raw_forecast":raw_forecast}
-    def _classify_vix_regime(self,vix):
-        if vix<16.77:return"low"
-        elif vix<24.40:return"normal"
-        elif vix<39.67:return"elevated"
-        else:return"crisis"
     def get_diagnostics(self):
         if not self.fitted:return{"error":"Calibrator not fitted"}
         diagnostics={"fitted":self.fitted,"timestamp":datetime.now().isoformat(),"config":{"min_samples":self.min_samples,"use_robust":self.use_robust,"cohort_specific":self.cohort_specific,"regime_specific":self.regime_specific},"statistics":self.calibration_stats,"models":{"global":self.global_model is not None,"cohorts":list(self.cohort_models.keys()),"regimes":list(self.regime_models.keys())}}

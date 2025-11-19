@@ -38,8 +38,5 @@
   "vix_rv_ratio_10d",
   "yield_curve_vol_dispersion",
   "risk_premium_ma21",
-  "reversion_strength_63d",
-  "is_fomc_period",
-  "is_opex_week",
-  "is_earnings_heavy"
+  "reversion_strength_63d"
 ]

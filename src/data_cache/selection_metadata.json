@@ -1,0 +1,98 @@
+{
+  "timestamp": "2025-11-19T14:29:06.234393",
+  "target": "log_vix_change",
+  "horizon": 5,
+  "samples": 5337,
+  "total_features": 159,
+  "selected_features": 40,
+  "top_n": 40,
+  "cv_folds": 3,
+  "target_statistics": {
+    "mean": -0.00044589133238124207,
+    "std": 0.1410008383909843,
+    "min": -0.5590929286146875,
+    "max": 1.1407237800592158
+  },
+  "top_20_features": [
+    {
+      "feature": "vix_extreme_low_63d",
+      "importance": 0.025000708798567455
+    },
+    {
+      "feature": "vix_percentile_252d",
+      "importance": 0.022957654980321724
+    },
+    {
+      "feature": "vix_extreme_low_252d",
+      "importance": 0.022478364408016205
+    },
+    {
+      "feature": "spx_vol_ratio_10_63",
+      "importance": 0.016811933058003586
+    },
+    {
+      "feature": "liquidity_stress_composite",
+      "importance": 0.015710378997027874
+    },
+    {
+      "feature": "vix_velocity_5d",
+      "importance": 0.015610078815370798
+    },
+    {
+      "feature": "crude_oil_ret_63d",
+      "importance": 0.014633621089160442
+    },
+    {
+      "feature": "vix_bb_position_20d",
+      "importance": 0.014545371755957603
+    },
+    {
+      "feature": "vix_percentile_63d",
+      "importance": 0.014095830731093884
+    },
+    {
+      "feature": "vix_vs_ma10",
+      "importance": 0.013659882669647535
+    },
+    {
+      "feature": "yield_10y3m_inversion_depth",
+      "importance": 0.013522794916449735
+    },
+    {
+      "feature": "vix_vs_rv_21d",
+      "importance": 0.013238382991403341
+    },
+    {
+      "feature": "yield_curve_level",
+      "importance": 0.0125136806940039
+    },
+    {
+      "feature": "dxy_ret_63d",
+      "importance": 0.012294116274764141
+    },
+    {
+      "feature": "vix_regime_micro",
+      "importance": 0.011835955393811068
+    },
+    {
+      "feature": "vix_vs_ma21",
+      "importance": 0.01167439560716351
+    },
+    {
+      "feature": "vix_zscore_63d",
+      "importance": 0.011352073401212692
+    },
+    {
+      "feature": "risk_premium_percentile_252d",
+      "importance": 0.011350115373109778
+    },
+    {
+      "feature": "risk_premium_zscore",
+      "importance": 0.011274738237261772
+    },
+    {
+      "feature": "spx_ret_5d",
+      "importance": 0.01116545187930266
+    }
+  ]
+}
