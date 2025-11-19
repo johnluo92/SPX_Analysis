@@ -26,16 +26,24 @@ def prepare_training_data():
 def run_feature_selection(features_df,vix):
     logger.info("\nFEATURE SELECTION")
     logger.info("="*80)
-    feature_cols=[c for c in features_df.columns if c not in ["vix","spx","calendar_cohort","cohort_weight","feature_quality","is_fomc_period","is_opex_week","is_earnings_heavy"]]
-    selector=SimplifiedFeatureSelector(horizon=TARGET_CONFIG["horizon_days"],top_n=40,cv_folds=3)
+    protected_features=["is_fomc_period","is_opex_week","is_earnings_heavy"]
+    exclude_cols=["vix","spx","calendar_cohort","cohort_weight","feature_quality"]+protected_features
+    feature_cols=[c for c in features_df.columns if c not in exclude_cols]
+    logger.info(f"  Total candidate features: {len(feature_cols)}")
+    logger.info(f"  Protected features: {protected_features}")
+    selector=SimplifiedFeatureSelector(horizon=TARGET_CONFIG["horizon_days"],top_n=60,cv_folds=3,protected_features=protected_features)
     selected_features,metadata=selector.select_features(features_df[feature_cols],vix)
     selector.save_results(output_dir="data_cache")
-    logger.info("\n"+"="*80);logger.info(f"FEATURE SELECTION COMPLETE: {len(selected_features)} features selected");logger.info("="*80+"\n")
+    logger.info("\n"+"="*80)
+    logger.info(f"FEATURE SELECTION COMPLETE: {len(selected_features)} total features")
+    logger.info(f"  - {len(selected_features)-len(protected_features)} selected")
+    logger.info(f"  - {len(protected_features)} protected")
+    logger.info("="*80+"\n")
     return selected_features
 def save_training_report(forecaster,selected_features,output_dir="models"):
     output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True)
     report_file=output_path/f"training_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    report={"timestamp":datetime.now().isoformat(),"system_version":"v4.0_with_feature_selection","target_type":TARGET_CONFIG.get("target_type"),"feature_selection":{"enabled":True,"top_n":40,"selected_features":len(selected_features),"selected_feature_list":selected_features},"training_summary":{"models_trained":2,"model_types":["direction_classifier","magnitude_regressor"],"features":len(forecaster.feature_names)},"metrics":forecaster.metrics}
+    report={"timestamp":datetime.now().isoformat(),"system_version":"v4.0_with_protected_features","target_type":TARGET_CONFIG.get("target_type"),"feature_selection":{"enabled":True,"top_n":60,"protected_features":["is_fomc_period","is_opex_week","is_earnings_heavy"],"selected_features":len(selected_features),"selected_feature_list":selected_features},"training_summary":{"models_trained":2,"model_types":["direction_classifier","magnitude_regressor"],"features":len(forecaster.feature_names)},"metrics":forecaster.metrics}
     with open(report_file,"w")as f:json.dump(report,f,indent=2,default=str)
     logger.info(f"Training report: {report_file}")
 def main():

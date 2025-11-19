@@ -11,9 +11,10 @@ from core.target_calculator import TargetCalculator
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 class SimplifiedFeatureSelector:
-    def __init__(self,horizon:int=5,top_n:int=40,cv_folds:int=3):
-        self.horizon=horizon;self.top_n=top_n;self.cv_folds=cv_folds;self.selected_features=None;self.importance_scores=None;self.metadata=None;self.target_calculator=TargetCalculator()
+    def __init__(self,horizon:int=5,top_n:int=40,cv_folds:int=3,protected_features:List[str]=None):
+        self.horizon=horizon;self.top_n=top_n;self.cv_folds=cv_folds;self.protected_features=protected_features or[];self.selected_features=None;self.importance_scores=None;self.metadata=None;self.target_calculator=TargetCalculator()
         logger.info(f"Initialized Feature Selector:");logger.info(f"  Horizon: {horizon} days");logger.info(f"  Target: Log VIX change");logger.info(f"  Top N: {top_n}");logger.info(f"  CV Folds: {cv_folds}")
+        if self.protected_features:logger.info(f"  Protected features: {len(self.protected_features)}")
     def select_features(self,features_df:pd.DataFrame,vix_series:pd.Series)->Tuple[List[str],Dict]:
         logger.info("\n"+"="*80);logger.info("FEATURE SELECTION - LOG VIX CHANGE");logger.info("="*80);logger.info("\n[1/4] Calculating forward log VIX change...")
         target=self.target_calculator.calculate_log_vix_change(vix_series,dates=features_df.index)
@@ -29,7 +30,7 @@ class SimplifiedFeatureSelector:
         importance_scores=self._compute_importance(X,y)
         logger.info("\n[4/4] Selecting features...")
         selected=self._select_top_features(importance_scores,X.columns);self.selected_features=selected;self.importance_scores=importance_scores
-        self.metadata={"timestamp":datetime.now().isoformat(),"target":"log_vix_change","horizon":self.horizon,"samples":len(X),"total_features":len(X.columns),"selected_features":len(selected),"top_n":self.top_n,"cv_folds":self.cv_folds,"target_statistics":{"mean":float(y.mean()),"std":float(y.std()),"min":float(y.min()),"max":float(y.max())},"top_20_features":[{"feature":f,"importance":float(importance_scores[f])}for f in selected[:20]]}
+        self.metadata={"timestamp":datetime.now().isoformat(),"target":"log_vix_change","horizon":self.horizon,"samples":len(X),"total_features":len(X.columns),"selected_features":len(selected),"top_n":self.top_n,"cv_folds":self.cv_folds,"protected_features":self.protected_features,"target_statistics":{"mean":float(y.mean()),"std":float(y.std()),"min":float(y.min()),"max":float(y.max())},"top_20_features":[{"feature":f,"importance":float(importance_scores[f])}for f in selected[:20]]}
         self._print_summary(selected,importance_scores)
         return selected,self.metadata
     def _compute_importance(self,X:pd.DataFrame,y:pd.Series)->Dict[str,float]:
@@ -43,18 +44,22 @@ class SimplifiedFeatureSelector:
         avg_importance=importance_accumulator/self.cv_folds;importance_dict=dict(zip(X.columns,avg_importance))
         return importance_dict
     def _select_top_features(self,importance_scores:Dict,all_features:pd.Index)->List[str]:
-        sorted_features=sorted(importance_scores.items(),key=lambda x:x[1],reverse=True);cohort_features=["is_fomc_period","is_opex_week","is_earnings_heavy"];selected=[]
+        sorted_features=sorted(importance_scores.items(),key=lambda x:x[1],reverse=True);selected=[]
         for feature,score in sorted_features:
+            if feature in self.protected_features:continue
             if len(selected)>=self.top_n:break
             selected.append(feature)
-        for cf in cohort_features:
-            if cf in all_features and cf not in selected:selected.append(cf);logger.info(f"  Added cohort feature: {cf}")
-        logger.info(f"\n  Selected {len(selected)} features:");logger.info(f"    Top importance: {importance_scores[selected[0]]:.6f}");logger.info(f"    Min importance: {importance_scores[selected[self.top_n-1]if self.top_n<=len(selected)else selected[-1]]:.6f}");logger.info(f"    Cohort features included: {sum(1 for cf in cohort_features if cf in selected)}")
+        for pf in self.protected_features:
+            if pf in all_features and pf not in selected:selected.append(pf);logger.info(f"  Added protected feature: {pf}")
+        top_importance=importance_scores[sorted_features[0][0]]if sorted_features else 0
+        min_selected_idx=min(self.top_n-1,len(selected)-len(self.protected_features)-1)
+        min_importance=importance_scores[selected[min_selected_idx]]if min_selected_idx>=0 and min_selected_idx<len(selected)else 0
+        logger.info(f"\n  Selected {len(selected)} features:");logger.info(f"    Top importance: {top_importance:.6f}");logger.info(f"    Min importance: {min_importance:.6f}");logger.info(f"    Protected features: {len([f for f in selected if f in self.protected_features])}")
         return selected
     def _print_summary(self,selected_features:List[str],importance_scores:Dict):
         logger.info("\n"+"="*80);logger.info("TOP 20 SELECTED FEATURES");logger.info("="*80)
         for rank,feature in enumerate(selected_features[:20],1):
-            score=importance_scores[feature];cohort_flag=" [COHORT]"if feature.startswith("is_")else""
+            score=importance_scores.get(feature,0);cohort_flag=" [PROTECTED]"if feature in self.protected_features else""
             logger.info(f"{rank:2d}. {feature:50s} {score:.6f}{cohort_flag}")
         logger.info("\n"+"="*80);logger.info("FEATURE SELECTION COMPLETE");logger.info("="*80)
     def save_results(self,output_dir:str="data_cache"):

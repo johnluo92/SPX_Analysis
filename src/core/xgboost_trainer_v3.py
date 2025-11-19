@@ -47,21 +47,39 @@ class SimplifiedVIXForecaster:
     def _prepare_features(self,df,selected_features=None):
         exclude_cols=["vix","spx","calendar_cohort","cohort_weight","feature_quality","future_vix","target_vix_pct_change","target_log_vix_change","target_direction"]
         cohort_features=["is_fomc_period","is_opex_week","is_earnings_heavy"]
+
         if selected_features is not None:
-            logger.info(f"  Using {len(selected_features)} selected features")
+            # selected_features already includes cohort features from selector
             feature_cols=[f for f in selected_features if f in df.columns and f not in exclude_cols]
-            for cf in cohort_features:
-                if cf in df.columns and cf not in feature_cols:feature_cols.append(cf);logger.info(f"  Added cohort feature: {cf}")
+            logger.info(f"  Using {len(selected_features)} selected features")
+
+            # Verify cohort features present
+            cohort_present=[cf for cf in cohort_features if cf in feature_cols]
+            if len(cohort_present)!=3:
+                logger.warning(f"  Missing cohort features: {set(cohort_features)-set(cohort_present)}")
+                for cf in cohort_features:
+                    if cf not in feature_cols and cf in df.columns:
+                        feature_cols.append(cf)
+                        logger.info(f"  Added missing cohort feature: {cf}")
         else:
             logger.info("  Using all available features")
-            all_cols=df.columns.tolist();feature_cols=[c for c in all_cols if c not in exclude_cols]
-            for cf in cohort_features:
-                if cf not in feature_cols and cf in df.columns:feature_cols.append(cf)
+            all_cols=df.columns.tolist()
+            feature_cols=[c for c in all_cols if c not in exclude_cols]
+
         feature_cols=list(dict.fromkeys(feature_cols))
+
+        # Ensure cohort features exist in dataframe
         for cf in cohort_features:
-            if cf not in df.columns:logger.warning(f"  Missing cohort feature: {cf}, setting to 0");df[cf]=0
-        X=df[feature_cols].copy();cohort_present=[cf for cf in cohort_features if cf in feature_cols]
-        logger.info(f"  Total features: {len(feature_cols)} | Cohort features: {cohort_present}")
+            if cf not in df.columns:
+                logger.warning(f"  Missing cohort feature: {cf}, setting to 0")
+                df[cf]=0
+
+        X=df[feature_cols].copy()
+        cohort_in_features=[cf for cf in cohort_features if cf in feature_cols]
+
+        logger.info(f"  Total features: {len(feature_cols)}")
+        logger.info(f"  Cohort features included: {cohort_in_features}")
+
         return X,feature_cols
     def _train_direction_model(self,X_train,y_train,X_test,y_test):
         params=XGBOOST_CONFIG["shared_params"].copy();params.update({"objective":"binary:logistic","eval_metric":"logloss"})
