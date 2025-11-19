@@ -50,13 +50,11 @@ class SimplifiedVIXForecaster:
         if selected_features is not None:
             logger.info(f"  Using {len(selected_features)} selected features")
             feature_cols=[f for f in selected_features if f in df.columns and f not in exclude_cols]
-            for cf in cohort_features:
-                if cf in df.columns and cf not in feature_cols:feature_cols.append(cf);logger.info(f"  Added cohort feature: {cf}")
+            missing_cohorts=[cf for cf in cohort_features if cf not in feature_cols and cf in df.columns]
+            if missing_cohorts:logger.warning(f"  Cohort features missing from selection: {missing_cohorts}")
         else:
             logger.info("  Using all available features")
             all_cols=df.columns.tolist();feature_cols=[c for c in all_cols if c not in exclude_cols]
-            for cf in cohort_features:
-                if cf not in feature_cols and cf in df.columns:feature_cols.append(cf)
         feature_cols=list(dict.fromkeys(feature_cols))
         for cf in cohort_features:
             if cf not in df.columns:logger.warning(f"  Missing cohort feature: {cf}, setting to 0");df[cf]=0

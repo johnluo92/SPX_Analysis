@@ -26,8 +26,9 @@ def prepare_training_data():
 def run_feature_selection(features_df,vix):
     logger.info("\nFEATURE SELECTION")
     logger.info("="*80)
-    feature_cols=[c for c in features_df.columns if c not in ["vix","spx","calendar_cohort","cohort_weight","feature_quality","is_fomc_period","is_opex_week","is_earnings_heavy"]]
-    selector=SimplifiedFeatureSelector(horizon=TARGET_CONFIG["horizon_days"],top_n=40,cv_folds=3)
+    protected_features=["is_fomc_period","is_opex_week","is_earnings_heavy"]
+    feature_cols=[c for c in features_df.columns if c not in ["vix","spx","calendar_cohort","cohort_weight","feature_quality"]]
+    selector=SimplifiedFeatureSelector(horizon=TARGET_CONFIG["horizon_days"],top_n=40,cv_folds=3,protected_features=protected_features)
     selected_features,metadata=selector.select_features(features_df[feature_cols],vix)
     selector.save_results(output_dir="data_cache")
     logger.info("\n"+"="*80);logger.info(f"FEATURE SELECTION COMPLETE: {len(selected_features)} features selected");logger.info("="*80+"\n")

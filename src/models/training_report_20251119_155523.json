@@ -1,0 +1,93 @@
+{
+  "timestamp": "2025-11-19T15:55:23.281982",
+  "system_version": "v4.0_with_feature_selection",
+  "target_type": "log_vix_change",
+  "feature_selection": {
+    "enabled": true,
+    "top_n": 40,
+    "selected_features": 43,
+    "selected_feature_list": [
+      "is_fomc_period",
+      "is_opex_week",
+      "is_earnings_heavy",
+      "vix_percentile_252d",
+      "vix_velocity_5d",
+      "vix_regime",
+      "liquidity_stress_composite",
+      "crude_oil_ret_63d",
+      "vix_rv_ratio_21d",
+      "vix_bb_position_20d",
+      "spx_vol_ratio_10_63",
+      "spx_realized_vol_63d",
+      "vix_velocity_3d_pct",
+      "vix_vs_ma10",
+      "vix_percentile_63d",
+      "vix_vs_rv_21d",
+      "vix_zscore_63d",
+      "spx_ret_5d",
+      "yield_10y3m_inversion_depth",
+      "dxy_ret_63d",
+      "vix_regime_micro",
+      "vix_vs_ma63",
+      "spx_ret_63d",
+      "spx_vix_corr_63d",
+      "month",
+      "yield_curve_level",
+      "spx_vix_corr_126d",
+      "vix_extreme_low_63d",
+      "yield_30y10y",
+      "yield_10y3m_percentile_252d",
+      "vix_rv_ratio_10d",
+      "vix_percentile_126d",
+      "risk_premium_ma21",
+      "yield_curve_vol_dispersion",
+      "days_in_regime",
+      "risk_premium_percentile_252d",
+      "spx_realized_vol_21d",
+      "spx_skew_21d",
+      "crude_oil_vol_21d",
+      "risk_premium_zscore",
+      "vix_velocity_21d",
+      "yield_curve_level_zscore",
+      "spx_vs_ma200"
+    ]
+  },
+  "training_summary": {
+    "models_trained": 2,
+    "model_types": [
+      "direction_classifier",
+      "magnitude_regressor"
+    ],
+    "features": 43
+  },
+  "metrics": {
+    "direction": {
+      "train": {
+        "accuracy": 0.82775567516967,
+        "precision": 0.8532883642495784,
+        "recall": 0.7616658304064224,
+        "logloss": 0.4733616306899702
+      },
+      "test": {
+        "accuracy": 0.6109022556390977,
+        "precision": 0.5865384615384616,
+        "recall": 0.391025641025641,
+        "logloss": 0.688987368239826
+      }
+    },
+    "magnitude": {
+      "train": {
+        "mae_log": 0.09433093978837144,
+        "rmse_log": 0.12974771057916612,
+        "mae_pct": 9.659965242461151,
+        "bias_pct": -0.9663169780527386
+      },
+      "test": {
+        "mae_log": 0.11566972785044559,
+        "rmse_log": 0.1603390521543343,
+        "mae_pct": 12.03120002711923,
+        "bias_pct": -2.2119605431893627
+      }
+    }
+  }
+}
