@@ -3,22 +3,18 @@
 
 
 Core Files
-
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/data_fetcher.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/feature_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/forecast_calibrator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/prediction_database.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/temporal_validator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/xgboost_feature_selector_v2.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/xgboost_trainer_v3.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/walk_forward_validation.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/target_calculator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/core/regime_classifier.py
-
+1.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/core/data_fetcher.py
+2.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/core/feature_engineer.py
+3.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/core/forecast_calibrator.py
+4.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/core/prediction_database.py
+5.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/core/temporal_validator.py
+6.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/core/xgboost_feature_selector_v2.py
+7.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/core/xgboost_trainer_v3.py
+8.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/core/walk_forward_validation.py
 Root src Files
-11. https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/config.py
-12. https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/integrated_system_production.py
-13. https://raw.githubusercontent.com/johnluo92/SPX_Analysis/90d984c/src/train_probabilistic_models.py
+9.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/config.py
+10.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/integrated_system_production.py
+11.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c9da51f/src/train_probabilistic_models.py
 
 
 are these two files functionally/logically the same? i compressed/minified the larger file and want to double check. I intentionally removed almost all white spaces/comments/ and compressed everything without molesting the logic. please confirm.

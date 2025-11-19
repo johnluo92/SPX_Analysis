@@ -1,0 +1,43 @@
+{
+  "timestamp": "2025-11-18T15:57:15.236029",
+  "system_version": "v4.0_simplified",
+  "target_type": "log_vix_change",
+  "training_summary": {
+    "models_trained": 2,
+    "model_types": [
+      "direction_classifier",
+      "magnitude_regressor"
+    ],
+    "features": 167
+  },
+  "metrics": {
+    "direction": {
+      "train": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "logloss": 0.07834508611468641
+      },
+      "test": {
+        "accuracy": 0.6080827067669173,
+        "precision": 0.5635910224438903,
+        "recall": 0.4829059829059829,
+        "logloss": 0.8689461988277211
+      }
+    },
+    "magnitude": {
+      "train": {
+        "mae_log": 0.06298005357588722,
+        "rmse_log": 0.08109149314423582,
+        "mae_pct": 6.485955724974096,
+        "bias_pct": -0.6745367365790629
+      },
+      "test": {
+        "mae_log": 0.13892960994814063,
+        "rmse_log": 0.1757546012464648,
+        "mae_pct": 14.580878458231584,
+        "bias_pct": 3.2992827638633355
+      }
+    }
+  }
+}
