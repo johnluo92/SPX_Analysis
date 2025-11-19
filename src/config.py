@@ -82,18 +82,18 @@ XGBOOST_CONFIG = {
     "strategy": "simplified_direction_magnitude",
     "cohort_aware": False,  # Cohorts are now features, not separate models
     "shared_params": {
-        "max_depth": 6,
-        "learning_rate": 0.05,
-        "n_estimators": 500,
+        "max_depth": 4,              # REDUCED: Shallower trees = less overfitting
+        "learning_rate": 0.03,        # REDUCED: Slower learning
+        "n_estimators": 300,          # REDUCED: Fewer trees with early stopping
         "subsample": 0.8,
         "colsample_bytree": 0.8,
         "colsample_bylevel": 0.8,
-        "min_child_weight": 3,
-        "reg_alpha": 0.1,
-        "reg_lambda": 1.0,
-        "gamma": 0.1,
+        "min_child_weight": 10,       # INCREASED: Require more samples per leaf
+        "reg_alpha": 1.0,             # INCREASED: Stronger L1 (feature selection)
+        "reg_lambda": 3.0,            # INCREASED: Stronger L2 (weight shrinkage)
+        "gamma": 1.0,                 # INCREASED: Higher complexity penalty
         "seed": 42,
-        "n_jobs": -1
+        "n_jobs": -1,
     },
     # ONLY 2 OBJECTIVES NOW
     "objectives": {
