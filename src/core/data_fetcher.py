@@ -73,7 +73,7 @@ class UnifiedDataFetcher:
                 if cache_path.exists():
                     try:
                         cached_df=pd.read_parquet(cache_path)
-                        if series_id in cached_df.columns:self.logger.warning(f"FRED:{series_id}: No new data available, using cache");return cached_df[series_id]
+                        if series_id in cached_df.columns:self.logger.warning(f"FRED:{series_id}: No new data available, using existing cache");return cached_df[series_id]
                     except:pass
                 self.logger.warning(f"FRED:{series_id}: No data returned from API");return None
             obs=data["observations"];df=pd.DataFrame(obs);df["date"]=pd.to_datetime(df["date"]);df=df[df["value"]!="."];df["value"]=pd.to_numeric(df["value"],errors="coerce");df=df.dropna(subset=["value"]);df=df.set_index("date")[["value"]];df.columns=[series_id];df=self._normalize_data(df,f"FRED:{series_id}")
@@ -81,7 +81,7 @@ class UnifiedDataFetcher:
                 if cache_path.exists():
                     try:
                         cached_df=pd.read_parquet(cache_path)
-                        if series_id in cached_df.columns:self.logger.warning(f"FRED:{series_id}: Normalization failed, using cache");return cached_df[series_id]
+                        if series_id in cached_df.columns:self.logger.warning(f"FRED:{series_id}: Data processing issue, using existing cache");return cached_df[series_id]
                     except:pass
                 self.logger.warning(f"FRED:{series_id}: Data normalization failed");return None
             if series_id in self.QUARTERLY_SERIES or series_id in self.MONTHLY_SERIES:date_range=pd.date_range(df.index[0],df.index[-1],freq="D");df=df.reindex(date_range,method="ffill");df.index=pd.DatetimeIndex(df.index.date)
@@ -91,7 +91,7 @@ class UnifiedDataFetcher:
             if cache_path.exists():
                 try:
                     cached_df=pd.read_parquet(cache_path)
-                    if series_id in cached_df.columns:self.logger.warning(f"FRED:{series_id}: Fetch failed, using cache - {str(e)[:100]}");return cached_df[series_id]
+                    if series_id in cached_df.columns:self.logger.warning(f"FRED:{series_id}: Fetch failed, using existing cache - {str(e)[:100]}");return cached_df[series_id]
                 except:pass
             self.logger.warning(f"FRED:{series_id}: Fetch failed - {str(e)[:100]}")
             return None
@@ -144,14 +144,14 @@ class UnifiedDataFetcher:
                 if cache_path.exists():
                     try:
                         cached_df=pd.read_parquet(cache_path)
-                        if not cached_df.empty:self.logger.warning(f"Yahoo:{symbol}: No new data available, using cache");return cached_df
+                        if not cached_df.empty:self.logger.warning(f"Yahoo:{symbol}: No new data available, using existing cache");return cached_df
                     except:pass
                 self.logger.warning(f"Yahoo:{symbol}: No data returned");return None
             df=self._normalize_data(df,f"Yahoo:{symbol}")
             if df is None:
                 if cache_path.exists():
                     try:
-                        cached_df=pd.read_parquet(cache_path);self.logger.warning(f"Yahoo:{symbol}: Normalization failed, using cache");return cached_df
+                        cached_df=pd.read_parquet(cache_path);self.logger.warning(f"Yahoo:{symbol}: Data processing issue, using existing cache");return cached_df
                     except:pass
                 self.logger.warning(f"Yahoo:{symbol}: Data normalization failed");return None
             if incremental and cache_path.exists():df=self._merge_with_cache(df,cache_path)
@@ -163,7 +163,7 @@ class UnifiedDataFetcher:
                 try:
                     cached_df=pd.read_parquet(cache_path)
                     if not cached_df.empty:
-                        self.logger.warning(f"Yahoo:{symbol}: Fetch failed, using cache - {str(e)[:100]}")
+                        self.logger.warning(f"Yahoo:{symbol}: Fetch failed, using existing cache - {str(e)[:100]}")
                         if is_historical_request:start_dt=pd.to_datetime(start_date)if start_date else cached_df.index[0];cached_df=cached_df[(cached_df.index>=start_dt)&(cached_df.index<=end_dt)]
                         return cached_df
                 except:pass

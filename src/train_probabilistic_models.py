@@ -6,6 +6,7 @@ from config import TARGET_CONFIG,TRAINING_END_DATE,TRAINING_YEARS
 from core.data_fetcher import UnifiedDataFetcher
 from core.feature_engineer import FeatureEngineer
 from core.xgboost_feature_selector_v2 import SimplifiedFeatureSelector
+from core.feature_correlation_analyzer import FeatureCorrelationAnalyzer
 from core.xgboost_trainer_v3 import train_simplified_forecaster
 Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(level=logging.INFO,format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",handlers=[logging.StreamHandler(sys.stdout),logging.FileHandler("logs/training.log")])
@@ -28,7 +29,7 @@ def run_feature_selection(features_df,vix):
     logger.info("="*80)
     protected_features=["is_fomc_period","is_opex_week","is_earnings_heavy"]
     feature_cols=[c for c in features_df.columns if c not in ["vix","spx","calendar_cohort","cohort_weight","feature_quality"]]
-    selector=SimplifiedFeatureSelector(horizon=TARGET_CONFIG["horizon_days"],top_n=65,cv_folds=3,protected_features=protected_features)
+    selector=SimplifiedFeatureSelector(horizon=TARGET_CONFIG["horizon_days"],top_n=200,cv_folds=3,protected_features=protected_features)
     selected_features,metadata=selector.select_features(features_df[feature_cols],vix)
     selector.save_results(output_dir="data_cache")
     logger.info("\n"+"="*80);logger.info(f"FEATURE SELECTION COMPLETE: {len(selected_features)} features selected");logger.info("="*80+"\n")
@@ -36,7 +37,7 @@ def run_feature_selection(features_df,vix):
 def save_training_report(forecaster,selected_features,output_dir="models"):
     output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True)
     report_file=output_path/f"training_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    report={"timestamp":datetime.now().isoformat(),"system_version":"v4.0_with_feature_selection","target_type":TARGET_CONFIG.get("target_type"),"feature_selection":{"enabled":True,"top_n":65,"selected_features":len(selected_features),"selected_feature_list":selected_features},"training_summary":{"models_trained":2,"model_types":["direction_classifier","magnitude_regressor"],"features":len(forecaster.feature_names)},"metrics":forecaster.metrics}
+    report={"timestamp":datetime.now().isoformat(),"system_version":"v4.0_with_feature_selection","target_type":TARGET_CONFIG.get("target_type"),"feature_selection":{"enabled":True,"top_n":200,"selected_features":len(selected_features),"selected_feature_list":selected_features},"training_summary":{"models_trained":2,"model_types":["direction_classifier","magnitude_regressor"],"features":len(forecaster.feature_names)},"metrics":forecaster.metrics}
     with open(report_file,"w")as f:json.dump(report,f,indent=2,default=str)
     logger.info(f"Training report: {report_file}")
 def main():

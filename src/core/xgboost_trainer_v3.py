@@ -1,6 +1,4 @@
-import json
-import logging
-import pickle
+import json,logging,pickle
 from pathlib import Path
 from typing import Dict,List,Tuple
 import matplotlib.pyplot as plt
@@ -8,7 +6,6 @@ import numpy as np
 import pandas as pd
 from sklearn.calibration import calibration_curve
 from sklearn.metrics import accuracy_score,log_loss,mean_absolute_error,mean_squared_error,precision_score,recall_score
-from sklearn.model_selection import TimeSeriesSplit
 from xgboost import XGBClassifier,XGBRegressor
 from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE
 from core.target_calculator import TargetCalculator
@@ -26,21 +23,29 @@ class SimplifiedVIXForecaster:
         stats=validation["stats"];logger.info(f"  Valid targets: {stats['count']} | UP: {df['target_direction'].sum()} ({df['target_direction'].mean():.1%}) | DOWN: {len(df)-df['target_direction'].sum()}")
         logger.info("[2/5] Preparing feature matrix...")
         X,feature_names=self._prepare_features(df,selected_features);self.feature_names=feature_names
-        logger.info("[3/5] Splitting train/test...")
+        logger.info("[3/5] Splitting train/val/test...")
         training_end=pd.Timestamp(TRAINING_END_DATE)
-        if df.index.max()>training_end:train_mask=df.index<=training_end
-        else:split_idx=int(len(df)*0.8);train_mask=pd.Series(False,index=df.index);train_mask.iloc[:split_idx]=True
-        X_train=X[train_mask];X_test=X[~train_mask]
-        y_direction_train=df.loc[train_mask,"target_direction"];y_direction_test=df.loc[~train_mask,"target_direction"]
-        y_magnitude_train=df.loc[train_mask,"target_log_vix_change"];y_magnitude_test=df.loc[~train_mask,"target_log_vix_change"]
-        valid_train_mask=~(y_direction_train.isna()|y_magnitude_train.isna());valid_test_mask=~(y_direction_test.isna()|y_magnitude_test.isna())
+        if df.index.max()>training_end:
+            train_mask=df.index<=training_end;X_train_val=X[train_mask];X_test=X[~train_mask]
+            y_direction_train_val=df.loc[train_mask,"target_direction"];y_direction_test=df.loc[~train_mask,"target_direction"]
+            y_magnitude_train_val=df.loc[train_mask,"target_log_vix_change"];y_magnitude_test=df.loc[~train_mask,"target_log_vix_change"]
+        else:
+            test_idx=int(len(df)*0.85);train_val_mask=pd.Series(False,index=df.index);train_val_mask.iloc[:test_idx]=True
+            X_train_val=X[train_val_mask];X_test=X[~train_val_mask]
+            y_direction_train_val=df.loc[train_val_mask,"target_direction"];y_direction_test=df.loc[~train_val_mask,"target_direction"]
+            y_magnitude_train_val=df.loc[train_val_mask,"target_log_vix_change"];y_magnitude_test=df.loc[~train_val_mask,"target_log_vix_change"]
+        val_split=int(len(X_train_val)*0.825);X_train=X_train_val[:val_split];X_val=X_train_val[val_split:]
+        y_direction_train=y_direction_train_val.iloc[:val_split];y_direction_val=y_direction_train_val.iloc[val_split:]
+        y_magnitude_train=y_magnitude_train_val.iloc[:val_split];y_magnitude_val=y_magnitude_train_val.iloc[val_split:]
+        valid_train_mask=~(y_direction_train.isna()|y_magnitude_train.isna());valid_val_mask=~(y_direction_val.isna()|y_magnitude_val.isna());valid_test_mask=~(y_direction_test.isna()|y_magnitude_test.isna())
         X_train=X_train[valid_train_mask];y_direction_train=y_direction_train[valid_train_mask];y_magnitude_train=y_magnitude_train[valid_train_mask]
+        X_val=X_val[valid_val_mask];y_direction_val=y_direction_val[valid_val_mask];y_magnitude_val=y_magnitude_val[valid_val_mask]
         X_test=X_test[valid_test_mask];y_direction_test=y_direction_test[valid_test_mask];y_magnitude_test=y_magnitude_test[valid_test_mask]
-        logger.info(f"  Train: {len(X_train)} samples | Test: {len(X_test)} samples | Features: {len(self.feature_names)}")
+        logger.info(f"  Train: {len(X_train)} | Val: {len(X_val)} | Test: {len(X_test)} | Features: {len(self.feature_names)}")
         logger.info("[4/5] Training direction classifier...")
-        self.direction_model,direction_metrics=self._train_direction_model(X_train,y_direction_train,X_test,y_direction_test);self.metrics["direction"]=direction_metrics
+        self.direction_model,direction_metrics=self._train_direction_model(X_train,y_direction_train,X_val,y_direction_val,X_test,y_direction_test);self.metrics["direction"]=direction_metrics
         logger.info("[5/5] Training magnitude regressor...")
-        self.magnitude_model,magnitude_metrics=self._train_magnitude_model(X_train,y_magnitude_train,X_test,y_magnitude_test);self.metrics["magnitude"]=magnitude_metrics
+        self.magnitude_model,magnitude_metrics=self._train_magnitude_model(X_train,y_magnitude_train,X_val,y_magnitude_val,X_test,y_magnitude_test);self.metrics["magnitude"]=magnitude_metrics
         self._save_models(save_dir);self._generate_diagnostics(X_test,y_direction_test,y_magnitude_test,save_dir)
         logger.info("✅ Training complete");self._print_summary()
         return self
@@ -61,21 +66,23 @@ class SimplifiedVIXForecaster:
         X=df[feature_cols].copy();cohort_present=[cf for cf in cohort_features if cf in feature_cols]
         logger.info(f"  Total features: {len(feature_cols)} | Cohort features: {cohort_present}")
         return X,feature_cols
-    def _train_direction_model(self,X_train,y_train,X_test,y_test):
+    def _train_direction_model(self,X_train,y_train,X_val,y_val,X_test,y_test):
         params=XGBOOST_CONFIG["shared_params"].copy();params.update({"objective":"binary:logistic","eval_metric":"logloss"})
-        model=XGBClassifier(**params);model.fit(X_train,y_train,eval_set=[(X_test,y_test)],verbose=False)
+        model=XGBClassifier(**params);model.fit(X_train,y_train,eval_set=[(X_val,y_val)],verbose=False)
         y_train_pred=model.predict(X_train);y_train_prob=model.predict_proba(X_train)[:,1]
+        y_val_pred=model.predict(X_val);y_val_prob=model.predict_proba(X_val)[:,1]
         y_test_pred=model.predict(X_test);y_test_prob=model.predict_proba(X_test)[:,1]
-        metrics={"train":{"accuracy":float(accuracy_score(y_train,y_train_pred)),"precision":float(precision_score(y_train,y_train_pred,zero_division=0)),"recall":float(recall_score(y_train,y_train_pred,zero_division=0)),"logloss":float(log_loss(y_train,y_train_prob))},"test":{"accuracy":float(accuracy_score(y_test,y_test_pred)),"precision":float(precision_score(y_test,y_test_pred,zero_division=0)),"recall":float(recall_score(y_test,y_test_pred,zero_division=0)),"logloss":float(log_loss(y_test,y_test_prob))}}
-        logger.info(f"  Train Accuracy: {metrics['train']['accuracy']:.1%} | Test Accuracy: {metrics['test']['accuracy']:.1%} | Precision: {metrics['test']['precision']:.1%} | Recall: {metrics['test']['recall']:.1%}")
+        metrics={"train":{"accuracy":float(accuracy_score(y_train,y_train_pred)),"precision":float(precision_score(y_train,y_train_pred,zero_division=0)),"recall":float(recall_score(y_train,y_train_pred,zero_division=0)),"logloss":float(log_loss(y_train,y_train_prob))},"val":{"accuracy":float(accuracy_score(y_val,y_val_pred)),"precision":float(precision_score(y_val,y_val_pred,zero_division=0)),"recall":float(recall_score(y_val,y_val_pred,zero_division=0)),"logloss":float(log_loss(y_val,y_val_prob))},"test":{"accuracy":float(accuracy_score(y_test,y_test_pred)),"precision":float(precision_score(y_test,y_test_pred,zero_division=0)),"recall":float(recall_score(y_test,y_test_pred,zero_division=0)),"logloss":float(log_loss(y_test,y_test_prob))}}
+        logger.info(f"  Train Acc: {metrics['train']['accuracy']:.1%} | Val Acc: {metrics['val']['accuracy']:.1%} | Test Acc: {metrics['test']['accuracy']:.1%}")
         return model,metrics
-    def _train_magnitude_model(self,X_train,y_train,X_test,y_test):
+    def _train_magnitude_model(self,X_train,y_train,X_val,y_val,X_test,y_test):
         params=XGBOOST_CONFIG["shared_params"].copy();params.update({"objective":"reg:squarederror","eval_metric":"rmse"})
-        model=XGBRegressor(**params);model.fit(X_train,y_train,eval_set=[(X_test,y_test)],verbose=False)
-        y_train_pred=model.predict(X_train);y_test_pred=model.predict(X_test)
+        model=XGBRegressor(**params);model.fit(X_train,y_train,eval_set=[(X_val,y_val)],verbose=False)
+        y_train_pred=model.predict(X_train);y_val_pred=model.predict(X_val);y_test_pred=model.predict(X_test)
         train_pct_actual=(np.exp(y_train)-1)*100;train_pct_pred=(np.exp(y_train_pred)-1)*100
+        val_pct_actual=(np.exp(y_val)-1)*100;val_pct_pred=(np.exp(y_val_pred)-1)*100
         test_pct_actual=(np.exp(y_test)-1)*100;test_pct_pred=(np.exp(y_test_pred)-1)*100
-        metrics={"train":{"mae_log":float(mean_absolute_error(y_train,y_train_pred)),"rmse_log":float(np.sqrt(mean_squared_error(y_train,y_train_pred))),"mae_pct":float(mean_absolute_error(train_pct_actual,train_pct_pred)),"bias_pct":float(np.mean(train_pct_pred-train_pct_actual))},"test":{"mae_log":float(mean_absolute_error(y_test,y_test_pred)),"rmse_log":float(np.sqrt(mean_squared_error(y_test,y_test_pred))),"mae_pct":float(mean_absolute_error(test_pct_actual,test_pct_pred)),"bias_pct":float(np.mean(test_pct_pred-test_pct_actual))}}
+        metrics={"train":{"mae_log":float(mean_absolute_error(y_train,y_train_pred)),"rmse_log":float(np.sqrt(mean_squared_error(y_train,y_train_pred))),"mae_pct":float(mean_absolute_error(train_pct_actual,train_pct_pred)),"bias_pct":float(np.mean(train_pct_pred-train_pct_actual))},"val":{"mae_log":float(mean_absolute_error(y_val,y_val_pred)),"rmse_log":float(np.sqrt(mean_squared_error(y_val,y_val_pred))),"mae_pct":float(mean_absolute_error(val_pct_actual,val_pct_pred)),"bias_pct":float(np.mean(val_pct_pred-val_pct_actual))},"test":{"mae_log":float(mean_absolute_error(y_test,y_test_pred)),"rmse_log":float(np.sqrt(mean_squared_error(y_test,y_test_pred))),"mae_pct":float(mean_absolute_error(test_pct_actual,test_pct_pred)),"bias_pct":float(np.mean(test_pct_pred-test_pct_actual))}}
         return model,metrics
     def predict(self,X,current_vix):
         X_features=X[self.feature_names];prob_up=float(self.direction_model.predict_proba(X_features)[0,1]);prob_down=1.0-prob_up
@@ -128,8 +135,8 @@ class SimplifiedVIXForecaster:
         except Exception as e:logger.warning(f"  Could not generate plots: {e}")
     def _print_summary(self):
         print("\n"+"="*60);print("TRAINING SUMMARY");print("="*60);print(f"Models: Direction Classifier + Magnitude Regressor");print(f"Features: {len(self.feature_names)} (including cohort flags)")
-        print(f"\nDirection Performance:");print(f"  Test Accuracy:  {self.metrics['direction']['test']['accuracy']:.1%}");print(f"  Test Precision: {self.metrics['direction']['test']['precision']:.1%}");print(f"  Test Recall:    {self.metrics['direction']['test']['recall']:.1%}")
-        print(f"\nMagnitude Performance:");print(f"  Test MAE:  {self.metrics['magnitude']['test']['mae_pct']:.2f}%");print(f"  Test Bias: {self.metrics['magnitude']['test']['bias_pct']:+.2f}%");print(f"  Test RMSE: {self.metrics['magnitude']['test']['rmse_log']:.4f} (log)")
+        print(f"\nDirection Performance:");print(f"  Train Acc: {self.metrics['direction']['train']['accuracy']:.1%}");print(f"  Val Acc:   {self.metrics['direction']['val']['accuracy']:.1%}");print(f"  Test Acc:  {self.metrics['direction']['test']['accuracy']:.1%}");print(f"  Test Prec: {self.metrics['direction']['test']['precision']:.1%}");print(f"  Test Rec:  {self.metrics['direction']['test']['recall']:.1%}")
+        print(f"\nMagnitude Performance:");print(f"  Train MAE: {self.metrics['magnitude']['train']['mae_pct']:.2f}%");print(f"  Val MAE:   {self.metrics['magnitude']['val']['mae_pct']:.2f}%");print(f"  Test MAE:  {self.metrics['magnitude']['test']['mae_pct']:.2f}%");print(f"  Test Bias: {self.metrics['magnitude']['test']['bias_pct']:+.2f}%")
         print("="*60+"\n")
 def train_simplified_forecaster(df,selected_features=None,save_dir="models"):
     forecaster=SimplifiedVIXForecaster();forecaster.train(df,selected_features=selected_features,save_dir=save_dir)

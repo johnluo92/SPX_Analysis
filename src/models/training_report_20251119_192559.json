@@ -1,0 +1,130 @@
+{
+  "timestamp": "2025-11-19T19:25:59.735975",
+  "system_version": "v4.0_with_feature_selection",
+  "target_type": "log_vix_change",
+  "feature_selection": {
+    "enabled": true,
+    "top_n": 65,
+    "selected_features": 68,
+    "selected_feature_list": [
+      "is_fomc_period",
+      "is_opex_week",
+      "is_earnings_heavy",
+      "vix_extreme_low_63d",
+      "vix_percentile_252d",
+      "liquidity_stress_composite",
+      "vix_regime",
+      "vix_rv_ratio_21d",
+      "vix_vs_ma63",
+      "crude_oil_ret_63d",
+      "vix_bb_position_20d",
+      "spx_vix_corr_63d",
+      "yield_curve_level",
+      "vix_velocity_5d",
+      "spx_vol_ratio_10_63",
+      "vix_regime_micro",
+      "vix_percentile_63d",
+      "vix_vs_ma10",
+      "risk_premium_zscore",
+      "vix_velocity_3d_pct",
+      "spx_realized_vol_63d",
+      "dxy_vs_ma200",
+      "spx_vix_corr_126d",
+      "vix_vs_rv_21d",
+      "risk_premium_extreme_low_252d",
+      "vix_zscore_63d",
+      "dxy_vs_ma50",
+      "yield_30y10y",
+      "vvix",
+      "vvix_percentile_21d",
+      "risk_premium_ma21",
+      "yield_10y3m_inversion_depth",
+      "vix_vs_rv_10d",
+      "risk_premium_percentile_252d",
+      "yield_curve_vol_avg",
+      "vix_vs_ma21",
+      "vix_zscore_252d",
+      "crude_oil_vol_21d",
+      "spx_ret_5d",
+      "yield_curve_level_zscore",
+      "dxy_ret_63d",
+      "vix_percentile_126d",
+      "vix_velocity_10d",
+      "bb_position_20d",
+      "month",
+      "spx_skew_21d",
+      "equity_vol_corr_breakdown",
+      "vix_velocity_21d",
+      "spx_realized_vol_21d",
+      "yield_curve_vol_dispersion",
+      "yield_10y3m_percentile_252d",
+      "days_in_regime",
+      "macd",
+      "yield_10y3m_vs_ma63",
+      "spx_dollar_corr_21d",
+      "day_of_month",
+      "dxy_ret_10d",
+      "dxy_ret_21d",
+      "risk_premium_percentile_63d",
+      "yield_10y3m",
+      "vix_rv_ratio_10d",
+      "risk_premium_percentile_21d",
+      "spx_ret_63d",
+      "vol_regime",
+      "vix_vs_ma252",
+      "vix_vol_21d",
+      "dxy_vol_21d",
+      "macd_signal"
+    ]
+  },
+  "training_summary": {
+    "models_trained": 2,
+    "model_types": [
+      "direction_classifier",
+      "magnitude_regressor"
+    ],
+    "features": 68
+  },
+  "metrics": {
+    "direction": {
+      "train": {
+        "accuracy": 0.7022696929238985,
+        "precision": 0.7610837438423645,
+        "recall": 0.5294117647058824,
+        "logloss": 0.608574533643672
+      },
+      "val": {
+        "accuracy": 0.6377358490566037,
+        "precision": 0.5925925925925926,
+        "recall": 0.6256983240223464,
+        "logloss": 0.6430337438563093
+      },
+      "test": {
+        "accuracy": 0.5771643663739021,
+        "precision": 0.5369458128078818,
+        "recall": 0.3096590909090909,
+        "logloss": 0.6719409097230998
+      }
+    },
+    "magnitude": {
+      "train": {
+        "mae_log": 0.09394957830083588,
+        "rmse_log": 0.12807088318844911,
+        "mae_pct": 9.585461547188618,
+        "bias_pct": -0.8596755276259221
+      },
+      "val": {
+        "mae_log": 0.11851500434773007,
+        "rmse_log": 0.1643985257881021,
+        "mae_pct": 12.277525149313854,
+        "bias_pct": -1.5505809955768757
+      },
+      "test": {
+        "mae_log": 0.11447691993369855,
+        "rmse_log": 0.16101263445047181,
+        "mae_pct": 11.937218386378898,
+        "bias_pct": -2.0857017845712345
+      }
+    }
+  }
+}
