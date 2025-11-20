@@ -42,17 +42,48 @@ def save_training_report(forecaster,selected_features,output_dir="models"):
     logger.info(f"Training report: {report_file}")
 def main():
     logger.info("SIMPLIFIED VIX FORECASTER - TRAINING PIPELINE WITH FEATURE SELECTION")
-    logger.info(f"Version: 4.0 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"Version: 4.1 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     try:
-        complete_df,vix=prepare_training_data()
-        selected_features=run_feature_selection(complete_df,vix)
+        complete_df, vix = prepare_training_data()
+        selected_features = run_feature_selection(complete_df, vix)
+
+        # CORRELATION REMOVAL
+        logger.info("\nCORRELATION ANALYSIS")
+        logger.info("="*80)
+
+        # Load importance scores
+        with open("data_cache/feature_importance.json") as f:
+            importance_scores = json.load(f)
+
+        # Analyze and remove correlations
+        analyzer = FeatureCorrelationAnalyzer(threshold=1)
+        kept_features, removed_features = analyzer.analyze_and_remove(
+            features_df=complete_df[selected_features],
+            importance_scores=importance_scores,
+            protected_features=["is_fomc_period", "is_opex_week", "is_earnings_heavy"]
+        )
+
+        analyzer.generate_report(output_dir="diagnostics")
+        logger.info(f"Removed {len(removed_features)} correlated features")
+        logger.info(f"Final feature count: {len(kept_features)}")
+        logger.info("="*80+"\n")
+
+        # MODEL TRAINING
         logger.info("MODEL TRAINING")
-        forecaster=train_simplified_forecaster(df=complete_df,selected_features=selected_features,save_dir="models")
-        save_training_report(forecaster,selected_features,output_dir="models")
+        forecaster = train_simplified_forecaster(
+            df=complete_df,
+            selected_features=kept_features,  # Changed from selected_features
+            save_dir="models"
+        )
+
+        save_training_report(forecaster, kept_features, output_dir="models")  # Changed from selected_features
+
         logger.info("TRAINING COMPLETE")
         logger.info("Models: models/direction_5d_model.pkl, models/magnitude_5d_model.pkl")
     except Exception as e:
         logger.error(f"\nTraining failed: {e}")
         import traceback
-        traceback.print_exc();sys.exit(1)
+        traceback.print_exc()
+        sys.exit(1)
+
 if __name__=="__main__":main()
