@@ -7,62 +7,62 @@
     }
   },
   "direction": {
-    "accuracy": 0.6321678321678321,
-    "precision": 0.5151515151515151,
-    "recall": 0.5151515151515151,
+    "accuracy": 0.6559440559440559,
+    "precision": 0.6666666666666666,
+    "recall": 0.6666666666666666,
     "calibration_by_bin": {
       "Low": {
-        "predicted_prob": 0.35819558455393863,
-        "actual_frequency": 0.23076923076923078,
-        "n_samples": 169
+        "predicted_prob": 0.34127236835363894,
+        "actual_frequency": 0.327683615819209,
+        "n_samples": 177
       },
       "Medium": {
-        "predicted_prob": 0.4848146657873123,
-        "actual_frequency": 0.5466970387243736,
-        "n_samples": 439
+        "predicted_prob": 0.5031064209294192,
+        "actual_frequency": 0.49732620320855614,
+        "n_samples": 374
       },
       "High": {
-        "predicted_prob": 0.6719476452497678,
-        "actual_frequency": 0.7850467289719626,
-        "n_samples": 107
+        "predicted_prob": 0.676610587573633,
+        "actual_frequency": 0.725609756097561,
+        "n_samples": 164
       }
     }
   },
   "magnitude": {
-    "mae": 13.367215009227111,
-    "rmse": 22.75433326240662,
-    "bias": -2.3785726252148667,
-    "median_error": 9.328816384487153
+    "mae": 12.878740035377874,
+    "rmse": 22.347340960622937,
+    "bias": -1.741345496503201,
+    "median_error": 8.552380316694684
   },
   "by_cohort": {
     "fomc_period": {
       "n": 415,
-      "direction_accuracy": 0.619277108433735,
-      "magnitude_mae": 13.192139876373991,
-      "magnitude_bias": -2.9277675900019555
+      "direction_accuracy": 0.672289156626506,
+      "magnitude_mae": 12.734597582905005,
+      "magnitude_bias": -2.072358977786039
     },
     "earnings_heavy": {
       "n": 27,
-      "direction_accuracy": 0.7037037037037037,
-      "magnitude_mae": 22.76604697966148,
-      "magnitude_bias": -11.996556987251381
+      "direction_accuracy": 0.6666666666666666,
+      "magnitude_mae": 22.19029769943099,
+      "magnitude_bias": -10.829110028425012
     },
     "opex_week": {
       "n": 114,
-      "direction_accuracy": 0.631578947368421,
-      "magnitude_mae": 9.931470684120137,
-      "magnitude_bias": 1.3962075262320577
+      "direction_accuracy": 0.6666666666666666,
+      "magnitude_mae": 9.743179552910142,
+      "magnitude_bias": 2.3037199900231835
     },
     "mid_cycle": {
       "n": 159,
-      "direction_accuracy": 0.6540880503144654,
-      "magnitude_mae": 14.691507902274353,
-      "magnitude_bias": -2.018342745361544
+      "direction_accuracy": 0.6037735849056604,
+      "magnitude_mae": 13.921890701089358,
+      "magnitude_bias": -2.2344098258726413
     }
   },
   "time_series": {
-    "rolling_mae_mean": 13.308282972683125,
-    "rolling_mae_std": 9.950756568049018,
+    "rolling_mae_mean": 12.823314839147795,
+    "rolling_mae_std": 9.8020725931105,
     "trend": "worsening"
   }
 }
