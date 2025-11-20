@@ -7,15 +7,16 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.model_selection import TimeSeriesSplit
+from config import FEATURE_SELECTION_CONFIG,TARGET_CONFIG
 from core.target_calculator import TargetCalculator
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 class SimplifiedFeatureSelector:
-    def __init__(self,horizon:int=5,top_n:int=40,cv_folds:int=3,protected_features:List[str]=None):
-        self.horizon=horizon;self.top_n=top_n;self.cv_folds=cv_folds;self.protected_features=protected_features or[];self.selected_features=None;self.importance_scores=None;self.metadata=None;self.target_calculator=TargetCalculator()
-        logger.info(f"Initialized Feature Selector:");logger.info(f"  Horizon: {horizon} days");logger.info(f"  Target: Log VIX change");logger.info(f"  Top N: {top_n}");logger.info(f"  CV Folds: {cv_folds}");logger.info(f"  Protected features: {self.protected_features}")
+    def __init__(self,horizon:int=None,top_n:int=None,cv_folds:int=None,protected_features:List[str]=None):
+        self.horizon=horizon if horizon is not None else TARGET_CONFIG["horizon_days"];self.top_n=top_n if top_n is not None else FEATURE_SELECTION_CONFIG["top_n"];self.cv_folds=cv_folds if cv_folds is not None else FEATURE_SELECTION_CONFIG["cv_folds"];self.protected_features=protected_features if protected_features is not None else FEATURE_SELECTION_CONFIG["protected_features"];self.selected_features=None;self.importance_scores=None;self.metadata=None;self.target_calculator=TargetCalculator()
+        logger.info(f"Initialized Feature Selector:");logger.info(f"  Horizon: {self.horizon} days");logger.info(f"  Target: Log VIX change");logger.info(f"  Select Top N: {self.top_n}");logger.info(f"  CV Folds: {self.cv_folds}")
     def select_features(self,features_df:pd.DataFrame,vix_series:pd.Series)->Tuple[List[str],Dict]:
-        logger.info("\n"+"="*80);logger.info("FEATURE SELECTION - LOG VIX CHANGE");logger.info("="*80);logger.info("\n[1/4] Calculating forward log VIX change...")
+        logger.info("\n[1/4] Calculating forward log VIX change...")
         target=self.target_calculator.calculate_log_vix_change(vix_series,dates=features_df.index)
         stats=self.target_calculator.get_target_stats(target);logger.info(f"  Valid targets: {stats['count']}");logger.info(f"  Target range: [{stats['min']:.4f}, {stats['max']:.4f}]");logger.info(f"  Target mean: {stats['mean']:.4f}");logger.info(f"  Target std: {stats['std']:.4f}")
         if len(target)==0:logger.error("❌ No valid targets calculated");return[],{}
@@ -24,7 +25,7 @@ class SimplifiedFeatureSelector:
         if len(common_dates)<100:logger.error(f"❌ Insufficient aligned data: {len(common_dates)} samples");return[],{}
         X=features_df.loc[common_dates].copy();y=target.loc[common_dates].copy();X=X.ffill().bfill();X=X.dropna(axis=1,how="all")
         valid_mask=~(X.isna().any(axis=1)|y.isna());X=X[valid_mask];y=y[valid_mask]
-        logger.info(f"  Aligned dataset:");logger.info(f"    Samples: {len(X)}");logger.info(f"    Features: {len(X.columns)}");logger.info(f"    Target range: [{y.min():.4f}, {y.max():.4f}]");logger.info(f"    Date range: {X.index[0].date()} to {X.index[-1].date()}")
+        logger.info(f"  Aligned dataset");logger.info(f"  Samples: {len(X)}");logger.info(f"  Features: {len(X.columns)}");logger.info(f"  Target range: [{y.min():.4f}, {y.max():.4f}]")
         logger.info(f"\n[3/4] Computing feature importance via {self.cv_folds}-fold CV...")
         importance_scores=self._compute_importance(X,y)
         logger.info("\n[4/4] Selecting features...")
@@ -45,15 +46,14 @@ class SimplifiedFeatureSelector:
     def _select_top_features(self,importance_scores:Dict,all_features:pd.Index)->List[str]:
         sorted_features=sorted(importance_scores.items(),key=lambda x:x[1],reverse=True);selected=[]
         for pf in self.protected_features:
-            if pf in importance_scores:selected.append(pf);logger.info(f"  Protected feature added: {pf} (importance: {importance_scores[pf]:.6f})")
+            if pf in importance_scores:selected.append(pf)
         for feature,score in sorted_features:
             if feature in selected:continue
             if len(selected)>=self.top_n+len(self.protected_features):break
             selected.append(feature)
-        logger.info(f"\n  Selected {len(selected)} features:");logger.info(f"    Top importance: {importance_scores[sorted_features[0][0]]:.6f}");logger.info(f"    Min importance: {min(importance_scores[f]for f in selected):.6f}");logger.info(f"    Protected features included: {sum(1 for pf in self.protected_features if pf in selected)}")
         return selected
     def _print_summary(self,selected_features:List[str],importance_scores:Dict):
-        logger.info("\n"+"="*80);logger.info("TOP 20 SELECTED FEATURES");logger.info("="*80)
+        logger.info("\n"+"="*80);logger.info("TOP 20 SELECTED FEATURES")
         for rank,feature in enumerate(selected_features[:20],1):
             score=importance_scores[feature];protected_flag=" [PROTECTED]"if feature in self.protected_features else""
             logger.info(f"{rank:2d}. {feature:50s} {score:.6f}{protected_flag}")

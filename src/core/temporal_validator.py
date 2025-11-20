@@ -8,7 +8,6 @@ from config import FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS
 class TemporalSafetyValidator:
     def __init__(self,publication_lags:Dict[str,int]=None):
         self.publication_lags=publication_lags or PUBLICATION_LAGS;self.audit_results={};self.last_update_timestamps={};self.quality_config=FEATURE_QUALITY_CONFIG
-        print("🔍 Temporal Validator initialized with feature quality scoring")
     def audit_feature_code(self,feature_engine_path:str="core/feature_engine.py")->Dict:
         print(f"\n{'='*80}\n🔍 TIER 1: STATIC CODE AUDIT\n{'='*80}")
         if not Path(feature_engine_path).exists():return{"error":f"File not found: {feature_engine_path}"}

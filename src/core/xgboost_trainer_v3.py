@@ -15,15 +15,12 @@ class SimplifiedVIXForecaster:
     def __init__(self):
         self.horizon=TARGET_CONFIG["horizon_days"];self.direction_model=None;self.magnitude_model=None;self.feature_names=None;self.metrics={};self.target_calculator=TargetCalculator()
     def train(self,df,selected_features=None,save_dir="models"):
-        logger.info("[1/5] Creating targets (Cohort features ready)")
         df=self.target_calculator.calculate_all_targets(df,vix_col="vix")
         validation=self.target_calculator.validate_targets(df)
         if not validation["valid"]:logger.error(f"❌ Target validation failed: {validation['warnings']}");raise ValueError("Invalid targets")
         for warning in validation["warnings"]:logger.warning(f"  ⚠️  {warning}")
         stats=validation["stats"];logger.info(f"  Valid targets: {stats['count']} | UP: {df['target_direction'].sum()} ({df['target_direction'].mean():.1%}) | DOWN: {len(df)-df['target_direction'].sum()}")
-        logger.info("[2/5] Preparing feature matrix...")
         X,feature_names=self._prepare_features(df,selected_features);self.feature_names=feature_names
-        logger.info("[3/5] Splitting train/val/test...")
         training_end=pd.Timestamp(TRAINING_END_DATE)
         if df.index.max()>training_end:
             train_mask=df.index<=training_end;X_train_val=X[train_mask];X_test=X[~train_mask]
@@ -42,9 +39,7 @@ class SimplifiedVIXForecaster:
         X_val=X_val[valid_val_mask];y_direction_val=y_direction_val[valid_val_mask];y_magnitude_val=y_magnitude_val[valid_val_mask]
         X_test=X_test[valid_test_mask];y_direction_test=y_direction_test[valid_test_mask];y_magnitude_test=y_magnitude_test[valid_test_mask]
         logger.info(f"  Train: {len(X_train)} | Val: {len(X_val)} | Test: {len(X_test)} | Features: {len(self.feature_names)}")
-        logger.info("[4/5] Training direction classifier...")
         self.direction_model,direction_metrics=self._train_direction_model(X_train,y_direction_train,X_val,y_direction_val,X_test,y_direction_test);self.metrics["direction"]=direction_metrics
-        logger.info("[5/5] Training magnitude regressor...")
         self.magnitude_model,magnitude_metrics=self._train_magnitude_model(X_train,y_magnitude_train,X_val,y_magnitude_val,X_test,y_magnitude_test);self.metrics["magnitude"]=magnitude_metrics
         self._save_models(save_dir);self._generate_diagnostics(X_test,y_direction_test,y_magnitude_test,save_dir)
         logger.info("✅ Training complete");self._print_summary()
@@ -53,7 +48,6 @@ class SimplifiedVIXForecaster:
         exclude_cols=["vix","spx","calendar_cohort","cohort_weight","feature_quality","future_vix","target_vix_pct_change","target_log_vix_change","target_direction"]
         cohort_features=["is_fomc_period","is_opex_week","is_earnings_heavy"]
         if selected_features is not None:
-            logger.info(f"  Using {len(selected_features)} selected features")
             feature_cols=[f for f in selected_features if f in df.columns and f not in exclude_cols]
             missing_cohorts=[cf for cf in cohort_features if cf not in feature_cols and cf in df.columns]
             if missing_cohorts:logger.warning(f"  Cohort features missing from selection: {missing_cohorts}")
@@ -134,7 +128,7 @@ class SimplifiedVIXForecaster:
             logger.info(f"  Saved diagnostics: {plot_file}")
         except Exception as e:logger.warning(f"  Could not generate plots: {e}")
     def _print_summary(self):
-        print("\n"+"="*60);print("TRAINING SUMMARY");print("="*60);print(f"Models: Direction Classifier + Magnitude Regressor");print(f"Features: {len(self.feature_names)} (including cohort flags)")
+        print("\n"+"="*60);print("TRAINING SUMMARY");print(f"Models: Direction Classifier + Magnitude Regressor");print(f"Features: {len(self.feature_names)} (including cohort flags)")
         print(f"\nDirection Performance:");print(f"  Train Acc: {self.metrics['direction']['train']['accuracy']:.1%}");print(f"  Val Acc:   {self.metrics['direction']['val']['accuracy']:.1%}");print(f"  Test Acc:  {self.metrics['direction']['test']['accuracy']:.1%}");print(f"  Test Prec: {self.metrics['direction']['test']['precision']:.1%}");print(f"  Test Rec:  {self.metrics['direction']['test']['recall']:.1%}")
         print(f"\nMagnitude Performance:");print(f"  Train MAE: {self.metrics['magnitude']['train']['mae_pct']:.2f}%");print(f"  Val MAE:   {self.metrics['magnitude']['val']['mae_pct']:.2f}%");print(f"  Test MAE:  {self.metrics['magnitude']['test']['mae_pct']:.2f}%");print(f"  Test Bias: {self.metrics['magnitude']['test']['bias_pct']:+.2f}%")
         print("="*60+"\n")

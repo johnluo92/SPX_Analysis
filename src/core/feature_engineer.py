@@ -239,7 +239,7 @@ class FeatureEngineer:
         if end_date is None:ed=datetime.now();mode="LIVE"
         else:ed=pd.Timestamp(end_date);ir=ed>(datetime.now()-timedelta(days=7));mode="RECENT" if ir else "HISTORICAL"
         sd=ed-timedelta(days=years*365+450);self.training_start_date=sd;self.training_end_date=ed;ss=sd.strftime("%Y-%m-%d");es=ed.strftime("%Y-%m-%d")
-        print(f"Mode: {mode}");print(f"Date range: {ss} → {es}");print(f"  Warmup period: {ss} → {(sd+timedelta(days=450)).strftime('%Y-%m-%d')}");print(f"  Usable data: {(sd+timedelta(days=450)).strftime('%Y-%m-%d')} → {es}")
+        print(f"Mode: {mode}");print(f"Date Ranges: Warmup Start -> Warmup End (usable period) -> Training End Date: {ss} → {(sd+timedelta(days=450)).strftime('%Y-%m-%d')} → {es}")
         spx_df=self.fetcher.fetch_yahoo("^GSPC",ss,es);vix=self.fetcher.fetch_yahoo("^VIX",ss,es);vvix=self.fetcher.fetch_yahoo("^VVIX",ss,es)
         if spx_df is None or vix is None:raise ValueError("❌ Core data fetch failed")
         spx=spx_df["Close"].squeeze();vix=vix["Close"].squeeze();vix=vix.reindex(spx.index,method="ffill",limit=5);spx_ohlc=spx_df.reindex(spx.index,method="ffill",limit=5)
