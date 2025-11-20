@@ -1,11 +1,11 @@
 {
-  "timestamp": "2025-11-19T15:55:23.281982",
+  "timestamp": "2025-11-19T18:01:02.035530",
   "system_version": "v4.0_with_feature_selection",
   "target_type": "log_vix_change",
   "feature_selection": {
     "enabled": true,
-    "top_n": 40,
-    "selected_features": 43,
+    "top_n": 65,
+    "selected_features": 68,
     "selected_feature_list": [
       "is_fomc_period",
       "is_opex_week",
@@ -49,7 +49,32 @@
       "risk_premium_zscore",
       "vix_velocity_21d",
       "yield_curve_level_zscore",
-      "spx_vs_ma200"
+      "spx_vs_ma200",
+      "bb_width_20d",
+      "reversion_strength_63d",
+      "vix_vs_rv_10d",
+      "spx_dollar_corr_21d",
+      "vix_velocity_10d",
+      "yield_10y3m_vs_ma63",
+      "equity_vol_corr_breakdown",
+      "risk_premium_percentile_63d",
+      "yield_10y3m_velocity_63d",
+      "yield_10y3m",
+      "risk_premium_velocity",
+      "risk_premium_percentile_velocity",
+      "adx_14",
+      "dxy_vol_21d",
+      "day_of_month",
+      "vix_zscore_252d",
+      "dxy_ret_10d",
+      "dxy_vs_ma50",
+      "risk_premium_percentile_21d",
+      "vix_vol_10d",
+      "dxy_vs_ma200",
+      "vix_vs_ma21",
+      "30y_vol_63d",
+      "yield_curve_vol_avg",
+      "dollar_crude_corr_21d"
     ]
   },
   "training_summary": {
@@ -58,35 +83,35 @@
       "direction_classifier",
       "magnitude_regressor"
     ],
-    "features": 43
+    "features": 68
   },
   "metrics": {
     "direction": {
       "train": {
-        "accuracy": 0.82775567516967,
-        "precision": 0.8532883642495784,
-        "recall": 0.7616658304064224,
-        "logloss": 0.4733616306899702
+        "accuracy": 0.8481160776971682,
+        "precision": 0.8672131147540983,
+        "recall": 0.7962870045158054,
+        "logloss": 0.44425898392419755
       },
       "test": {
-        "accuracy": 0.6109022556390977,
-        "precision": 0.5865384615384616,
-        "recall": 0.391025641025641,
-        "logloss": 0.688987368239826
+        "accuracy": 0.6052631578947368,
+        "precision": 0.572289156626506,
+        "recall": 0.405982905982906,
+        "logloss": 0.6981043513207122
       }
     },
     "magnitude": {
       "train": {
-        "mae_log": 0.09433093978837144,
-        "rmse_log": 0.12974771057916612,
-        "mae_pct": 9.659965242461151,
-        "bias_pct": -0.9663169780527386
+        "mae_log": 0.0943336167397222,
+        "rmse_log": 0.1297732411402718,
+        "mae_pct": 9.660439931841617,
+        "bias_pct": -0.9667173601810428
       },
       "test": {
-        "mae_log": 0.11566972785044559,
-        "rmse_log": 0.1603390521543343,
-        "mae_pct": 12.03120002711923,
-        "bias_pct": -2.2119605431893627
+        "mae_log": 0.11569897289241048,
+        "rmse_log": 0.16036062056801062,
+        "mae_pct": 12.034366710973098,
+        "bias_pct": -2.2337819618404273
       }
     }
   }

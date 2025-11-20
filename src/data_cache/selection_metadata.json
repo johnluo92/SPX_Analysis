@@ -1,11 +1,11 @@
 {
-  "timestamp": "2025-11-19T15:55:22.128273",
+  "timestamp": "2025-11-19T18:01:00.658218",
   "target": "log_vix_change",
   "horizon": 5,
   "samples": 5337,
   "total_features": 162,
-  "selected_features": 43,
-  "top_n": 40,
+  "selected_features": 68,
+  "top_n": 65,
   "cv_folds": 3,
   "protected_features": [
     "is_fomc_period",
