@@ -47,13 +47,16 @@ class SimplifiedWalkForwardValidator:
     def _compute_overall_metrics(self,df):
         return {"n_forecasts":int(len(df)),"date_range":{"start":df["forecast_date"].min().isoformat(),"end":df["forecast_date"].max().isoformat()}}
     def _compute_direction_metrics(self,df):
-        if "direction_correct"not in df.columns or df["direction_correct"].isna().all():
-            df["predicted_direction"]=(df["prob_up"]>0.5).astype(int)
-            df["direction_correct"]=(df["predicted_direction"]==df["actual_direction"]).astype(int)
+        df["predicted_direction"]=(df["prob_up"]>0.5).astype(int)
+        df["direction_correct"]=(df["predicted_direction"]==df["actual_direction"]).astype(int)
         accuracy=df["direction_correct"].mean()
-        df_up=df[df["actual_direction"]==1];df_down=df[df["actual_direction"]==0]
-        precision=(df_up["direction_correct"].sum()/len(df_up))if len(df_up)>0 else 0
-        recall=(df_up["direction_correct"].sum()/len(df_up))if len(df_up)>0 else 0
+        tp=((df["predicted_direction"]==1)&(df["actual_direction"]==1)).sum()
+        fp=((df["predicted_direction"]==1)&(df["actual_direction"]==0)).sum()
+        fn=((df["predicted_direction"]==0)&(df["actual_direction"]==1)).sum()
+        tn=((df["predicted_direction"]==0)&(df["actual_direction"]==0)).sum()
+        precision=tp/(tp+fp)if(tp+fp)>0 else 0.0
+        recall=tp/(tp+fn)if(tp+fn)>0 else 0.0
+        f1=2*precision*recall/(precision+recall)if(precision+recall)>0 else 0.0
         prob_bins=[0,0.4,0.6,1.0]
         df["prob_bin"]=pd.cut(df["prob_up"],bins=prob_bins,labels=["Low","Medium","High"])
         calibration={}
@@ -63,7 +66,7 @@ class SimplifiedWalkForwardValidator:
                 actual_freq=bin_df["actual_direction"].mean()
                 mean_pred_prob=bin_df["prob_up"].mean()
                 calibration[bin_label]={"predicted_prob":float(mean_pred_prob),"actual_frequency":float(actual_freq),"n_samples":int(len(bin_df))}
-        return {"accuracy":float(accuracy),"precision":float(precision),"recall":float(recall),"calibration_by_bin":calibration}
+        return {"accuracy":float(accuracy),"precision":float(precision),"recall":float(recall),"f1_score":float(f1),"confusion_matrix":{"tp":int(tp),"fp":int(fp),"fn":int(fn),"tn":int(tn)},"calibration_by_bin":calibration}
     def _compute_magnitude_metrics(self,df):
         if "magnitude_error"not in df.columns or df["magnitude_error"].isna().all():
             df["magnitude_error"]=np.abs(df["actual_vix_change"]-df["magnitude_forecast"])
@@ -75,11 +78,10 @@ class SimplifiedWalkForwardValidator:
     def _compute_by_cohort(self,df):
         metrics_by_cohort={}
         for cohort in df["cohort"].unique():
-            cohort_df=df[df["cohort"]==cohort]
+            cohort_df=df[df["cohort"]==cohort].copy()
             if len(cohort_df)<5:continue
-            if "direction_correct"not in cohort_df.columns or cohort_df["direction_correct"].isna().all():
-                cohort_df["predicted_direction"]=(cohort_df["prob_up"]>0.5).astype(int)
-                cohort_df["direction_correct"]=(cohort_df["predicted_direction"]==cohort_df["actual_direction"]).astype(int)
+            cohort_df["predicted_direction"]=(cohort_df["prob_up"]>0.5).astype(int)
+            cohort_df["direction_correct"]=(cohort_df["predicted_direction"]==cohort_df["actual_direction"]).astype(int)
             if "magnitude_error"not in cohort_df.columns or cohort_df["magnitude_error"].isna().all():
                 cohort_df["magnitude_error"]=np.abs(cohort_df["actual_vix_change"]-cohort_df["magnitude_forecast"])
             metrics_by_cohort[cohort]={"n":int(len(cohort_df)),"direction_accuracy":float(cohort_df["direction_correct"].mean()),"magnitude_mae":float(cohort_df["magnitude_error"].mean()),"magnitude_bias":float((cohort_df["magnitude_forecast"]-cohort_df["actual_vix_change"]).mean())}
@@ -92,11 +94,10 @@ class SimplifiedWalkForwardValidator:
         rolling_mae=df["magnitude_error"].rolling(window,min_periods=5).mean()
         return {"rolling_mae_mean":float(rolling_mae.mean()),"rolling_mae_std":float(rolling_mae.std()),"trend":"improving"if rolling_mae.iloc[-1]<rolling_mae.iloc[0]else"worsening"}
     def generate_diagnostic_report(self,output_dir="diagnostics"):
-        output_dir=Path(output_dir);output_dir.mkdir(parents=True,exist_ok=True)
+        output_dir=Path(output_dir)
+        output_dir.mkdir(parents=True,exist_ok=True)
         df=self.load_predictions_with_actuals()
-        if len(df)<10:
-            logger.error("❌ Insufficient data for validation (need at least 10 predictions)")
-            return
+        if len(df)<10:logger.error("❌ Insufficient data for validation (need at least 10 predictions)");return
         metrics=self.compute_metrics(df)
         with open(output_dir/"walk_forward_metrics.json","w")as f:json.dump(metrics,f,indent=2)
         logger.info(f"✅ Saved metrics to: {output_dir / 'walk_forward_metrics.json'}")
@@ -109,7 +110,7 @@ class SimplifiedWalkForwardValidator:
         return metrics
     def _print_summary(self,metrics):
         print("\n"+"="*80)
-        print("WALK-FORWARD VALIDATION SUMMARY (V4.0)")
+        print("WALK-FORWARD VALIDATION SUMMARY (V4.1)")
         m=metrics["overall"]
         print(f"\n📊 Overall Performance ({m['n_forecasts']} forecasts)")
         d=metrics["direction"]
@@ -117,6 +118,11 @@ class SimplifiedWalkForwardValidator:
         print(f"   Accuracy:  {d['accuracy']:.1%}")
         print(f"   Precision: {d['precision']:.1%}")
         print(f"   Recall:    {d['recall']:.1%}")
+        print(f"   F1 Score:  {d['f1_score']:.1%}")
+        cm=d["confusion_matrix"]
+        print(f"\n📋 Confusion Matrix:")
+        print(f"   TP={cm['tp']} | FP={cm['fp']}")
+        print(f"   FN={cm['fn']} | TN={cm['tn']}")
         print(f"\n📏 Direction Calibration by Confidence:")
         for bin_label,cal in d["calibration_by_bin"].items():
             print(f"   {bin_label:8s}: Pred={cal['predicted_prob']:.1%}, Actual={cal['actual_frequency']:.1%}, N={cal['n_samples']}")
@@ -140,16 +146,16 @@ class SimplifiedWalkForwardValidator:
         ax.set_xlabel("Predicted Probability (UP)")
         ax.set_ylabel("Actual Frequency (UP)")
         ax.set_title("Direction Probability Calibration")
-        ax.legend();ax.grid(True,alpha=0.3)
+        ax.legend()
+        ax.grid(True,alpha=0.3)
         ax=axes[1]
-        bins=[0,0.4,0.6,1.0];labels=["<40%","40-60%",">60%"]
+        bins=[0,0.4,0.6,1.0]
+        labels=["<40%","40-60%",">60%"]
         df["prob_bin"]=pd.cut(df["prob_up"],bins=bins,labels=labels)
         accs=[]
         for label in labels:
             mask=df["prob_bin"]==label
-            if mask.sum()>0:
-                acc=df.loc[mask,"actual_direction"].mean()
-                accs.append(acc)
+            if mask.sum()>0:acc=df.loc[mask,"actual_direction"].mean();accs.append(acc)
             else:accs.append(0)
         ax.bar(range(len(labels)),accs,alpha=0.7)
         ax.set_xticks(range(len(labels)))
@@ -178,20 +184,21 @@ class SimplifiedWalkForwardValidator:
         ax.set_xlabel("Prediction Error (%)")
         ax.set_ylabel("Frequency")
         ax.set_title("Magnitude Error Distribution")
-        ax.legend();ax.grid(True,alpha=0.3)
+        ax.legend()
+        ax.grid(True,alpha=0.3)
         plt.tight_layout()
         plt.savefig(output_dir/"magnitude_accuracy.png",dpi=300,bbox_inches="tight")
         plt.close()
     def _plot_performance_by_cohort(self,df,output_dir):
         cohorts=df["cohort"].unique()
         fig,axes=plt.subplots(1,2,figsize=(14,6))
-        ax=axes[0];accs=[];labels=[]
+        ax=axes[0]
+        accs=[];labels=[]
         for cohort in cohorts:
-            cohort_df=df[df["cohort"]==cohort]
+            cohort_df=df[df["cohort"]==cohort].copy()
             if len(cohort_df)>=5:
-                if "direction_correct"not in cohort_df.columns or cohort_df["direction_correct"].isna().all():
-                    cohort_df["predicted_direction"]=(cohort_df["prob_up"]>0.5).astype(int)
-                    cohort_df["direction_correct"]=(cohort_df["predicted_direction"]==cohort_df["actual_direction"]).astype(int)
+                cohort_df["predicted_direction"]=(cohort_df["prob_up"]>0.5).astype(int)
+                cohort_df["direction_correct"]=(cohort_df["predicted_direction"]==cohort_df["actual_direction"]).astype(int)
                 acc=cohort_df["direction_correct"].mean()
                 accs.append(acc);labels.append(cohort)
         ax.bar(range(len(labels)),accs,alpha=0.7)
@@ -200,9 +207,10 @@ class SimplifiedWalkForwardValidator:
         ax.set_ylabel("Direction Accuracy")
         ax.set_title("Direction Accuracy by Cohort")
         ax.grid(True,alpha=0.3,axis="y")
-        ax=axes[1];maes=[];labels=[]
+        ax=axes[1]
+        maes=[];labels=[]
         for cohort in cohorts:
-            cohort_df=df[df["cohort"]==cohort]
+            cohort_df=df[df["cohort"]==cohort].copy()
             if len(cohort_df)>=5:
                 if "magnitude_error"not in cohort_df.columns or cohort_df["magnitude_error"].isna().all():
                     cohort_df["magnitude_error"]=np.abs(cohort_df["actual_vix_change"]-cohort_df["magnitude_forecast"])
@@ -232,9 +240,8 @@ class SimplifiedWalkForwardValidator:
         ax.set_title("Magnitude Forecast Quality Over Time")
         ax.grid(True,alpha=0.3)
         ax=axes[1]
-        if "direction_correct"not in df.columns or df["direction_correct"].isna().all():
-            df["predicted_direction"]=(df["prob_up"]>0.5).astype(int)
-            df["direction_correct"]=(df["predicted_direction"]==df["actual_direction"]).astype(int)
+        df["predicted_direction"]=(df["prob_up"]>0.5).astype(int)
+        df["direction_correct"]=(df["predicted_direction"]==df["actual_direction"]).astype(int)
         if len(df)>=20:
             rolling_acc=df["direction_correct"].rolling(20,min_periods=5).mean()
             ax.plot(df["forecast_date"],rolling_acc,linewidth=2,color="darkgreen")
