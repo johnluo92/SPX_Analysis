@@ -32,12 +32,12 @@ def run_feature_selection(features_df,vix):
 def save_training_report(forecaster,selected_features,output_dir="models"):
     output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True)
     report_file=output_path/f"training_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    report={"timestamp":datetime.now().isoformat(),"system_version":"v4.0_with_feature_selection","target_type":TARGET_CONFIG.get("target_type"),"feature_selection":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["top_n"],"selected_features":len(selected_features),"selected_feature_list":selected_features},"training_summary":{"models_trained":2,"model_types":["direction_classifier","magnitude_regressor"],"features":len(forecaster.feature_names)},"metrics":forecaster.metrics}
+    report={"timestamp":datetime.now().isoformat(),"system_version":"v5.0_magnitude_only","target_type":TARGET_CONFIG.get("target_type"),"feature_selection":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["top_n"],"selected_features":len(selected_features),"selected_feature_list":selected_features},"training_summary":{"models_trained":1,"model_types":["magnitude_regressor"],"features":len(forecaster.feature_names)},"metrics":forecaster.metrics}
     with open(report_file,"w")as f:json.dump(report,f,indent=2,default=str)
     logger.info(f"Training report: {report_file}")
 def main():
-    logger.info("SIMPLIFIED VIX FORECASTER - TRAINING PIPELINE WITH FEATURE SELECTION")
-    logger.info(f"Version: 4.1 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("SIMPLIFIED VIX FORECASTER - MAGNITUDE ONLY TRAINING PIPELINE")
+    logger.info(f"Version: 5.0 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     try:
         complete_df,vix=prepare_training_data()
         selected_features=run_feature_selection(complete_df,vix)
@@ -52,7 +52,7 @@ def main():
         forecaster=train_simplified_forecaster(df=complete_df,selected_features=kept_features,save_dir="models")
         save_training_report(forecaster,kept_features,output_dir="models")
         logger.info("TRAINING COMPLETE")
-        logger.info("Models: models/direction_5d_model.pkl, models/magnitude_5d_model.pkl")
+        logger.info("Models: models/magnitude_5d_model.pkl")
     except Exception as e:
         logger.error(f"\nTraining failed: {e}")
         import traceback

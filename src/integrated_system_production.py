@@ -1,7 +1,4 @@
-import argparse
-import logging
-import sqlite3
-import sys
+import argparse,logging,sqlite3,sys
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -19,11 +16,10 @@ class IntegratedForecastingSystem:
         self.models_dir=Path(models_dir);self.db_path=db_path;self.data_fetcher=UnifiedDataFetcher();self.feature_engine=UnifiedFeatureEngine(data_fetcher=self.data_fetcher);self.forecaster=SimplifiedVIXForecaster();self.validator=TemporalValidator();self.prediction_db=PredictionDatabase(db_path=db_path);self._load_models();self.last_forecast=None;self.forecast_history=[];self._feature_cache=None;self._feature_cache_date=None
         logger.info("✅ System initialized")
     def _load_models(self):
-        logger.info("📂 Loading trained models...")
-        direction_file=self.models_dir/"direction_5d_model.pkl";magnitude_file=self.models_dir/"magnitude_5d_model.pkl"
-        if not direction_file.exists()or not magnitude_file.exists():logger.warning("⚠️ No trained models found. Run training first.");return
+        logger.info("📂 Loading trained model...");magnitude_file=self.models_dir/"magnitude_5d_model.pkl"
+        if not magnitude_file.exists():logger.warning("⚠️ No trained model found. Run training first.");return
         self.forecaster.load(self.models_dir)
-        logger.info(f"📊 Loaded 2 models with {len(self.forecaster.feature_names)} features")
+        logger.info(f"📊 Loaded magnitude model with {len(self.forecaster.feature_names)} features")
     def _prebuild_features_for_workflow(self,start_date,end_date):
         logger.info(f"🔧 Pre-building features for workflow ({start_date} to {end_date})...")
         feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=end_date);df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols]
@@ -62,16 +58,21 @@ class IntegratedForecastingSystem:
     def _log_forecast_summary(self,forecast):
         logger.info(f"  5-Day VIX Forecast")
         logger.info(f"  Current VIX: {forecast['current_vix']:.2f}\n")
-        logger.info(f"  Direction:")
-        logger.info(f"  Probability UP:   {forecast['prob_up']:.1%}")
-        logger.info(f"  Probability DOWN: {forecast['prob_down']:.1%}\n")
+        logger.info(f"  Direction: {forecast['direction']} (derived from magnitude)")
+        logger.info(f"  Confidence: {forecast['confidence']:.2f}%\n")
         logger.info(f"  Magnitude:")
         logger.info(f"  Expected change: {forecast['magnitude_pct']:+.2f}%")
         logger.info(f"  Expected VIX: {forecast['expected_vix']:.2f}\n")
+        logger.info(f"  Regime Analysis:")
+        logger.info(f"  Current regime: {forecast['current_regime']}")
+        logger.info(f"  Expected regime: {forecast['expected_regime']}")
+        logger.info(f"  Regime change: {'YES ⚠️'if forecast['regime_change']else'NO'}")
+        logger.info(f"  Actionable: {'YES ✓'if forecast['actionable']else'NO'}\n")
         if "metadata"in forecast:meta=forecast["metadata"];logger.info(f"  Context:");logger.info(f"  Current cohort: {meta.get('calendar_cohort','N/A')}");logger.info(f"  Feature quality: {meta.get('feature_quality',0):.2f}");logger.info(f"  Observation date: {meta.get('observation_date','N/A')}")
     def _store_prediction(self,forecast,observation,observation_date):
         forecast_date=observation_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"]);prediction_id=f"pred_{forecast_date.strftime('%Y%m%d')}_h{TARGET_CONFIG['horizon_days']}"
-        prediction={"prediction_id":prediction_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":observation_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(observation["vix"]),"calendar_cohort":observation["calendar_cohort"],"cohort_weight":float(observation.get("cohort_weight",1.0)),"prob_up":forecast["prob_up"],"prob_down":forecast["prob_down"],"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast["metadata"]["feature_quality"]),"num_features_used":len(self.forecaster.feature_names),"features_used":(",".join(self.forecaster.feature_names[:10])),"model_version":"v4.0_simplified"}
+        prob_up=1.0 if forecast["direction"]=="UP"else 0.0;prob_down=1.0-prob_up
+        prediction={"prediction_id":prediction_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":observation_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(observation["vix"]),"calendar_cohort":observation["calendar_cohort"],"cohort_weight":float(observation.get("cohort_weight",1.0)),"prob_up":prob_up,"prob_down":prob_down,"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast["metadata"]["feature_quality"]),"num_features_used":len(self.forecaster.feature_names),"features_used":(",".join(self.forecaster.feature_names[:10])),"model_version":"v5.0_magnitude_only"}
         stored_id=self.prediction_db.store_prediction(prediction)
         return stored_id if stored_id else prediction_id
     def backfill_actuals(self):
@@ -115,7 +116,7 @@ class IntegratedForecastingSystem:
         logger.info(f"   Shape: {df_clean.shape}")
         return df_clean
 def main():
-    parser=argparse.ArgumentParser(description="Integrated VIX Forecasting System V4.0")
+    parser=argparse.ArgumentParser(description="Integrated VIX Forecasting System V5.0")
     parser.add_argument("--mode",choices=["forecast","complete","batch","backfill"],default="forecast",help="Operation mode")
     parser.add_argument("--forecast-date",type=str,help="Forecast date (YYYY-MM-DD), default: today")
     parser.add_argument("--start-date",type=str,help="Start date for batch mode (YYYY-MM-DD)")

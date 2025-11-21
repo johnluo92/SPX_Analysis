@@ -1,7 +1,7 @@
 {
   "threshold": 1,
-  "total_features_before": 203,
+  "total_features_before": 78,
   "features_removed": 0,
-  "features_kept": 203,
+  "features_kept": 78,
   "removed_features": []
 }
