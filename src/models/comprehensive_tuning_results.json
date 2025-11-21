@@ -1,0 +1,166 @@
+{
+  "timestamp": "2025-11-21T02:07:52.190738",
+  "n_trials": 500,
+  "best_trial_number": 465,
+  "combined_score": 0.5341097726564467,
+  "feature_selection": {
+    "top_n": 75,
+    "actual_features_used": 78,
+    "config_update": {
+      "FEATURE_SELECTION_CONFIG": {
+        "top_n": 75
+      }
+    }
+  },
+  "xgboost_params": {
+    "max_depth": 10,
+    "learning_rate": 0.011304961654055742,
+    "n_estimators": 300,
+    "subsample": 0.9191901979591212,
+    "colsample_bytree": 0.8067404039883826,
+    "colsample_bylevel": 0.7895572867537876,
+    "min_child_weight": 1,
+    "reg_alpha": 0.6257474192575363,
+    "reg_lambda": 3.1428357619199887,
+    "gamma": 0.4936848412160053
+  },
+  "performance": {
+    "direction_f1": 0.5842256286900894,
+    "magnitude_mae_pct": 11.7895311073228
+  },
+  "config_update": {
+    "XGBOOST_CONFIG": {
+      "shared_params": {
+        "max_depth": 10,
+        "learning_rate": 0.011304961654055742,
+        "n_estimators": 300,
+        "subsample": 0.9191901979591212,
+        "colsample_bytree": 0.8067404039883826,
+        "colsample_bylevel": 0.7895572867537876,
+        "min_child_weight": 1,
+        "reg_alpha": 0.6257474192575363,
+        "reg_lambda": 3.1428357619199887,
+        "gamma": 0.4936848412160053
+      }
+    }
+  },
+  "all_trials_summary": {
+    "total_trials": 500,
+    "top_10_configurations": [
+      {
+        "trial_number": 465,
+        "top_n": 75,
+        "max_depth": 10,
+        "learning_rate": 0.011304961654055742,
+        "n_estimators": 300,
+        "combined_score": 0.5341097726564467,
+        "direction_f1": 0.5842256286900894,
+        "magnitude_mae": 11.7895311073228
+      },
+      {
+        "trial_number": 430,
+        "top_n": 75,
+        "max_depth": 10,
+        "learning_rate": 0.011123188890973851,
+        "n_estimators": 400,
+        "combined_score": 0.5328354756902156,
+        "direction_f1": 0.5818867986201389,
+        "magnitude_mae": 11.774229958808535
+      },
+      {
+        "trial_number": 391,
+        "top_n": 75,
+        "max_depth": 10,
+        "learning_rate": 0.010012502592748588,
+        "n_estimators": 300,
+        "combined_score": 0.5321466888121043,
+        "direction_f1": 0.5810070217715322,
+        "magnitude_mae": 11.79332050345716
+      },
+      {
+        "trial_number": 288,
+        "top_n": 75,
+        "max_depth": 10,
+        "learning_rate": 0.012420200773844654,
+        "n_estimators": 200,
+        "combined_score": 0.5314718969248786,
+        "direction_f1": 0.5793059916086816,
+        "magnitude_mae": 11.752335289263144
+      },
+      {
+        "trial_number": 316,
+        "top_n": 75,
+        "max_depth": 10,
+        "learning_rate": 0.012010009408951326,
+        "n_estimators": 600,
+        "combined_score": 0.53141768745062,
+        "direction_f1": 0.579412784622861,
+        "magnitude_mae": 11.766336382461281
+      },
+      {
+        "trial_number": 357,
+        "top_n": 75,
+        "max_depth": 10,
+        "learning_rate": 0.01055338015404481,
+        "n_estimators": 600,
+        "combined_score": 0.5311641317299411,
+        "direction_f1": 0.5794792000805402,
+        "magnitude_mae": 11.801143826119437
+      },
+      {
+        "trial_number": 173,
+        "top_n": 75,
+        "max_depth": 9,
+        "learning_rate": 0.015744134261970348,
+        "n_estimators": 700,
+        "combined_score": 0.5310647386334482,
+        "direction_f1": 0.5781148210663059,
+        "magnitude_mae": 11.716016332624456
+      },
+      {
+        "trial_number": 469,
+        "top_n": 75,
+        "max_depth": 10,
+        "learning_rate": 0.016775772393940645,
+        "n_estimators": 300,
+        "combined_score": 0.5309984639983791,
+        "direction_f1": 0.5788324494707474,
+        "magnitude_mae": 11.774751761137514
+      },
+      {
+        "trial_number": 252,
+        "top_n": 75,
+        "max_depth": 10,
+        "learning_rate": 0.01082475564087773,
+        "n_estimators": 400,
+        "combined_score": 0.530864591300594,
+        "direction_f1": 0.5803354526393706,
+        "magnitude_mae": 11.89821145371613
+      },
+      {
+        "trial_number": 466,
+        "top_n": 75,
+        "max_depth": 10,
+        "learning_rate": 0.04210073831193169,
+        "n_estimators": 300,
+        "combined_score": 0.53084125504416,
+        "direction_f1": 0.5797768453705259,
+        "magnitude_mae": 11.860892299399254
+      }
+    ],
+    "insights": {
+      "best_top_n_range": {
+        "min": 75,
+        "max": 75,
+        "mean": 75.0
+      },
+      "best_max_depth_range": {
+        "min": 9,
+        "max": 10,
+        "mean": 9.9
+      },
+      "correlation_top_n_vs_score": -0.705919909069615,
+      "note": "Positive correlation means more features generally better, negative means fewer features better"
+    }
+  }
+}

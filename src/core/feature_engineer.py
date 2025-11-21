@@ -246,7 +246,9 @@ class FeatureEngineer:
         if vvix is not None:vvix_series=vvix["Close"].squeeze().reindex(spx.index,method="ffill",limit=5)
         else:vvix_series=None
         cbd=self.fetcher.fetch_all_cboe()
-        if cbd:cb=pd.DataFrame(index=spx.index);[cb.update({s:ser.reindex(spx.index,method="ffill",limit=5)}) for s,ser in cbd.items()]
+        if cbd:
+            cb=pd.DataFrame(index=spx.index)
+            for s,ser in cbd.items():cb[s]=ser.reindex(spx.index,method="ffill",limit=5)
         else:cb=pd.DataFrame(index=spx.index)
         bf=self._build_base_features(spx,vix,spx_ohlc,cb);cbf=self._build_cboe_features(cb,vix) if not cb.empty else pd.DataFrame(index=spx.index);ff=self._build_futures_features(ss,es,spx.index,spx,cb);md=self._fetch_macro_data(ss,es,spx.index);mf=self._build_macro_features(md) if md is not None else pd.DataFrame(index=spx.index);tf=self._build_treasury_features(ss,es,spx.index);vvf=self._build_vvix_features(vvix_series,vix) if vvix_series is not None else pd.DataFrame(index=spx.index);cmb=pd.concat([bf,cbf],axis=1);mtf=self._build_meta_features(cmb,spx,vix,md);calf=self._build_calendar_features(spx.index)
         af=pd.concat([bf,cbf,ff,mf,tf,vvf,mtf,calf],axis=1);af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)

@@ -1,362 +1,311 @@
-# Python Minification Instructions
+# Python Minification Guide
 
 ## Mission
-Minify Python code for 30-60% token reduction while maintaining:
-1. Identical functionality (same inputs → same outputs)
-2. Valid Python syntax (runs without errors)
-3. Safe resource management (no leaks)
+Reduce Python code by 30-60% tokens while maintaining identical functionality, valid syntax, and safe resource management.
 
 ## Priority Order (NEVER VIOLATE)
-```
-1. SAFETY FIRST    → Resource management, error handling, correctness
-2. SYNTAX SECOND   → Valid Python that executes
-3. COMPRESSION THIRD → Token reduction only after 1 & 2 satisfied
-```
+1. SAFETY -> Correctness, resource cleanup, error handling
+2. SYNTAX -> Valid executable Python
+3. COMPRESS -> Token reduction (only after 1 & 2 pass)
 
-**Golden Rule:** When uncertain, preserve original. Extra tokens > broken code.
+Golden Rule: When uncertain, preserve original. Extra tokens > broken code.
 
----
-
-## Critical Rules (Breaking = Instant Failure)
+## Critical Safety Rules
 
 ### Rule 1: Indentation = Exactly 4 Spaces Per Level
-**Why:** Python requires consistent 4-space indentation. Wrong spacing = IndentationError.
-
 ```python
-✅ RIGHT (count spaces: 0, 4, 8, 12)
+# Correct (0, 4, 8 spaces)
 def foo():
     if x:
-        for i in lst:
-            print(i)
+        process()
 
-❌ WRONG (inconsistent spacing = crash)
+# Wrong - IndentationError
 def foo():
-  if x:        # 2 spaces - WRONG
-   for i in lst:  # 3 spaces - WRONG
+  if x:      # 2 spaces
 ```
 
-### Rule 2: Always Use Context Managers for Resources
-**Why:** Prevents file descriptor exhaustion, data corruption, memory leaks.
-
+### Rule 2: Always Use Context Managers for File/Network/Database
 ```python
-❌ DANGEROUS (file handle leaks)
-json.dump(data,open("f.json","w"))
+# WRONG - resource leak
+data=json.load(open("f.json"))
 
-✅ SAFE (guarantees cleanup)
-with open("f.json","w")as f:json.dump(data,f)
+# RIGHT - guaranteed cleanup
+with open("f.json")as f:data=json.load(f)
 ```
+Apply to: open(), sockets, databases, gzip.open(), zipfile.ZipFile(), any __enter__/__exit__ object
 
-**Apply to:** `open()`, sockets, databases, locks, `gzip.open()`, `zipfile.ZipFile()`, any object with `__enter__`/`__exit__`
-
-### Rule 3: Mandatory Spaces After Keywords
-**Why:** Python syntax requires spaces after control flow keywords. Missing = SyntaxError.
-
+### Rule 3: Mandatory Spaces After Control Keywords
 ```python
-✅ MUST KEEP SPACE AFTER:
-if x    for i    while c    def name    class Name    return val
-import x    from x    as e    lambda x    in lst    is None
-not x    and y    or z    elif x    else:    yield val
+# Must keep space after these:
+if x    for i    while c    def f    class C    return x
+import m    from m    as a    lambda x    in lst    is None
+not x    and y    or z    elif x    else:    yield x    with f
 
-✅ CAN REMOVE SPACES AROUND:
-x=1+2    y==3    z!=4    func(a,b,c)    [1,2,3]    {"k":"v"}
+# Can remove spaces around these:
+=  ==  !=  +  -  *  /  [  ]  {  }  (  )  ,
 ```
 
 ### Rule 4: Remove All Type Annotations
-**Why:** Type hints are for static analysis only - they don't execute.
-
 ```python
 # Before
-def process(data:list[int],config:dict[str,Any])->dict[str,int]:
-    result:dict[str,int]={}
+def process(data:list[int])->dict:
+    result:dict={}
 
 # After
-def process(data,config):
+def process(data):
     result={}
 ```
 
----
+## Dangerous Patterns That Silently Fail
 
-## Minification Sequence (Apply in Order)
+### CRITICAL: List Comprehensions Are For Building Data Only
+Problem: Comprehensions execute but may fail silently with side effects.
 
-### Step 1: Optimize Imports
 ```python
-# Combine from same module
-from module import func1,func2,Class1
+# WRONG - side effect in comprehension
+[df.update({col:data[col]})for col in cols]  # Returns [None,None,...], update() may fail
+[print(x)for x in items]  # Builds useless [None,None,...]
+[db.insert(row)for row in data]  # No error handling
 
-# Use short aliases
-import numpy as np,pandas as pd
+# RIGHT - explicit loop for side effects
+for col in cols:df[col]=data[col]
+for x in items:print(x)
+for row in data:db.insert(row)
 ```
 
-⚠️ Cannot combine `import x` with `from x import y` (syntax restriction)
-
-### Step 2: Remove Non-Executing Content
-Strip all comments, docstrings, inline annotations:
+Safe comprehension usage:
 ```python
-# Before
-def process(data):
-    """Process data."""  # Remove docstring
-    # Remove comments
-    for item in data:  # Remove inline comments
-        result=transform(item)
-
-# After
-def process(data):
-    for item in data:
-        result=transform(item)
-```
-
-### Step 3: Eliminate Blank Lines
-Remove blank lines between functions, classes, methods, inside bodies, after imports.
-
-### Step 4: Minimize Whitespace
-```python
-x=1+2
-result=func(arg1,arg2,arg3)
-data={"key":"value","num":42}
-lst=[1,2,3,4]
-```
-
-### Step 5: Condense Simple Statements
-```python
-# Single-line when possible
-if x>0:return x
-for item in items:process(item)
-
-# Keep multi-line when nested
-for x in items:
-    if condition:
-        process(x)
-```
-
-### Step 6: Semicolon Combining (Same Indentation Only)
-```python
-# Same level = can combine
-a=1;b=2;c=3;d=a+b+c
-
-# Different levels = CANNOT combine
-if condition:  # ← This needs newline before x=1
-    x=1;y=2
-```
-
-### Step 7: Apply Code Optimizations
-
-**Ternary operators:**
-```python
-result=value1 if condition else value2
-grade='A'if score>=90 else('B'if score>=80 else'C')
-```
-
-**Default values with `or`:**
-```python
-value=arg or default_value
-```
-
-**Walrus operator (Python 3.8+):**
-```python
-if(match:=re.search(pattern,text)):process(match)
-```
-
-**List comprehensions:**
-```python
-# Before
-results=[]
-for x in items:
-    results.append(transform(x))
-
-# After
+# Building data structures - OK
 results=[transform(x)for x in items]
+lookup={k:v*2 for k,v in data.items()}
+unique={x.lower()for x in words}
 ```
 
-**Chain operations:**
+Never use comprehensions for:
+- Database operations (insert, update, delete)
+- File I/O (write, read)
+- Modifying external state (global vars, class attributes)
+- Functions returning None
+- Anything needing try/except
+
+### CRITICAL: DataFrame.update() Only Modifies Existing Columns
+Problem: Silently does nothing when columns don't exist yet.
+
 ```python
-return transform(get_data())  # Instead of temp variable
+# WRONG - silently drops ALL data
+df=pd.DataFrame(index=dates)
+for name,series in data.items():
+    df.update({name:series})  # Column doesn't exist - FAILS SILENTLY
+# Result: Empty DataFrame, all data lost
+
+# RIGHT - properly adds columns
+df=pd.DataFrame(index=dates)
+for name,series in data.items():
+    df[name]=series
+
+# ALSO RIGHT - build from dict
+df=pd.DataFrame(data,index=dates)
 ```
 
-**Tuple unpacking:**
+When to use update(): Only when modifying values in columns that already exist. Never for adding new columns.
+
+### CRITICAL: No break/continue in Comprehensions
 ```python
-a,b=1,2  # Instead of separate lines
-```
+# WRONG - SyntaxError
+[x for x in items if check(x,break)]
 
----
-
-## Never Do These (Code Breaking)
-
-❌ **Use break/continue in comprehensions** (SyntaxError)
-```python
-# WRONG - statements can't be in expressions
-[x for x in items if(check(x),break)[0]]
-
-# RIGHT - use traditional loop
+# RIGHT - use loop
 for x in items:
     if condition:result=x;break
 ```
 
-❌ **Split dict/list literals mid-element**
-```python
-# WRONG
-data={"k1":"v1","k2":
-"v2"}
+## Minification Process (Apply In Order)
 
-# RIGHT
-data={"k1":"v1","k2":"v2"}
+### 1. Strip Non-Executing Content
+Remove: comments, docstrings, type annotations, blank lines
+
+### 2. Optimize Imports
+```python
+from module import func1,func2,Class1
+import numpy as np,pandas as pd
 ```
 
-❌ **Remove context managers from I/O**
+### 3. Minimize Whitespace (Keep Mandatory Keyword Spaces)
 ```python
-# WRONG - resource leak guaranteed
-config=json.load(open("f.json"))
-
-# RIGHT - proper cleanup
-with open("f.json")as f:config=json.load(f)
+x=1+2
+func(a,b,c)
+data={"k":"v"}
+lst=[1,2,3]
 ```
 
-❌ **Use wrong indentation** (not 4-space multiples)
+### 4. Single-Line Simple Statements
+```python
+if x>0:return x
+for item in items:process(item)
+```
 
-❌ **Remove mandatory keyword spaces** (see Rule 3)
+### 5. Semicolons (Same Indentation Only)
+```python
+a=1;b=2;c=3  # Same level - OK
 
----
+# Different levels - NO
+if cond:
+    x=1;y=2  # These can be combined
+```
 
-## Always Preserve
+### 6. Apply Safe Transformations
 
-✅ Try/except block structure
-✅ Error handling logic
-✅ All functional behavior
-✅ Resource cleanup patterns (with statements)
-✅ Class/function signatures (minus type hints)
-✅ Print statements and output
+Ternary:
+```python
+result=val1 if condition else val2
+```
 
----
+Default with or:
+```python
+value=arg or default
+```
 
-## Decision Trees
+Walrus (3.8+):
+```python
+if(m:=pattern.search(text)):use(m)
+```
 
-**Convert loop to comprehension?**
-- ✅ Only builds list/dict/set
-- ✅ No side effects (print, global state)
-- ✅ No break/continue
-- ✅ Logic not too complex
-→ Otherwise keep as loop
+Safe comprehensions (pure data building only):
+```python
+squares=[x*2 for x in nums]
+lookup={k:v.upper()for k,v in items.items()}
+```
 
-**Use context manager?**
-- ✅ Involves `open()`, network, database
-- ✅ Object has `__enter__`/`__exit__`
-→ MANDATORY for resources
+Chain operations:
+```python
+return transform(get_data())
+```
 
-**Combine with semicolons?**
-- ✅ Same indentation level
-- ✅ All simple statements
-- ⚠️ Consider readability if >3 statements
+## Decision Rules (Apply These Tests)
 
-**Inline if/else?**
-- ✅ Simple assignment or return
-- ✅ Clear logic flow
-→ NO if multiple statements per branch
+Should I use a comprehension?
+- Building list/dict/set? YES -> Consider comprehension
+- Has side effects? YES -> NO comprehension, use loop
+- Returns None? YES -> NO comprehension, use loop
+- Needs try/except? YES -> NO comprehension, use loop
+- Uses break/continue? YES -> NO comprehension, use loop
 
----
+Should I use context manager?
+- Uses open()? YES -> MUST use with statement
+- Uses network/database? YES -> MUST use with statement
+- Has __enter__/__exit__? YES -> MUST use with statement
 
-## Validation Checklist (Before Output)
+Should I combine with semicolons?
+- Same indentation? YES -> Can combine
+- Simple statements? YES -> Can combine
+- More than 3 statements? MAYBE -> Consider readability
 
-- [ ] All indentation is 4-space multiples
-- [ ] All `open()` calls in `with` statements
-- [ ] Required spaces after keywords present
-- [ ] No break/continue in comprehensions
-- [ ] Try/except blocks preserved
-- [ ] Would pass `python -m py_compile`
-- [ ] Identical functionality to original
+Should I inline if/else?
+- Simple assignment? YES -> Use ternary
+- Simple return? YES -> Use ternary
+- Multiple statements per branch? NO -> Keep multi-line
 
-**If any check fails:** DO NOT output. Revise until all pass.
+## Pre-Output Checklist (Must Pass All)
 
----
+Check before outputting:
+- Indentation is 4-space multiples
+- All file operations use with statements
+- Spaces after keywords (if, for, def, etc.) present
+- No side effects in comprehensions
+- Try/except blocks preserved
+- Would execute without errors: python -m py_compile
+- Identical functionality to original
 
-## Output Format
-
-1. Present minified code in code block
-2. Summary: "Reduced from X to Y lines (Z% reduction)"
-3. Note safety-critical preservations (e.g., "All context managers maintained")
-4. Only explain changes if asked
-
----
+If any check fails: Stop and revise. Do not output broken code.
 
 ## Complete Example
 
-**Before (42 lines):**
+Before (23 lines):
 ```python
 import json
 from pathlib import Path
 
-def load_config(config_path):
-    """Load configuration from JSON file."""
-    with open(config_path, 'r') as config_file:
-        config = json.load(config_file)
+def load_and_process(filepath, items):
+    """Load config and process items."""
+    # Load configuration
+    with open(filepath, 'r') as f:
+        config = json.load(f)
 
+    # Set default timeout
     if 'timeout' not in config:
         config['timeout'] = 30
 
-    return config
+    # Process items
+    results = []
+    for item in items:
+        if item is not None:
+            transformed = item * 2 if isinstance(item, int) else str(item)
+            results.append(transformed)
 
-class DataProcessor:
-    """Process data items."""
-
-    def __init__(self, config):
-        self.config = config
-        self.results = []
-
-    def process(self, items):
-        """Process list of items."""
-        for item in items:
-            if item is not None:
-                try:
-                    result = self.transform(item)
-                    self.results.append(result)
-                except Exception as e:
-                    print(f"Error: {e}")
-        return self.results
-
-    def transform(self, item):
-        """Transform single item."""
-        if isinstance(item, int):
-            return item * 2
-        elif isinstance(item, str):
-            return item.upper()
-        else:
-            return str(item)
-
-    def save_results(self, filepath):
-        """Save results to file."""
-        with open(filepath, 'w') as f:
-            json.dump(self.results, f)
+    return config, results
 ```
 
-**After (16 lines, 62% reduction):**
+After (7 lines, 70% reduction):
 ```python
 import json
 from pathlib import Path
-def load_config(config_path):
-    with open(config_path,'r')as f:config=json.load(f)
+def load_and_process(filepath,items):
+    with open(filepath,'r')as f:config=json.load(f)
     if 'timeout'not in config:config['timeout']=30
-    return config
-class DataProcessor:
-    def __init__(self,config):
-        self.config=config;self.results=[]
-    def process(self,items):
-        for item in items:
-            if item is not None:
-                try:result=self.transform(item);self.results.append(result)
-                except Exception as e:print(f"Error: {e}")
-        return self.results
-    def transform(self,item):return item*2 if isinstance(item,int)else(item.upper()if isinstance(item,str)else str(item))
-    def save_results(self,filepath):
-        with open(filepath,'w')as f:json.dump(self.results,f)
+    results=[item*2 if isinstance(item,int)else str(item)for item in items if item is not None]
+    return config,results
 ```
 
-✅ Identical functionality
-✅ All context managers preserved
-✅ Valid Python syntax with correct 4-space indentation
-✅ All error handling maintained
+## Common Mistakes (Never Do These)
 
----
+```python
+# WRONG: Side effect in comprehension
+[db.insert(row)for row in data]
+[file.write(line)for line in lines]
+[df.update({k:v})for k,v in cols.items()]
+
+# WRONG: DataFrame.update() for new columns
+df=pd.DataFrame()
+df.update({"new_col":series})  # Does nothing
+
+# WRONG: No context manager
+config=json.load(open("f.json"))
+
+# WRONG: Wrong indentation
+def f():
+  return 1  # 2 spaces
+
+# WRONG: break in comprehension
+[x for x in items if(check(x),break)[0]]
+
+# RIGHT: Explicit loops for side effects
+for row in data:db.insert(row)
+for line in lines:file.write(line)
+for k,v in cols.items():df[k]=v
+
+# RIGHT: Direct column assignment
+df=pd.DataFrame()
+df["new_col"]=series
+
+# RIGHT: Context manager
+with open("f.json")as f:config=json.load(f)
+
+# RIGHT: 4-space indentation
+def f():
+    return 1
+
+# RIGHT: Loop with break
+for x in items:
+    if condition:result=x;break
+```
+
+## Output Format
+
+1. Minified code in code block
+2. "Reduced from X to Y lines (Z% reduction)"
+3. Note critical preservations if relevant
 
 ## Final Reminder
 
-**Better to preserve 10 extra tokens than break 1 line of code.**
-
-Safety and functionality ALWAYS trump compression.
+Safety > Syntax > Compression. Always.
+Better to preserve 10 extra tokens than break 1 line of code.
