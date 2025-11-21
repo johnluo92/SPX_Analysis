@@ -22,7 +22,7 @@ class IntegratedForecastingSystem:
         logger.info(f"📊 Loaded magnitude model with {len(self.forecaster.feature_names)} features")
     def _prebuild_features_for_workflow(self,start_date,end_date):
         logger.info(f"🔧 Pre-building features for workflow ({start_date} to {end_date})...")
-        feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=end_date);df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols]
+        feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=end_date,force_historical=True);df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols]
         for col in numeric_cols:
             if df[col].dtype==object:df[col]=pd.to_numeric(df[col],errors="coerce").fillna(0.0)
             df[col]=df[col].astype(np.float64)
@@ -34,7 +34,7 @@ class IntegratedForecastingSystem:
             target_date=pd.Timestamp(date)
             logger.info(f"📅 Forecast date: {target_date.strftime('%Y-%m-%d')}")
             logger.info("🔧 Building features (historical mode)...")
-            feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=target_date.strftime("%Y-%m-%d"));df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols]
+            feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=target_date.strftime("%Y-%m-%d"),force_historical=True);df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols]
             for col in numeric_cols:
                 if df[col].dtype==object:df[col]=pd.to_numeric(df[col],errors="coerce").fillna(0.0)
                 df[col]=df[col].astype(np.float64)
@@ -71,8 +71,11 @@ class IntegratedForecastingSystem:
         if "metadata"in forecast:meta=forecast["metadata"];logger.info(f"  Context:");logger.info(f"  Current cohort: {meta.get('calendar_cohort','N/A')}");logger.info(f"  Feature quality: {meta.get('feature_quality',0):.2f}");logger.info(f"  Observation date: {meta.get('observation_date','N/A')}")
     def _store_prediction(self,forecast,observation,observation_date):
         forecast_date=observation_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"]);prediction_id=f"pred_{forecast_date.strftime('%Y%m%d')}_h{TARGET_CONFIG['horizon_days']}"
-        prob_up=1.0 if forecast["direction"]=="UP"else 0.0;prob_down=1.0-prob_up
-        prediction={"prediction_id":prediction_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":observation_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(observation["vix"]),"calendar_cohort":observation["calendar_cohort"],"cohort_weight":float(observation.get("cohort_weight",1.0)),"prob_up":prob_up,"prob_down":prob_down,"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast["metadata"]["feature_quality"]),"num_features_used":len(self.forecaster.feature_names),"features_used":(",".join(self.forecaster.feature_names[:10])),"model_version":"v5.0_magnitude_only"}
+        confidence_pct=abs(forecast["magnitude_pct"]);scaling_factor=min(confidence_pct/20.0,1.0)
+        if forecast["direction"]=="UP":prob_up=0.5+(0.5*scaling_factor)
+        else:prob_up=0.5-(0.5*scaling_factor)
+        prob_down=1.0-prob_up
+        prediction={"prediction_id":prediction_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":observation_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(observation["vix"]),"calendar_cohort":observation["calendar_cohort"],"cohort_weight":float(observation.get("cohort_weight",1.0)),"prob_up":float(prob_up),"prob_down":float(prob_down),"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast["metadata"]["feature_quality"]),"num_features_used":len(self.forecaster.feature_names),"features_used":(",".join(self.forecaster.feature_names[:10])),"model_version":"v5.0_magnitude_only"}
         stored_id=self.prediction_db.store_prediction(prediction)
         return stored_id if stored_id else prediction_id
     def backfill_actuals(self):
@@ -84,7 +87,7 @@ class IntegratedForecastingSystem:
     def generate_forecast_batch(self,start_date,end_date,prebuilt_features=None):
         logger.info(f"\n{'='*80}")
         logger.info(f"BATCH FORECASTING: {start_date} to {end_date}")
-        if prebuilt_features is None:logger.info("🔧 Building features for batch...");feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=end_date);df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols];[df.__setitem__(col,pd.to_numeric(df[col],errors="coerce").fillna(0.0))if df[col].dtype==object else None for col in numeric_cols];[df.__setitem__(col,df[col].astype(np.float64))for col in numeric_cols];logger.info("✅ Features validated")
+        if prebuilt_features is None:logger.info("🔧 Building features for batch...");feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=end_date,force_historical=True);df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols];[df.__setitem__(col,pd.to_numeric(df[col],errors="coerce").fillna(0.0))if df[col].dtype==object else None for col in numeric_cols];[df.__setitem__(col,df[col].astype(np.float64))for col in numeric_cols];logger.info("✅ Features validated")
         else:logger.info("   Using pre-built features");df=prebuilt_features
         start=pd.Timestamp(start_date);end=pd.Timestamp(end_date);date_range=df[(df.index>=start)&(df.index<=end)].index
         logger.info(f"   Forecasting {len(date_range)} dates")
@@ -105,10 +108,10 @@ class IntegratedForecastingSystem:
         if status["pending_writes"]>0:logger.error(f"🚨 WARNING: {status['pending_writes']} uncommitted writes!");raise RuntimeError(f"Lost {status['pending_writes']} forecasts - commit failed!")
         return forecasts
     def _get_features(self,force_refresh=False):
-        now=pd.Timestamp.now();today=(now.year,now.month,now.day)
+        now=pd.Timestamp.now().normalize();today=(now.year,now.month,now.day)
         if not force_refresh and self._feature_cache is not None and self._feature_cache_date==today:logger.info("📦 Using cached features (already built today)");return self._feature_cache
         logger.info("🔧 Building features...")
-        feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS);df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols];numeric_array=df[numeric_cols].values.astype(np.float64);df_clean=pd.DataFrame(numeric_array,columns=numeric_cols,index=df.index)
+        feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=now.strftime("%Y-%m-%d"),force_historical=True);df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols];numeric_array=df[numeric_cols].values.astype(np.float64);df_clean=pd.DataFrame(numeric_array,columns=numeric_cols,index=df.index)
         for col in metadata_cols:
             if col in df.columns:df_clean[col]=df[col]
         df_clean=df_clean[df.columns];self._feature_cache=df_clean;self._feature_cache_date=today

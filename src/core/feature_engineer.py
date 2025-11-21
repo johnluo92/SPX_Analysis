@@ -234,10 +234,13 @@ class FeatureEngineer:
         cf,rep=self.quality_controller.validate_features(features)
         import os
         os.makedirs("./data_cache",exist_ok=True);ts=datetime.now().strftime("%Y%m%d_%H%M%S");self.quality_controller.save_report(rep,f"./data_cache/quality_report_{ts}.json");return cf
-    def build_complete_features(self,years:int=TRAINING_YEARS,end_date:Optional[str]=None,force_fresh:bool=False)->dict:
+    def build_complete_features(self,years:int=TRAINING_YEARS,end_date:Optional[str]=None,force_historical:bool=False)->dict:
         print(f"\n{'='*80}");print(f"🏗️  Building {years}y feature set | Temporal Safety: {'ON' if ENABLE_TEMPORAL_SAFETY else 'OFF'}");print(f"{'='*80}")
         if end_date is None:ed=datetime.now();mode="LIVE"
-        else:ed=pd.Timestamp(end_date);ir=ed>(datetime.now()-timedelta(days=7));mode="RECENT" if ir else "HISTORICAL"
+        else:
+            ed=pd.Timestamp(end_date)
+            if force_historical:mode="HISTORICAL"
+            else:ir=ed>(datetime.now()-timedelta(days=7));mode="RECENT" if ir else"HISTORICAL"
         sd=ed-timedelta(days=years*365+450);self.training_start_date=sd;self.training_end_date=ed;ss=sd.strftime("%Y-%m-%d");es=ed.strftime("%Y-%m-%d")
         print(f"Mode: {mode}");print(f"Date Ranges: Warmup Start -> Warmup End (usable period) -> Training End Date: {ss} → {(sd+timedelta(days=450)).strftime('%Y-%m-%d')} → {es}")
         spx_df=self.fetcher.fetch_yahoo("^GSPC",ss,es);vix=self.fetcher.fetch_yahoo("^VIX",ss,es);vvix=self.fetcher.fetch_yahoo("^VVIX",ss,es)

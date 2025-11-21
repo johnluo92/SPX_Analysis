@@ -11,10 +11,20 @@
     "precision": 0.7939560439560439,
     "recall": 0.7939560439560439,
     "calibration_by_bin": {
+      "Low": {
+        "predicted_prob": 0.3024570261594342,
+        "actual_frequency": 0.2222222222222222,
+        "n_samples": 108
+      },
+      "Medium": {
+        "predicted_prob": 0.5183612909110907,
+        "actual_frequency": 0.48466257668711654,
+        "n_samples": 326
+      },
       "High": {
-        "predicted_prob": 1.0,
-        "actual_frequency": 0.5946502057613169,
-        "n_samples": 486
+        "predicted_prob": 0.6682796368400216,
+        "actual_frequency": 0.6476868327402135,
+        "n_samples": 281
       }
     }
   },
