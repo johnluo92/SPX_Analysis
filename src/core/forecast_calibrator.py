@@ -2,168 +2,96 @@ import json,logging,pickle
 from datetime import datetime
 from pathlib import Path
 import numpy as np,pandas as pd
-from scipy.interpolate import interp1d
-from sklearn.isotonic import IsotonicRegression
-from sklearn.linear_model import HuberRegressor,LinearRegression
-from sklearn.metrics import mean_absolute_error,mean_squared_error
+from sklearn.linear_model import HuberRegressor
+from config import CALIBRATION_WINDOW_DAYS,CALIBRATION_DECAY_LAMBDA,MIN_SAMPLES_FOR_CORRECTION
 from core.regime_classifier import classify_vix_regime
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
-class ProbabilityCalibrator:
-    def __init__(self,n_bins=10):
-        self.n_bins=n_bins;self.calibrator=None;self.fitted=False
-    def fit(self,predicted_probs,actual_outcomes):
-        if len(actual_outcomes)<30:logger.warning(f"⚠️  Only {len(actual_outcomes)} samples for calibration")
-        logger.info(f"   Fitting probability calibrator on {len(actual_outcomes)} samples...")
-        predicted_probs=np.array(predicted_probs);actual_outcomes=np.array(actual_outcomes)
-        if len(predicted_probs)!=len(actual_outcomes):raise ValueError(f"Length mismatch: {len(predicted_probs)} vs {len(actual_outcomes)}")
-        self.calibrator=IsotonicRegression(out_of_bounds='clip');self.calibrator.fit(predicted_probs,actual_outcomes);self.fitted=True
-        calibrated_probs=self.calibrator.transform(predicted_probs);before_acc=(predicted_probs>0.5).astype(int);after_acc=(calibrated_probs>0.5).astype(int)
-        acc_before=np.mean(before_acc==actual_outcomes);acc_after=np.mean(after_acc==actual_outcomes)
-        logger.info(f"   Accuracy before: {acc_before:.1%} | after: {acc_after:.1%}")
-    def transform(self,prob):
-        if not self.fitted:logger.warning("⚠️  Calibrator not fitted, returning raw probability");return prob
-        return float(self.calibrator.transform([prob])[0])
-    def get_diagnostics(self):
-        if not self.fitted:return{"error":"Calibrator not fitted"}
-        return{"fitted":self.fitted,"n_bins":self.n_bins,"calibrator_type":"isotonic_regression"}
-class QuantileCalibrator:
-    def __init__(self,quantiles=[0.10,0.25,0.50,0.75,0.90]):
-        self.quantiles=quantiles;self.calibrators={};self.bias_corrections={};self.coverage_adjustments={};self.fitted=False
-    def fit(self,predictions,actuals):
-        if len(actuals)<30:logger.warning(f"⚠️  Only {len(actuals)} samples for calibration - may be unreliable")
-        logger.info(f"   Fitting quantile calibrator on {len(actuals)} samples...");actuals=np.array(actuals)
-        for q_name,q_preds in predictions.items():
-            q_preds=np.array(q_preds)
-            if len(q_preds)!=len(actuals):raise ValueError(f"{q_name}: length mismatch ({len(q_preds)} vs {len(actuals)})")
-            target_quantile=float(q_name[1:])/100;current_coverage=(actuals<=q_preds).mean();coverage_error=current_coverage-target_quantile;n=len(actuals)
-            if n<100:window_size=max(20,n//5)
-            elif n<500:window_size=max(30,n//8)
-            else:window_size=max(50,n//15)
-            sort_idx=np.argsort(q_preds);sorted_preds=q_preds[sort_idx];sorted_actuals=actuals[sort_idx];corrections=[];pred_values=[]
-            for i in range(len(sorted_preds)):
-                start_idx=max(0,i-window_size//2);end_idx=min(len(sorted_preds),i+window_size//2);window_actuals=sorted_actuals[start_idx:end_idx];window_pred=sorted_preds[i]
-                if target_quantile<0.5:target_value=np.quantile(window_actuals,target_quantile);correction=target_value-window_pred
-                elif target_quantile>0.5:target_value=np.quantile(window_actuals,target_quantile);correction=target_value-window_pred
-                else:target_value=np.quantile(window_actuals,0.5);correction=target_value-window_pred
-                corrections.append(correction);pred_values.append(window_pred)
-            corrections=np.array(corrections);pred_values=np.array(pred_values);unique_preds=len(np.unique(pred_values))
-            if unique_preds>=5:
-                calibrator=IsotonicRegression(out_of_bounds='clip');calibrator.fit(pred_values,corrections);self.calibrators[q_name]=calibrator;test_corrections=calibrator.predict(q_preds);calibrated_test=q_preds+test_corrections;expected_coverage=(actuals<=calibrated_test).mean()
-            elif unique_preds>=2:
-                unique_pred_vals=np.unique(pred_values);unique_corrections=[corrections[pred_values==p].mean()for p in unique_pred_vals];calibrator=interp1d(unique_pred_vals,unique_corrections,kind='linear',bounds_error=False,fill_value=(unique_corrections[0],unique_corrections[-1]));self.calibrators[q_name]=calibrator;expected_coverage=current_coverage
-            else:logger.warning(f"   ⚠️  {q_name}: using simple bias correction");self.calibrators[q_name]=None;expected_coverage=current_coverage
-            self.bias_corrections[q_name]=float(np.median(corrections))
-            if abs(coverage_error)>0.05:coverage_adjustment=coverage_error*np.std(actuals)*0.1;self.coverage_adjustments[q_name]=float(coverage_adjustment)
-            else:self.coverage_adjustments[q_name]=0.0
-            mean_correction=np.median(corrections);logger.info(f"      {q_name}: {current_coverage:.1%} coverage (target {target_quantile:.1%}), median correction: {mean_correction:+.4f}")
-        self.fitted=True;logger.info("   ✅ Quantile calibrator fitted")
-    def transform(self,predictions):
-        if not self.fitted:logger.warning("⚠️  Calibrator not fitted, returning raw predictions");return predictions
-        calibrated={}
-        for q_name,raw_value in predictions.items():
-            if q_name not in self.calibrators:calibrated[q_name]=raw_value;continue
-            calibrator=self.calibrators[q_name];target_quantile=float(q_name[1:])/100
-            if calibrator is None:base_correction=self.bias_corrections[q_name]
-            else:base_correction=float(calibrator.predict([raw_value])[0]if hasattr(calibrator,'predict')else calibrator([raw_value])[0])
-            calibrated_value=raw_value+base_correction;coverage_adj=self.coverage_adjustments.get(q_name,0.0)
-            if abs(coverage_adj)>0.001:
-                if target_quantile<0.5:calibrated_value-=abs(coverage_adj)
-                elif target_quantile>0.5:calibrated_value-=coverage_adj
-                else:calibrated_value+=coverage_adj
-            calibrated[q_name]=calibrated_value
-        calibrated=self._enforce_monotonicity_minimal(calibrated);return calibrated
-    def _enforce_monotonicity_minimal(self,quantiles_dict):
-        q_names=['q10','q25','q50','q75','q90'];q_values=[quantiles_dict.get(q,None)for q in q_names]
-        if None in q_values:return quantiles_dict
-        q_values=np.array(q_values);original=q_values.copy();n=len(q_values);result=q_values.copy()
-        while True:
-            violations=0
-            for i in range(n-1):
-                if result[i]>result[i+1]:
-                    j=i+1
-                    while j<n and result[i]>result[j]:j+=1
-                    avg=np.mean(result[i:j]);result[i:j]=avg;violations+=1;break
-            if violations==0:break
-        output=quantiles_dict.copy()
-        for q_name,q_value in zip(q_names,result):output[q_name]=float(q_value)
-        max_adjustment=np.max(np.abs(result-original))
-        if max_adjustment>0.01:logger.debug(f"   Monotonicity enforcement: max adjustment = {max_adjustment:.4f}")
-        return output
-    def get_diagnostics(self):
-        if not self.fitted:return{"error":"Calibrator not fitted"}
-        diagnostics={"fitted":self.fitted,"quantiles":self.quantiles,"bias_corrections":self.bias_corrections,"coverage_adjustments":self.coverage_adjustments,"calibrator_types":{}}
-        for q_name in self.calibrators.keys():
-            cal=self.calibrators[q_name]
-            if cal is None:cal_type="simple_bias"
-            elif isinstance(cal,IsotonicRegression):cal_type="isotonic_regression"
-            else:cal_type="linear_interpolation"
-            diagnostics["calibrator_types"][q_name]=cal_type
-        return diagnostics
 class ForecastCalibrator:
-    def __init__(self,min_samples=50,use_robust=True,cohort_specific=True,regime_specific=True):
-        self.min_samples=min_samples;self.use_robust=use_robust;self.cohort_specific=cohort_specific;self.regime_specific=regime_specific;self.global_model=None;self.cohort_models={};self.regime_models={};self.calibration_stats={};self.probability_calibrator=ProbabilityCalibrator();self.fitted=False
-        logger.info(f"ForecastCalibrator V4 initialized:\n  Min samples: {min_samples}\n  Robust regression: {use_robust}\n  Cohort-specific: {cohort_specific}\n  Regime-specific: {regime_specific}\n  Probability calibration: enabled")
-    def fit_from_database(self,database,start_date=None,end_date=None):
-        logger.info("\n"+"="*80+"\nFORECAST CALIBRATION\n"+"="*80);logger.info("\n[1/6] Loading historical predictions...");df=database.get_predictions(with_actuals=True)
-        if start_date:df=df[df["forecast_date"]>=pd.Timestamp(start_date)];logger.info(f"  Filtered to dates >= {start_date}")
-        if end_date:df=df[df["forecast_date"]<=pd.Timestamp(end_date)];logger.info(f"  Filtered to dates <= {end_date}")
-        if len(df)==0:logger.error("❌ No predictions with actuals available");return False
-        if len(df)<self.min_samples:logger.warning(f"⚠️  Only {len(df)} samples available, need {self.min_samples}\n   Calibration may be unreliable")
-        logger.info(f"  Loaded {len(df)} predictions\n  Date range: {df['forecast_date'].min().date()} to {df['forecast_date'].max().date()}")
-        logger.info("\n[2/6] Calibrating direction probabilities...")
-        prob_up=df["prob_up"].values;actual_direction=df["actual_direction"].values;self.probability_calibrator.fit(prob_up,actual_direction)
-        logger.info("\n[3/6] Preparing magnitude calibration data...");required_cols=["magnitude_forecast","actual_vix_change","current_vix"];missing=[col for col in required_cols if col not in df.columns]
-        if missing:logger.error(f"❌ Missing required columns: {missing}");return False
-        calib_df=df[required_cols].copy();calib_df["cohort"]=df["calendar_cohort"]if"calendar_cohort"in df.columns and self.cohort_specific else"all";calib_df=calib_df.dropna();calib_df["error"]=calib_df["actual_vix_change"]-calib_df["magnitude_forecast"];calib_df["vix_regime"]=calib_df["current_vix"].apply(lambda x:classify_vix_regime(x,numeric=False));logger.info(f"  Calibration samples: {len(calib_df)}\n  Mean error: {calib_df['error'].mean():+.2f}%\n  Mean absolute error: {calib_df['error'].abs().mean():.2f}%")
-        if abs(calib_df["error"].mean())>0.5:logger.warning("⚠️  Systematic underestimation detected"if calib_df["error"].mean()>0 else"⚠️  Systematic overestimation detected")
-        logger.info("\n[4/6] Fitting global magnitude calibration model...");X_global=calib_df[["magnitude_forecast","current_vix"]].values;y_global=calib_df["error"].values;self.global_model=HuberRegressor()if self.use_robust else LinearRegression();self.global_model.fit(X_global,y_global);y_pred=self.global_model.predict(X_global);mae_before=mean_absolute_error(calib_df["actual_vix_change"],calib_df["magnitude_forecast"]);calibrated_forecast=calib_df["magnitude_forecast"]+y_pred;mae_after=mean_absolute_error(calib_df["actual_vix_change"],calibrated_forecast);improvement_pct=(mae_before-mae_after)/mae_before*100;logger.info(f"  MAE before calibration: {mae_before:.2f}%\n  MAE after calibration:  {mae_after:.2f}%\n  Improvement: {improvement_pct:+.1f}%");self.calibration_stats["global"]={"samples":len(calib_df),"mae_before":float(mae_before),"mae_after":float(mae_after),"improvement_pct":float(improvement_pct),"mean_error":float(calib_df["error"].mean())}
-        if self.cohort_specific and"cohort"in calib_df.columns:
-            logger.info("\n[5/6] Fitting cohort-specific magnitude calibration...")
-            for cohort in calib_df["cohort"].unique():
-                if pd.isna(cohort):continue
-                cohort_df=calib_df[calib_df["cohort"]==cohort]
-                if len(cohort_df)<20:logger.warning(f"  ⚠️  {cohort}: Only {len(cohort_df)} samples, skipping");continue
-                X_cohort=cohort_df[["magnitude_forecast","current_vix"]].values;y_cohort=cohort_df["error"].values;cohort_model=HuberRegressor()if self.use_robust else LinearRegression();cohort_model.fit(X_cohort,y_cohort);self.cohort_models[cohort]=cohort_model;y_pred_cohort=cohort_model.predict(X_cohort);mae_before=mean_absolute_error(cohort_df["actual_vix_change"],cohort_df["magnitude_forecast"]);calibrated=cohort_df["magnitude_forecast"]+y_pred_cohort;mae_after=mean_absolute_error(cohort_df["actual_vix_change"],calibrated);improvement=(mae_before-mae_after)/mae_before*100;logger.info(f"  {cohort}: {len(cohort_df)} samples, improvement: {improvement:+.1f}%");self.calibration_stats[f"cohort_{cohort}"]={"samples":len(cohort_df),"mae_before":float(mae_before),"mae_after":float(mae_after),"improvement_pct":float(improvement),"mean_error":float(cohort_df["error"].mean())}
-        else:logger.info("\n[5/6] Cohort-specific calibration disabled")
-        if self.regime_specific:
-            logger.info("\n[6/6] Fitting regime-specific magnitude calibration...")
-            for regime in["low_vol","normal","elevated","crisis"]:
-                regime_df=calib_df[calib_df["vix_regime"]==regime]
-                if len(regime_df)<20:logger.warning(f"  ⚠️  {regime}: Only {len(regime_df)} samples, skipping");continue
-                X_regime=regime_df[["magnitude_forecast","current_vix"]].values;y_regime=regime_df["error"].values;regime_model=HuberRegressor()if self.use_robust else LinearRegression();regime_model.fit(X_regime,y_regime);self.regime_models[regime]=regime_model;y_pred_regime=regime_model.predict(X_regime);mae_before=mean_absolute_error(regime_df["actual_vix_change"],regime_df["magnitude_forecast"]);calibrated=regime_df["magnitude_forecast"]+y_pred_regime;mae_after=mean_absolute_error(regime_df["actual_vix_change"],calibrated);improvement=(mae_before-mae_after)/mae_before*100;logger.info(f"  {regime} VIX: {len(regime_df)} samples, improvement: {improvement:+.1f}%");self.calibration_stats[f"regime_{regime}"]={"samples":len(regime_df),"mae_before":float(mae_before),"mae_after":float(mae_after),"improvement_pct":float(improvement),"mean_error":float(regime_df["error"].mean())}
-        else:logger.info("\n[6/6] Regime-specific calibration disabled")
-        self.fitted=True;logger.info("\n✅ Calibration complete (magnitude + probabilities)\n"+"="*80+"\n");return True
-    def calibrate(self,raw_forecast,current_vix,cohort=None,prob_up=None):
-        result={"calibrated_forecast":raw_forecast,"adjustment":0.0,"method":"not_fitted","raw_forecast":raw_forecast}
-        if not self.fitted:logger.debug("⚠️  Calibrator not fitted - using raw forecasts");return result
-        vix_regime=classify_vix_regime(current_vix,numeric=False);model=None;method="global"
-        if self.cohort_specific and cohort and cohort in self.cohort_models:model=self.cohort_models[cohort];method=f"cohort_{cohort}"
-        elif self.regime_specific and vix_regime in self.regime_models:model=self.regime_models[vix_regime];method=f"regime_{vix_regime}"
-        else:model=self.global_model;method="global"
-        if model is None:logger.warning("⚠️  No calibration model available - using raw forecast");return result
-        X=np.array([[raw_forecast,current_vix]]);adjustment=float(model.predict(X)[0]);calibrated_forecast=raw_forecast+adjustment;result={"calibrated_forecast":calibrated_forecast,"adjustment":adjustment,"method":method,"raw_forecast":raw_forecast}
-        if prob_up is not None:result["calibrated_prob_up"]=self.probability_calibrator.transform(prob_up);result["raw_prob_up"]=prob_up
-        logger.debug(f"🎯 Calibration: forecast {raw_forecast:+.2f}% → {calibrated_forecast:+.2f}% (Δ{adjustment:+.2f}%) via {method}");return result
-    def get_diagnostics(self):
-        if not self.fitted:return{"error":"Calibrator not fitted"}
-        diagnostics={"fitted":self.fitted,"timestamp":datetime.now().isoformat(),"config":{"min_samples":self.min_samples,"use_robust":self.use_robust,"cohort_specific":self.cohort_specific,"regime_specific":self.regime_specific,"probability_calibration":True},"statistics":self.calibration_stats,"models":{"global":self.global_model is not None,"cohorts":list(self.cohort_models.keys()),"regimes":list(self.regime_models.keys()),"probability":self.probability_calibrator.get_diagnostics()}}
-        if"global"in self.calibration_stats:global_stats=self.calibration_stats["global"];diagnostics["overall_improvement"]=global_stats.get("improvement_pct",0);diagnostics["training_samples"]=global_stats.get("samples",0);diagnostics["bias_correction"]=global_stats.get("mean_error",0)
-        return diagnostics
-    def save_calibrator(self,output_dir="models"):
-        if not self.fitted:logger.error("❌ Cannot save unfitted calibrator");return
-        output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True);calibrator_file=output_path/"forecast_calibrator.pkl";calibrator_data={"global_model":self.global_model,"cohort_models":self.cohort_models,"regime_models":self.regime_models,"probability_calibrator":self.probability_calibrator,"config":{"min_samples":self.min_samples,"use_robust":self.use_robust,"cohort_specific":self.cohort_specific,"regime_specific":self.regime_specific},"fitted":self.fitted}
-        with open(calibrator_file,"wb")as f:pickle.dump(calibrator_data,f)
-        logger.info(f"✅ Saved calibrator: {calibrator_file}");diagnostics_file=output_path/"calibrator_diagnostics.json";diagnostics=self.get_diagnostics()
-        with open(diagnostics_file,"w")as f:json.dump(diagnostics,f,indent=2,default=str)
-        logger.info(f"✅ Saved diagnostics: {diagnostics_file}")
-    def load_calibrator(self,input_dir="models"):
-        calibrator_file=Path(input_dir)/"forecast_calibrator.pkl"
-        if not calibrator_file.exists():logger.error(f"❌ Calibrator file not found: {calibrator_file}");return False
-        try:
-            with open(calibrator_file,"rb")as f:calibrator_data=pickle.load(f)
-            self.global_model=calibrator_data["global_model"];self.cohort_models=calibrator_data["cohort_models"];self.regime_models=calibrator_data["regime_models"];self.probability_calibrator=calibrator_data.get("probability_calibrator",ProbabilityCalibrator());config=calibrator_data["config"];self.min_samples=config["min_samples"];self.use_robust=config["use_robust"];self.cohort_specific=config["cohort_specific"];self.regime_specific=config["regime_specific"];self.fitted=calibrator_data["fitted"];logger.info(f"✅ Loaded calibrator from {calibrator_file}");return True
-        except Exception as e:logger.error(f"❌ Failed to load calibrator: {e}");return False
+    def __init__(self):
+        self.window_days=CALIBRATION_WINDOW_DAYS;self.decay_lambda=CALIBRATION_DECAY_LAMBDA;self.min_samples=MIN_SAMPLES_FOR_CORRECTION;self.corrections={};self.fitted=False;self.calibration_date=None
+    def fit_from_database(self,database):
+        logger.info("="*80);logger.info("FORECAST CALIBRATION");logger.info("="*80);logger.info("\n[1/5] Loading predictions with actuals...")
+        df=database.get_predictions(with_actuals=True)
+        if len(df)==0:logger.error("❌ No predictions with actuals");return False
+        df["forecast_date"]=pd.to_datetime(df["forecast_date"]);df=df.sort_values("forecast_date")
+        logger.info(f"  Total predictions: {len(df)}")
+        logger.info(f"  Date range: {df['forecast_date'].min().date()} to {df['forecast_date'].max().date()}")
+        logger.info("\n[2/5] Applying 252 trading day window...")
+        latest_date=df["forecast_date"].max();trading_days=pd.bdate_range(end=latest_date,periods=self.window_days)
+        if len(trading_days)==0:logger.error("❌ No trading days in window");return False
+        window_start=trading_days[0];df=df[df["forecast_date"]>=window_start];self.calibration_date=latest_date
+        logger.info(f"  Window: {window_start.date()} to {latest_date.date()}")
+        logger.info(f"  Predictions in window: {len(df)}")
+        if len(df)<self.min_samples:logger.warning(f"⚠️  Only {len(df)} samples (need {self.min_samples})");return False
+        logger.info("\n[3/5] Computing exponential weights...")
+        df["months_ago"]=((latest_date-df["forecast_date"]).dt.days/30.0)
+        df["weight"]=np.exp(-self.decay_lambda*df["months_ago"])
+        logger.info(f"  Weight range: {df['weight'].min():.3f} to {df['weight'].max():.3f}")
+        logger.info(f"  Mean weight: {df['weight'].mean():.3f}")
+        logger.info("\n[4/5] Classifying regimes and cohorts...")
+        df["vix_regime"]=df["current_vix"].apply(lambda x:classify_vix_regime(x,numeric=False))
+        df["error"]=df["actual_vix_change"]-df["magnitude_forecast"]
+        regime_counts=df["vix_regime"].value_counts();cohort_counts=df["calendar_cohort"].value_counts()
+        logger.info("  Regime distribution:");[logger.info(f"    {r}: {c}")for r,c in regime_counts.items()]
+        logger.info("  Cohort distribution:");[logger.info(f"    {c}: {n}")for c,n in cohort_counts.items()]
+        logger.info("\n[5/5] Fitting corrections...")
+        self._fit_regime_cohort_corrections(df);self._fit_regime_corrections(df);self._fit_cohort_corrections(df);self._fit_global_correction(df)
+        self.fitted=True;logger.info("\n✅ Calibration complete");logger.info("="*80+"\n");return True
+    def _fit_regime_cohort_corrections(self,df):
+        logger.info("  [A] Regime+Cohort corrections:")
+        regimes=df["vix_regime"].unique();cohorts=df["calendar_cohort"].unique();self.corrections["regime_cohort"]={}
+        for regime in regimes:
+            for cohort in cohorts:
+                key=f"{regime}_{cohort}";subset=df[(df["vix_regime"]==regime)&(df["calendar_cohort"]==cohort)]
+                if len(subset)<self.min_samples:continue
+                bias=np.average(subset["error"],weights=subset["weight"]);self.corrections["regime_cohort"][key]=float(bias)
+                logger.info(f"      {key}: N={len(subset)}, bias={bias:+.3f}%")
+        logger.info(f"    Total: {len(self.corrections['regime_cohort'])} combinations")
+    def _fit_regime_corrections(self,df):
+        logger.info("  [B] Regime-only corrections:")
+        regimes=df["vix_regime"].unique();self.corrections["regime"]={}
+        for regime in regimes:
+            subset=df[df["vix_regime"]==regime]
+            if len(subset)<self.min_samples:continue
+            bias=np.average(subset["error"],weights=subset["weight"]);self.corrections["regime"][regime]=float(bias)
+            logger.info(f"      {regime}: N={len(subset)}, bias={bias:+.3f}%")
+    def _fit_cohort_corrections(self,df):
+        logger.info("  [C] Cohort-only corrections:")
+        cohorts=df["calendar_cohort"].unique();self.corrections["cohort"]={}
+        for cohort in cohorts:
+            subset=df[df["calendar_cohort"]==cohort]
+            if len(subset)<self.min_samples:continue
+            bias=np.average(subset["error"],weights=subset["weight"]);self.corrections["cohort"][cohort]=float(bias)
+            logger.info(f"      {cohort}: N={len(subset)}, bias={bias:+.3f}%")
+    def _fit_global_correction(self,df):
+        logger.info("  [D] Global correction:")
+        bias=np.average(df["error"],weights=df["weight"]);self.corrections["global"]=float(bias)
+        logger.info(f"      All: N={len(df)}, bias={bias:+.3f}%")
+    def calibrate(self,raw_forecast,current_vix,cohort):
+        if not self.fitted:logger.warning("⚠️  Calibrator not fitted");return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"correction_type":"not_fitted","raw_forecast":raw_forecast}
+        regime=classify_vix_regime(current_vix,numeric=False);key_rc=f"{regime}_{cohort}"
+        if key_rc in self.corrections.get("regime_cohort",{}):adj=self.corrections["regime_cohort"][key_rc];ctype="regime_cohort"
+        elif regime in self.corrections.get("regime",{}):adj=self.corrections["regime"][regime];ctype="regime"
+        elif cohort in self.corrections.get("cohort",{}):adj=self.corrections["cohort"][cohort];ctype="cohort"
+        else:adj=self.corrections.get("global",0.0);ctype="global"
+        calibrated=raw_forecast+adj
+        return{"calibrated_forecast":calibrated,"adjustment":adj,"correction_type":ctype,"raw_forecast":raw_forecast}
+    def save(self,output_dir="models"):
+        if not self.fitted:logger.error("❌ Cannot save unfitted calibrator");return False
+        output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True);cal_file=output_path/"calibrator.pkl";data={"corrections":self.corrections,"window_days":self.window_days,"decay_lambda":self.decay_lambda,"min_samples":self.min_samples,"calibration_date":self.calibration_date.isoformat()if self.calibration_date else None,"fitted":self.fitted}
+        with open(cal_file,"wb")as f:pickle.dump(data,f)
+        logger.info(f"✅ Saved: {cal_file}")
+        diag_file=output_path/"calibrator_diagnostics.json";diag={"fitted":self.fitted,"calibration_date":self.calibration_date.isoformat()if self.calibration_date else None,"window_days":self.window_days,"decay_lambda":self.decay_lambda,"min_samples":self.min_samples,"corrections":self.corrections}
+        with open(diag_file,"w")as f:json.dump(diag,f,indent=2)
+        logger.info(f"✅ Saved: {diag_file}");return True
+    def load(self,input_dir="models"):
+        cal_file=Path(input_dir)/"calibrator.pkl"
+        if not cal_file.exists():logger.error(f"❌ Not found: {cal_file}");return False
+        with open(cal_file,"rb")as f:data=pickle.load(f)
+        self.corrections=data["corrections"];self.window_days=data["window_days"];self.decay_lambda=data["decay_lambda"];self.min_samples=data["min_samples"];self.calibration_date=pd.Timestamp(data["calibration_date"])if data["calibration_date"]else None;self.fitted=data["fitted"]
+        logger.info(f"✅ Loaded: {cal_file}");return True
     @classmethod
-    def load(cls,input_dir="models"):
-        calibrator=cls();return calibrator if calibrator.load_calibrator(input_dir)else None
+    def load_from_file(cls,input_dir="models"):
+        cal=cls()
+        return cal if cal.load(input_dir)else None

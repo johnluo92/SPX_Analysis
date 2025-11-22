@@ -13,13 +13,13 @@ logging.basicConfig(level=logging.INFO,format="%(asctime)s - %(name)s - %(leveln
 logger=logging.getLogger(__name__)
 def prepare_training_data():
     data_fetcher=UnifiedDataFetcher();feature_engineer=FeatureEngineer(data_fetcher)
+    logger.info(f"📅 Expanding window: training through {TRAINING_END_DATE}")
     result=feature_engineer.build_complete_features(years=TRAINING_YEARS,end_date=TRAINING_END_DATE)
     features_df=result["features"];spx=result["spx"];vix=result["vix"]
     complete_df=features_df.copy();complete_df["vix"]=vix;complete_df["spx"]=spx
-    if "calendar_cohort"not in complete_df.columns:raise ValueError("calendar_cohort column missing!")
+    if "calendar_cohort"not in complete_df.columns:raise ValueError("calendar_cohort missing!")
     cohort_counts=complete_df["calendar_cohort"].value_counts()
-    logger.info("  Cohort distribution:")
-    for cohort,count in cohort_counts.items():logger.info(f"  {cohort}: {count}")
+    logger.info("  Cohort distribution:");[logger.info(f"  {cohort}: {count}")for cohort,count in cohort_counts.items()]
     logger.info("  Data preparation complete\n")
     return complete_df,vix
 def run_feature_selection(features_df,vix):
@@ -32,12 +32,15 @@ def run_feature_selection(features_df,vix):
 def save_training_report(forecaster,selected_features,output_dir="models"):
     output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True)
     report_file=output_path/f"training_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    report={"timestamp":datetime.now().isoformat(),"system_version":"v5.0_magnitude_only","target_type":TARGET_CONFIG.get("target_type"),"feature_selection":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["top_n"],"selected_features":len(selected_features),"selected_feature_list":selected_features},"training_summary":{"models_trained":1,"model_types":["magnitude_regressor"],"features":len(forecaster.feature_names)},"metrics":forecaster.metrics}
+    report={"timestamp":datetime.now().isoformat(),"system_version":"v5.1_rolling_retrain","training_end_date":TRAINING_END_DATE,"target_type":TARGET_CONFIG.get("target_type"),"feature_selection":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["top_n"],"selected_features":len(selected_features),"selected_feature_list":selected_features},"training_summary":{"models_trained":1,"model_types":["magnitude_regressor"],"features":len(forecaster.feature_names)},"metrics":forecaster.metrics}
     with open(report_file,"w")as f:json.dump(report,f,indent=2,default=str)
     logger.info(f"Training report: {report_file}")
+    metadata_file=output_path/"training_metadata.json";metadata={"training_end_date":TRAINING_END_DATE,"timestamp":datetime.now().isoformat(),"feature_count":len(forecaster.feature_names),"test_mae":forecaster.metrics.get("magnitude",{}).get("test",{}).get("mae_pct",0)}
+    with open(metadata_file,"w")as f:json.dump(metadata,f,indent=2,default=str)
+    logger.info(f"Training metadata: {metadata_file}")
 def main():
     logger.info("SIMPLIFIED VIX FORECASTER - MAGNITUDE ONLY TRAINING PIPELINE")
-    logger.info(f"Version: 5.0 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"Version: 5.1 (Rolling Retrain) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     try:
         complete_df,vix=prepare_training_data()
         selected_features=run_feature_selection(complete_df,vix)
@@ -49,10 +52,11 @@ def main():
         logger.info(f"Final feature count: {len(kept_features)}")
         logger.info("="*80+"\n")
         logger.info("MODEL TRAINING")
-        forecaster=train_simplified_forecaster(df=complete_df,selected_features=kept_features,save_dir="models")
-        save_training_report(forecaster,kept_features,output_dir="models")
+        forecaster=train_simplified_forecaster(df=complete_df,selected_features=kept_features,save_dir="models_temp")
+        save_training_report(forecaster,kept_features,output_dir="models_temp")
         logger.info("TRAINING COMPLETE")
-        logger.info("Models: models/magnitude_5d_model.pkl")
+        logger.info("Models: models_temp/magnitude_5d_model.pkl")
+        logger.info(f"Training data through: {TRAINING_END_DATE}")
     except Exception as e:
         logger.error(f"\nTraining failed: {e}")
         import traceback
