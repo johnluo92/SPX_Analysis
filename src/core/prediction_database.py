@@ -51,7 +51,7 @@ class PredictionDatabase:
         if self._commit_tracker.pending_writes==0:return
         writes=self._commit_tracker.pending_writes
         try:
-            self.conn.commit();self._pending_keys.clear();cursor=self.conn.execute("SELECT COUNT(*) FROM forecasts");total=cursor.fetchone()[0];logger.info(f"✅ Committed {writes} predictions (total: {total})");self._commit_tracker.pending_writes=0;self._commit_tracker.writes_log=[];self._commit_tracker.last_commit_time=datetime.now()
+            self.conn.commit();self._pending_keys.clear();self._commit_tracker.pending_writes=0;self._commit_tracker.writes_log=[];self._commit_tracker.last_commit_time=datetime.now()
         except Exception as e:logger.error("="*80);logger.error("🚨 COMMIT FAILED!");logger.error("="*80);logger.error(f"   Error: {e}");logger.error(f"   Attempted: {writes}");logger.error("   Rolling back...");self.conn.rollback();self._commit_tracker.pending_writes=0;self._commit_tracker.writes_log=[];logger.error("="*80);raise RuntimeError(f"Commit failed: {e}")
     def get_commit_status(self):
         return{"pending_writes":self._commit_tracker.pending_writes,"last_commit":self._commit_tracker.last_commit_time.isoformat()if self._commit_tracker.last_commit_time else None,"recent_operations":self._commit_tracker.writes_log[-10:]}

@@ -34,7 +34,7 @@ class UnifiedDataFetcher:
                 if not cached_df.empty:combined=pd.concat([cached_df,new_data]);combined=combined[~combined.index.duplicated(keep="last")];return combined.sort_index()
         except Exception as e:self.logger.warning(f"Cache merge failed: {e}")
         return new_data
-    def _normalize_data(self,data,name):
+    def _normalize_data(self,data,name,min_rows=10):
         if data is None or(hasattr(data,"empty")and data.empty):return None
         if isinstance(data,pd.Series):data=pd.DataFrame(data)
         if not isinstance(data.index,pd.DatetimeIndex):
@@ -43,7 +43,7 @@ class UnifiedDataFetcher:
         if data.index.tz is not None:data.index=data.index.tz_localize(None)
         data.index=pd.DatetimeIndex(data.index.date)
         if data.index.duplicated().any():data=data[~data.index.duplicated(keep="last")]
-        return None if len(data)<10 else data
+        return None if len(data)<min_rows else data
     def _should_update_fred_series(self,series_id,last_date):
         last_dt=pd.to_datetime(last_date);now=datetime.now()
         if series_id in self.QUARTERLY_SERIES:
@@ -110,126 +110,82 @@ class UnifiedDataFetcher:
                 else:failed+=1
         total=len([item for subdict in self.FRED_SERIES_GROUPS.values()for item in subdict]);stalest_str=f" | Stalest: {stalest_info[0]} from {stalest_info[1]}"if stalest_info else"";self.logger.info(f"FRED: {updated}/{total} updated, {cached} cached, {failed} failed{stalest_str}")
         return all_series
-
-    def fetch_yahoo(self, symbol, start_date=None, end_date=None, incremental=True):
-        cache_path = self.cache_dir / f"yahoo_{symbol.replace('^', '').replace('=', '_')}.parquet"
-
-        if end_date:
-            end_dt = pd.to_datetime(end_date)
-            is_historical_request = end_dt < (datetime.now() - timedelta(days=7))
-        else:
-            end_dt = None
-            is_historical_request = False
-
+    def fetch_yahoo(self,symbol,start_date=None,end_date=None,incremental=True):
+        cache_path=self.cache_dir/f"yahoo_{symbol.replace('^','').replace('=','_')}.parquet"
+        if end_date:end_dt=pd.to_datetime(end_date);is_historical_request=end_dt<(datetime.now()-timedelta(days=7))
+        else:end_dt=None;is_historical_request=False
         if is_historical_request and cache_path.exists():
             try:
-                cached_df = pd.read_parquet(cache_path)
+                cached_df=pd.read_parquet(cache_path)
                 if not cached_df.empty:
-                    start_dt = pd.to_datetime(start_date) if start_date else cached_df.index[0]
-                    cache_start = cached_df.index[0]
-                    cache_end = cached_df.index[-1]
-                    cache_covers_range = (cache_start <= start_dt) and (cache_end >= end_dt)
-                    if cache_covers_range:
-                        filtered_df = cached_df[(cached_df.index >= start_dt) & (cached_df.index <= end_dt)]
+                    start_dt=pd.to_datetime(start_date)if start_date else cached_df.index[0]
+                    cache_start,cache_end=cached_df.index[0],cached_df.index[-1]
+                    if(cache_start<=start_dt)and(cache_end>=end_dt):
+                        filtered_df=cached_df[(cached_df.index>=start_dt)&(cached_df.index<=end_dt)]
                         return filtered_df if not filtered_df.empty else None
-            except Exception as e:
-                self.logger.warning(f"Yahoo:{symbol}: Cache read failed - {e}")
-
-        fetch_start = start_date or "2000-01-01"
-
-        if is_historical_request:
-            incremental = False
-
+            except Exception as e:self.logger.warning(f"Yahoo:{symbol}: Cache read failed - {e}")
+        fetch_start=start_date or"2000-01-01";is_incremental_fetch=False
+        if is_historical_request:incremental=False
         if incremental and cache_path.exists():
-            last_date = self._get_last_date_from_cache(cache_path)
+            last_date=self._get_last_date_from_cache(cache_path)
             if last_date:
-                last_dt = pd.to_datetime(last_date)
-                now = datetime.now()
-                business_days_diff = len(pd.bdate_range(last_dt, now)) - 1
-                cache_mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
-                hours_since_update = (now - cache_mtime).total_seconds() / 3600
-
-                if business_days_diff == 0 and hours_since_update < 1:
+                last_dt=pd.to_datetime(last_date);now=datetime.now()
+                business_days_diff=len(pd.bdate_range(last_dt,now))-1
+                cache_mtime=datetime.fromtimestamp(cache_path.stat().st_mtime)
+                hours_since_update=(now-cache_mtime).total_seconds()/3600
+                if business_days_diff==0 and hours_since_update<1:
                     try:
-                        cached_df = pd.read_parquet(cache_path)
-                        if not cached_df.empty:
-                            return cached_df
-                    except:
-                        pass
-                elif business_days_diff == 1 and now.hour < 16:
+                        cached_df=pd.read_parquet(cache_path)
+                        if not cached_df.empty:return cached_df
+                    except:pass
+                elif business_days_diff==1 and now.hour<16:
                     try:
-                        cached_df = pd.read_parquet(cache_path)
-                        if not cached_df.empty:
-                            return cached_df
-                    except:
-                        pass
-
-                fetch_start = (last_dt - timedelta(days=2)).strftime("%Y-%m-%d")
-
+                        cached_df=pd.read_parquet(cache_path)
+                        if not cached_df.empty:return cached_df
+                    except:pass
+                fetch_start=(last_dt-timedelta(days=2)).strftime("%Y-%m-%d");is_incremental_fetch=True
         try:
-            ticker = yf.Ticker(symbol)
-
-            # CRITICAL FIX: yfinance end dates are EXCLUSIVE - add 1 day to get data through end_date
-            if end_date:
-                fetch_end = (pd.Timestamp(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
-            else:
-                fetch_end = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d")
-
-            df = ticker.history(start=fetch_start, end=fetch_end, auto_adjust=True)
-
+            ticker=yf.Ticker(symbol)
+            if end_date:fetch_end=(pd.Timestamp(end_date)+timedelta(days=1)).strftime("%Y-%m-%d")
+            else:fetch_end=(datetime.now()+timedelta(days=2)).strftime("%Y-%m-%d")
+            df=ticker.history(start=fetch_start,end=fetch_end,auto_adjust=True)
             if df.empty:
                 if cache_path.exists():
                     try:
-                        cached_df = pd.read_parquet(cache_path)
+                        cached_df=pd.read_parquet(cache_path)
                         if not cached_df.empty:
-                            self.logger.warning(f"Yahoo:{symbol}: No new data available, using existing cache")
+                            if not is_incremental_fetch:self.logger.warning(f"Yahoo:{symbol}: No new data available, using existing cache")
                             return cached_df
-                    except:
-                        pass
-                self.logger.warning(f"Yahoo:{symbol}: No data returned")
-                return None
-
-            df = self._normalize_data(df, f"Yahoo:{symbol}")
-
+                    except:pass
+                self.logger.warning(f"Yahoo:{symbol}: No data returned");return None
+            min_rows=1 if is_incremental_fetch else 10
+            df=self._normalize_data(df,f"Yahoo:{symbol}",min_rows=min_rows)
             if df is None:
                 if cache_path.exists():
                     try:
-                        cached_df = pd.read_parquet(cache_path)
-                        self.logger.warning(f"Yahoo:{symbol}: Data processing issue, using existing cache")
+                        cached_df=pd.read_parquet(cache_path)
+                        if not is_incremental_fetch:self.logger.warning(f"Yahoo:{symbol}: Data processing issue, using existing cache")
                         return cached_df
-                    except:
-                        pass
-                self.logger.warning(f"Yahoo:{symbol}: Data normalization failed")
-                return None
-
-            if incremental and cache_path.exists():
-                df = self._merge_with_cache(df, cache_path)
-
+                    except:pass
+                self.logger.warning(f"Yahoo:{symbol}: Data normalization failed");return None
+            if incremental and cache_path.exists():df=self._merge_with_cache(df,cache_path)
             df.to_parquet(cache_path)
-
             if is_historical_request:
-                start_dt = pd.to_datetime(start_date) if start_date else df.index[0]
-                df = df[(df.index >= start_dt) & (df.index <= end_dt)]
-
+                start_dt=pd.to_datetime(start_date)if start_date else df.index[0]
+                df=df[(df.index>=start_dt)&(df.index<=end_dt)]
             return df
-
         except Exception as e:
             if cache_path.exists():
                 try:
-                    cached_df = pd.read_parquet(cache_path)
+                    cached_df=pd.read_parquet(cache_path)
                     if not cached_df.empty:
                         self.logger.warning(f"Yahoo:{symbol}: Fetch failed, using existing cache - {str(e)[:100]}")
                         if is_historical_request:
-                            start_dt = pd.to_datetime(start_date) if start_date else cached_df.index[0]
-                            cached_df = cached_df[(cached_df.index >= start_dt) & (cached_df.index <= end_dt)]
+                            start_dt=pd.to_datetime(start_date)if start_date else cached_df.index[0]
+                            cached_df=cached_df[(cached_df.index>=start_dt)&(cached_df.index<=end_dt)]
                         return cached_df
-                except:
-                    pass
-            self.logger.error(f"Yahoo:{symbol}: Fetch failed - {str(e)[:100]}")
-            return None
-
-
-
+                except:pass
+            self.logger.error(f"Yahoo:{symbol}: Fetch failed - {str(e)[:100]}");return None
     def fetch_price(self,symbol):
         try:
             ticker=yf.Ticker(symbol);data=ticker.history(period="1d")

@@ -28,7 +28,17 @@ def retrain_model():
     except Exception as e:logger.error(f"❌ Retraining failed: {e}");return False
 class VIXForecaster:
     def __init__(self):
-        self.data_fetcher=UnifiedDataFetcher();self.feature_engine=UnifiedFeatureEngine(data_fetcher=self.data_fetcher);self.forecaster=SimplifiedVIXForecaster();self.calibrator=ForecastCalibrator();self.validator=TemporalValidator();self.db=PredictionDatabase();self._feature_cache=None;self._feature_cache_date=None;self._load_models()
+        self.data_fetcher = UnifiedDataFetcher()
+        self.feature_engine = UnifiedFeatureEngine(data_fetcher=self.data_fetcher)
+        self.forecaster = SimplifiedVIXForecaster()
+        self.calibrator = ForecastCalibrator()
+        self.validator = TemporalValidator()
+        self.db = PredictionDatabase()
+        # Enhanced caching: store end_date and allow superset reuse
+        self._feature_cache = None
+        self._feature_cache_end_date = None
+        self._feature_cache_force_historical = None
+        self._load_models()
     def _load_models(self):
         magnitude_file=Path("models/magnitude_5d_model.pkl")
         if not magnitude_file.exists():logger.error("❌ No model found - run train_probabilistic_models.py first");return False
@@ -37,35 +47,68 @@ class VIXForecaster:
         else:logger.warning("⚠️  No calibrator found - will bootstrap")
         return True
     def get_features(self,end_date,force_historical=False):
-        cache_key=(end_date,force_historical)
-        if self._feature_cache is not None and self._feature_cache_date==cache_key:return self._feature_cache
-        feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=end_date,force_historical=force_historical);self._feature_cache=feature_data;self._feature_cache_date=cache_key;return feature_data
+        end_ts=pd.Timestamp(end_date)
+        if self._feature_cache is not None:
+            cache_end_ts=pd.Timestamp(self._feature_cache_end_date)
+            if self._feature_cache_end_date==end_date and self._feature_cache_force_historical==force_historical:
+                return self._feature_cache
+            if cache_end_ts>=end_ts:
+                cached_df=self._feature_cache["features"]
+                if end_ts<=cached_df.index[-1]:
+                    filtered_features=cached_df[cached_df.index<=end_ts]
+                    return {"features":filtered_features,"spx":self._feature_cache["spx"][self._feature_cache["spx"].index<=end_ts],"vix":self._feature_cache["vix"][self._feature_cache["vix"].index<=end_ts],"cboe_data":self._feature_cache.get("cboe_data"),"vvix":self._feature_cache.get("vvix")}
+        feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=end_date,force_historical=force_historical)
+        self._feature_cache=feature_data;self._feature_cache_end_date=end_date;self._feature_cache_force_historical=force_historical
+        return feature_data
     def needs_calibration_bootstrap(self):
         if self.calibrator.fitted:return False
         df=self.db.get_predictions(with_actuals=True)
         if len(df)>=MIN_SAMPLES_FOR_CORRECTION:return False
         return True
     def bootstrap_calibration(self):
-        logger.info("🚀 BOOTSTRAPPING CALIBRATION DATA");cal_end=get_last_complete_month_end();cal_end_ts=pd.Timestamp(cal_end);cal_start_ts=cal_end_ts-pd.DateOffset(years=1);cal_start=cal_start_ts.strftime("%Y-%m-%d");logger.info(f"Calibration period: {cal_start} → {cal_end}");feature_data=self.get_features(cal_end,force_historical=True);df=feature_data["features"];df=df[(df.index>=cal_start_ts)&(df.index<=cal_end_ts)];logger.info(f"Generating predictions for {len(df)} trading days...");generated=0;skipped=0
+        logger.info("🚀 BOOTSTRAPPING CALIBRATION DATA")
+        cal_end=get_last_complete_month_end();cal_end_ts=pd.Timestamp(cal_end)
+        cal_start_ts=cal_end_ts-pd.DateOffset(years=1);cal_start=cal_start_ts.strftime("%Y-%m-%d")
+        logger.info(f"Calibration period: {cal_start} → {cal_end}")
+        yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        feature_data=self.get_features(yesterday,force_historical=False)
+        df=feature_data["features"]
+        df=df[(df.index>=cal_start_ts)&(df.index<=cal_end_ts)]
+        logger.info(f"Generating predictions for {len(df)} trading days...")
+        generated=0;skipped=0
         for date in df.index:
-            forecast_date=date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"]);forecast_date_str=forecast_date.strftime("%Y-%m-%d");existing=self.db.get_predictions(start_date=forecast_date_str,end_date=forecast_date_str)
+            forecast_date=date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+            forecast_date_str=forecast_date.strftime("%Y-%m-%d")
+            existing=self.db.get_predictions(start_date=forecast_date_str,end_date=forecast_date_str)
             if len(existing)>0:skipped+=1;continue
             try:
-                forecast=self._generate_forecast_from_df(date,df,calibrated=False)
+                forecast=self._generate_forecast_from_df(date,feature_data["features"],calibrated=False)
                 if forecast:generated+=1
                 if generated%50==0:logger.info(f"  Progress: {generated} predictions...")
             except Exception as e:continue
-        self.db.commit();logger.info(f"✅ Bootstrap: {generated} generated, {skipped} skipped");return generated
+        self.db.commit()
+        logger.info(f"✅ Bootstrap: {generated} generated, {skipped} skipped")
+        return generated
     def generate_november_forecasts(self):
-        logger.info("📅 GENERATING NOVEMBER 2025 FORECASTS");nov_start="2025-11-01";yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d");feature_data=self.get_features(yesterday,force_historical=False);df=feature_data["features"];nov_start_ts=pd.Timestamp(nov_start);df=df[df.index>=nov_start_ts];logger.info(f"November period: {nov_start} → {yesterday} ({len(df)} days)");generated=0;skipped=0
+        logger.info("📅 GENERATING NOVEMBER 2025 FORECASTS")
+        nov_start="2025-11-01";yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        feature_data=self.get_features(yesterday,force_historical=False)
+        df=feature_data["features"];nov_start_ts=pd.Timestamp(nov_start)
+        df=df[df.index>=nov_start_ts]
+        logger.info(f"November period: {nov_start} → {yesterday} ({len(df)} days)")
+        generated=0;skipped=0
         for date in df.index:
-            forecast_date=date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"]);forecast_date_str=forecast_date.strftime("%Y-%m-%d");existing=self.db.get_predictions(start_date=forecast_date_str,end_date=forecast_date_str)
+            forecast_date=date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
+            forecast_date_str=forecast_date.strftime("%Y-%m-%d")
+            existing=self.db.get_predictions(start_date=forecast_date_str,end_date=forecast_date_str)
             if len(existing)>0:skipped+=1;continue
             try:
-                forecast=self._generate_forecast_from_df(date,df,calibrated=self.calibrator.fitted)
+                forecast=self._generate_forecast_from_df(date,feature_data["features"],calibrated=self.calibrator.fitted)
                 if forecast:generated+=1
             except Exception:continue
-        self.db.commit();logger.info(f"✅ November: {generated} generated, {skipped} skipped");return generated
+        self.db.commit()
+        logger.info(f"✅ November: {generated} generated, {skipped} skipped")
+        return generated
     def _generate_forecast_from_df(self,date,df,calibrated=False):
         if date not in df.index:return None
         obs=df.loc[date];missing=[f for f in self.forecaster.feature_names if f not in df.columns]
