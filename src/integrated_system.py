@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse,json,logging,sys
 from datetime import datetime
 from pathlib import Path
@@ -23,55 +22,45 @@ def check_model_stale():
     if model_end<target_end:return True,f"Model trained through {model_end}, target {target_end}"
     return False,f"Model current (trained through {model_end})"
 def retrain_model():
-    logger.info("="*80);logger.info("RETRAINING MODEL");logger.info("="*80)
+    logger.info("\n🔄 RETRAINING MODEL")
     from train_probabilistic_models import main as train_main
     try:
-        train_main();logger.info("✅ Retraining complete\n");return True
+        train_main();logger.info("✅ Retraining complete");return True
     except Exception as e:
         logger.error(f"❌ Retraining failed: {e}");return False
+def backfill_predictions(db):
+    logger.info("\n📊 BACKFILLING ACTUALS")
+    fetcher=UnifiedDataFetcher()
+    db.backfill_actuals(fetcher)
 def fit_calibrator(db):
-    logger.info("="*80);logger.info("FITTING CALIBRATOR");logger.info("="*80)
-    cal=ForecastCalibrator();cal.fit_from_database(db);cal.save("models")
-    logger.info("✅ Calibrator saved\n");return cal
+    logger.info("\n📊 FITTING CALIBRATOR")
+    cal=ForecastCalibrator();result=cal.fit_from_database(db)
+    if result:cal.save("models");logger.info("✅ Calibrator fitted");return cal
+    else:logger.warning("⚠️  Calibrator not fitted");return None
 class VIXForecaster:
     def __init__(self):
         self.data_fetcher=UnifiedDataFetcher();self.feature_engine=UnifiedFeatureEngine(data_fetcher=self.data_fetcher);self.forecaster=SimplifiedVIXForecaster();self.calibrator=ForecastCalibrator();self.validator=TemporalValidator();self.db=PredictionDatabase();self._load_models()
     def _load_models(self):
-        logger.info("📂 Loading models...")
         magnitude_file=Path("models/magnitude_5d_model.pkl")
-        if not magnitude_file.exists():logger.error("❌ No model. Will retrain.");return False
+        if not magnitude_file.exists():logger.error("❌ No model found");return False
         self.forecaster.load("models")
-        logger.info(f"📊 Magnitude model: {len(self.forecaster.feature_names)} features")
         cal_file=Path("models/calibrator.pkl")
-        if cal_file.exists():
-            self.calibrator.load("models");logger.info("📊 Calibrator loaded")
-        else:logger.warning("⚠️  No calibrator")
+        if cal_file.exists():self.calibrator.load("models");logger.info("✅ Calibrator loaded")
+        else:logger.warning("⚠️  No calibrator found")
         return True
-    def generate_forecast(self,date=None):
-        logger.info("="*80);logger.info("GENERATING FORECAST");logger.info("="*80)
-        if date:
-            target_date=pd.Timestamp(date);logger.info(f"📅 Forecast date: {target_date.date()}")
-            feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=target_date.strftime("%Y-%m-%d"),force_historical=True)
-        else:
-            now=pd.Timestamp.now().normalize()
-            feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=now.strftime("%Y-%m-%d"),force_historical=True)
-            target_date=feature_data["features"].index[-1]
-            logger.info(f"📅 Using latest available: {target_date.date()}")
-        df=feature_data["features"];metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols]
+    def generate_forecast(self,date,use_live_data=True):
+        target_date=pd.Timestamp(date)
+        # For production forecasts, use live data. For backtesting, use historical.
+        feature_data=self.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=date,force_historical=not use_live_data)
+        df=feature_data["features"]
+        if target_date not in df.index:logger.error(f"❌ {date} not in data");return None
+        metadata_cols=["calendar_cohort","cohort_weight","feature_quality"];numeric_cols=[c for c in df.columns if c not in metadata_cols]
         for col in numeric_cols:
             if df[col].dtype==object:df[col]=pd.to_numeric(df[col],errors="coerce").fillna(0.0)
             df[col]=df[col].astype(np.float64)
-        if target_date not in df.index:
-            available=df.index[-5:]
-            logger.error(f"❌ Date {target_date.date()} not available")
-            logger.error(f"   Last 5 dates: {[d.date()for d in available]}")
-            return None
         obs=df.loc[target_date];feature_dict=obs.to_dict();quality=self.validator.compute_feature_quality(feature_dict,target_date);usable,msg=self.validator.check_quality_threshold(quality)
-        logger.info(f"📊 Data quality: {quality:.2f} - {msg}")
-        if not usable:
-            logger.error("❌ Quality insufficient");return None
+        if not usable:logger.error(f"❌ Quality insufficient: {quality:.2f}");return None
         cohort=obs.get("calendar_cohort","mid_cycle");cohort_weight=obs.get("cohort_weight",1.0)
-        logger.info(f"📅 Cohort: {cohort} (weight: {cohort_weight:.2f})")
         feature_vals=obs[self.forecaster.feature_names];feature_arr=pd.to_numeric(feature_vals,errors="coerce").values;X=pd.DataFrame(feature_arr.reshape(1,-1),columns=self.forecaster.feature_names,dtype=np.float64).fillna(0.0);current_vix=float(obs["vix"])
         forecast=self.forecaster.predict(X,current_vix)
         if self.calibrator.fitted:
@@ -79,18 +68,8 @@ class VIXForecaster:
         else:forecast["calibration"]={"correction_type":"not_fitted","adjustment":0.0}
         forecast_date=target_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
         forecast["metadata"]={"observation_date":target_date.strftime("%Y-%m-%d"),"forecast_date":forecast_date.strftime("%Y-%m-%d"),"horizon_days":TARGET_CONFIG["horizon_days"],"feature_quality":float(quality),"cohort_weight":float(cohort_weight),"calendar_cohort":cohort,"features_used":len(self.forecaster.feature_names)}
-        self._log_forecast(forecast);self._store_forecast(forecast,obs,target_date)
-        logger.info("="*80+"\n");return forecast
-    def _log_forecast(self,f):
-        logger.info(f"\n5-Day VIX Forecast")
-        logger.info(f"Current VIX: {f['current_vix']:.2f}")
-        logger.info(f"Direction: {f['direction']} (confidence: {f['confidence']:.1f}%)")
-        logger.info(f"Magnitude: {f['magnitude_pct']:+.2f}%")
-        logger.info(f"Expected VIX: {f['expected_vix']:.2f}")
-        if "calibration"in f:
-            cal=f["calibration"];logger.info(f"Calibration: {cal.get('adjustment',0):+.3f}% ({cal.get('correction_type','none')})")
-        logger.info(f"Regime: {f['current_regime']} → {f['expected_regime']}")
-        logger.info(f"Actionable: {'YES'if f['actionable']else'NO'}")
+        self._store_forecast(forecast,obs,target_date)
+        return forecast
     def _store_forecast(self,forecast,obs,obs_date):
         forecast_date=obs_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"]);pred_id=f"pred_{forecast_date.strftime('%Y%m%d')}_h{TARGET_CONFIG['horizon_days']}"
         conf_pct=abs(forecast["magnitude_pct"]);scale=min(conf_pct/20.0,1.0)
@@ -99,35 +78,40 @@ class VIXForecaster:
         prob_down=1.0-prob_up;correction_type=forecast.get("calibration",{}).get("correction_type","none")
         pred={"prediction_id":pred_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":obs_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(obs["vix"]),"calendar_cohort":obs["calendar_cohort"],"cohort_weight":float(obs.get("cohort_weight",1.0)),"prob_up":float(prob_up),"prob_down":float(prob_down),"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast["metadata"]["feature_quality"]),"num_features_used":len(self.forecaster.feature_names),"correction_type":correction_type,"features_used":(",".join(self.forecaster.feature_names[:10])),"model_version":"v5.1_unified"}
         self.db.store_prediction(pred);self.db.commit()
-        logger.info(f"💾 Stored: {pred_id}")
 def main():
-    parser=argparse.ArgumentParser(description="VIX Forecasting System - Unified Interface")
-    parser.add_argument("--force-retrain",action="store_true",help="Force retraining even if model current")
-    parser.add_argument("--date",type=str,help="Specific forecast date (YYYY-MM-DD)")
-    parser.add_argument("--skip-retrain-check",action="store_true",help="Skip model staleness check")
+    parser=argparse.ArgumentParser(description="VIX Forecasting System")
+    parser.add_argument("--force-retrain",action="store_true")
+    parser.add_argument("--rebuild-calibration",action="store_true")
     args=parser.parse_args()
     Path("logs").mkdir(exist_ok=True);Path("models").mkdir(exist_ok=True)
-    logger.info("\n"+"="*80)
-    logger.info("VIX FORECASTING SYSTEM v5.1")
-    logger.info("="*80)
-    logger.info(f"Execution: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-    if not args.skip_retrain_check or args.force_retrain:
-        stale,reason=check_model_stale()
-        logger.info(f"Model status: {reason}")
-        if stale or args.force_retrain:
-            if args.force_retrain:logger.info("🔄 Force retrain requested")
-            if not retrain_model():logger.error("❌ Retrain failed");sys.exit(1)
-        else:logger.info("✓ Model current, skipping retrain\n")
+    logger.info(f"VIX FORECASTING SYSTEM v5.1 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    stale,reason=check_model_stale()
+    logger.info(f"Model: {reason}")
+    if stale or args.force_retrain:
+        if not retrain_model():sys.exit(1)
     db=PredictionDatabase();forecaster=VIXForecaster()
-    if not Path("models/calibrator.pkl").exists():
-        logger.info("📊 Calibrator missing, fitting...")
-        fit_calibrator(db)
-        forecaster.calibrator.load("models")
-    forecast=forecaster.generate_forecast(date=args.date)
+    if not Path("models/calibrator.pkl").exists() or args.rebuild_calibration:
+        logger.info("\n📊 FITTING CALIBRATOR FROM DATABASE")
+        backfill_predictions(db)
+        cal=fit_calibrator(db)
+        if cal:
+            forecaster.calibrator=cal
+        else:
+            logger.warning("⚠️  Proceeding without calibration")
+
+    logger.info("\n📊 TODAY'S FORECAST")
+    # Detect latest available trading day instead of blindly using yesterday
+    yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    feature_data=forecaster.feature_engine.build_complete_features(years=TRAINING_YEARS,end_date=yesterday,force_historical=False)
+    df=feature_data["features"]
+    latest_available=df.index[-1].strftime("%Y-%m-%d")
+    logger.info(f"Latest available data: {latest_available}")
+
+    forecast=forecaster.generate_forecast(latest_available,use_live_data=True)
     if forecast:
-        logger.info("✅ Forecast complete")
+        logger.info(f"Current: {forecast['current_vix']:.2f} | {forecast['direction']} {forecast['magnitude_pct']:+.2f}% | Expected: {forecast['expected_vix']:.2f}")
+        if forecast['calibration']['correction_type']!='not_fitted':logger.info(f"Calibration: {forecast['calibration']['adjustment']:+.3f}% ({forecast['calibration']['correction_type']})")
+        logger.info(f"Regime: {forecast['current_regime']} → {forecast['expected_regime']} | Actionable: {'YES' if forecast['actionable'] else 'NO'}")
         sys.exit(0)
-    else:
-        logger.error("❌ Forecast failed")
-        sys.exit(1)
+    else:sys.exit(1)
 if __name__=="__main__":main()
