@@ -13,17 +13,17 @@ class ForecastCalibrator:
     def fit_from_database(self,database):
         logger.info("="*80);logger.info("FORECAST CALIBRATION");logger.info("="*80);logger.info("\n[1/5] Loading predictions with actuals...")
         df=database.get_predictions(with_actuals=True)
-        if len(df)==0:logger.error("❌ No predictions with actuals");return False
+        if len(df)==0:logger.warning("⚠️  No predictions with actuals - calibrator will be pass-through");return False
         df["forecast_date"]=pd.to_datetime(df["forecast_date"]);df=df.sort_values("forecast_date")
         logger.info(f"  Total predictions: {len(df)}")
         logger.info(f"  Date range: {df['forecast_date'].min().date()} to {df['forecast_date'].max().date()}")
         logger.info("\n[2/5] Applying 252 trading day window...")
         latest_date=df["forecast_date"].max();trading_days=pd.bdate_range(end=latest_date,periods=self.window_days)
-        if len(trading_days)==0:logger.error("❌ No trading days in window");return False
+        if len(trading_days)==0:logger.warning("⚠️  No trading days in window - calibrator will be pass-through");return False
         window_start=trading_days[0];df=df[df["forecast_date"]>=window_start];self.calibration_date=latest_date
         logger.info(f"  Window: {window_start.date()} to {latest_date.date()}")
         logger.info(f"  Predictions in window: {len(df)}")
-        if len(df)<self.min_samples:logger.warning(f"⚠️  Only {len(df)} samples (need {self.min_samples})");return False
+        if len(df)<self.min_samples:logger.warning(f"⚠️  Only {len(df)} samples (need {self.min_samples}) - calibrator will be pass-through");return False
         logger.info("\n[3/5] Computing exponential weights...")
         df["months_ago"]=((latest_date-df["forecast_date"]).dt.days/30.0)
         df["weight"]=np.exp(-self.decay_lambda*df["months_ago"])
@@ -69,7 +69,7 @@ class ForecastCalibrator:
         bias=np.average(df["error"],weights=df["weight"]);self.corrections["global"]=float(bias)
         logger.info(f"      All: N={len(df)}, bias={bias:+.3f}%")
     def calibrate(self,raw_forecast,current_vix,cohort):
-        if not self.fitted:logger.warning("⚠️  Calibrator not fitted");return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"correction_type":"not_fitted","raw_forecast":raw_forecast}
+        if not self.fitted:return{"calibrated_forecast":raw_forecast,"adjustment":0.0,"correction_type":"not_fitted","raw_forecast":raw_forecast}
         regime=classify_vix_regime(current_vix,numeric=False);key_rc=f"{regime}_{cohort}"
         if key_rc in self.corrections.get("regime_cohort",{}):adj=self.corrections["regime_cohort"][key_rc];ctype="regime_cohort"
         elif regime in self.corrections.get("regime",{}):adj=self.corrections["regime"][regime];ctype="regime"
@@ -78,8 +78,9 @@ class ForecastCalibrator:
         calibrated=raw_forecast+adj
         return{"calibrated_forecast":calibrated,"adjustment":adj,"correction_type":ctype,"raw_forecast":raw_forecast}
     def save(self,output_dir="models"):
-        if not self.fitted:logger.error("❌ Cannot save unfitted calibrator");return False
-        output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True);cal_file=output_path/"calibrator.pkl";data={"corrections":self.corrections,"window_days":self.window_days,"decay_lambda":self.decay_lambda,"min_samples":self.min_samples,"calibration_date":self.calibration_date.isoformat()if self.calibration_date else None,"fitted":self.fitted}
+        output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True);cal_file=output_path/"calibrator.pkl"
+        if not self.fitted:logger.warning("⚠️  Saving unfitted calibrator (pass-through mode)")
+        data={"corrections":self.corrections,"window_days":self.window_days,"decay_lambda":self.decay_lambda,"min_samples":self.min_samples,"calibration_date":self.calibration_date.isoformat()if self.calibration_date else None,"fitted":self.fitted}
         with open(cal_file,"wb")as f:pickle.dump(data,f)
         logger.info(f"✅ Saved: {cal_file}")
         diag_file=output_path/"calibrator_diagnostics.json";diag={"fitted":self.fitted,"calibration_date":self.calibration_date.isoformat()if self.calibration_date else None,"window_days":self.window_days,"decay_lambda":self.decay_lambda,"min_samples":self.min_samples,"corrections":self.corrections}

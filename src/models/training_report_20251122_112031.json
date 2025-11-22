@@ -1,7 +1,7 @@
 {
-  "timestamp": "2025-11-22T10:32:21.558951",
-  "system_version": "v5.1_rolling_retrain",
-  "training_end_date": "2025-10-31",
+  "timestamp": "2025-11-22T11:20:31.409322",
+  "system_version": "v5.1_unified",
+  "training_end": "2025-10-31",
   "target_type": "log_vix_change",
   "feature_selection": {
     "enabled": true,

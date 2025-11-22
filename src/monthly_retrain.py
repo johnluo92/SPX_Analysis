@@ -7,6 +7,9 @@ logging.basicConfig(level=logging.INFO,format="%(asctime)s - %(name)s - %(leveln
 logger=logging.getLogger(__name__)
 def is_first_business_day_of_month():
     today=datetime.now();first_of_month=today.replace(day=1);bus_days=pd.bdate_range(start=first_of_month,end=today);return len(bus_days)==1
+def check_bootstrap_needed():
+    models_prod=Path("models");magnitude_file=models_prod/"magnitude_5d_model.pkl";calibrator_file=models_prod/"calibrator.pkl"
+    return not(magnitude_file.exists()and calibrator_file.exists())
 def run_training():
     logger.info("="*80);logger.info("STEP 1: TRAINING NEW MODEL");logger.info("="*80)
     result=subprocess.run([sys.executable,"train_probabilistic_models.py"],capture_output=True,text=True)
@@ -17,8 +20,8 @@ def run_calibration():
     logger.info("="*80);logger.info("STEP 2: CALIBRATING NEW MODEL");logger.info("="*80)
     from core.prediction_database import PredictionDatabase
     from core.forecast_calibrator import ForecastCalibrator
-    db=PredictionDatabase();cal=ForecastCalibrator()
-    if not cal.fit_from_database(db):logger.error("❌ Calibration failed");return False
+    db=PredictionDatabase();cal=ForecastCalibrator();success=cal.fit_from_database(db)
+    if not success:logger.warning("⚠️  Calibration skipped (no data) - using pass-through mode")
     cal.save("models_temp")
     logger.info("✅ Calibration complete\n");return True
 def validate_new_model():
@@ -46,6 +49,17 @@ def deploy_new_model():
         logger.info("Removing old calibrator file")
         old_cal.unlink()
     logger.info("✅ Deployment complete\n");return True
+def bootstrap_deploy():
+    logger.info("="*80);logger.info("BOOTSTRAP DEPLOYMENT");logger.info("="*80)
+    logger.info("First-time setup detected - deploying without validation")
+    models_temp=Path("models_temp");models_prod=Path("models")
+    if not models_temp.exists():logger.error("❌ Temp models not found");return False
+    if models_prod.exists():
+        logger.warning("⚠️  Production models exist, aborting bootstrap")
+        return False
+    logger.info("Moving new model to production...")
+    shutil.move(str(models_temp),str(models_prod))
+    logger.info("✅ Bootstrap deployment complete\n");return True
 def cleanup():
     logger.info("="*80);logger.info("STEP 5: CLEANUP");logger.info("="*80)
     temp_dir=Path("models_temp")
@@ -65,19 +79,35 @@ def main():
     logger.info("MONTHLY RETRAINING ORCHESTRATOR")
     logger.info("="*80)
     logger.info(f"Execution time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-    if not is_first_business_day_of_month():logger.info("Not first business day of month. Exiting.");logger.info("This script should run on first business day after market close.");sys.exit(0)
-    logger.info("✓ First business day of month confirmed\n")
+    bootstrap_mode=check_bootstrap_needed()
+    if bootstrap_mode:
+        logger.info("🔧 BOOTSTRAP MODE: First-time setup detected")
+        logger.info("Will deploy without validation (no predictions exist yet)\n")
+    elif not is_first_business_day_of_month():
+        logger.info("Not first business day of month. Exiting.")
+        logger.info("This script should run on first business day after market close.")
+        sys.exit(0)
+    else:logger.info("✓ First business day of month confirmed\n")
     try:
         if not run_training():send_alert("Training failed. Old model remains in production.",success=False);sys.exit(1)
         if not run_calibration():send_alert("Calibration failed. Old model remains in production.",success=False);sys.exit(1)
-        if not validate_new_model():send_alert("Validation failed: Test MAE exceeds threshold. Old model remains in production. INVESTIGATE BEFORE DEPLOYING.",success=False);sys.exit(1)
-        if not deploy_new_model():send_alert("Deployment failed. Old model may be in inconsistent state. CHECK MANUALLY.",success=False);sys.exit(1)
-        cleanup()
-        send_alert(f"New model deployed successfully on {datetime.now().strftime('%Y-%m-%d')}",success=True)
-        logger.info("\nNext steps:")
-        logger.info("1. Monitor production forecasts for next 5 days")
-        logger.info("2. Compare MAE to previous month")
-        logger.info("3. Run: python integrated_system_production.py --mode forecast")
+        if bootstrap_mode:
+            logger.info("🔧 Skipping validation (bootstrap mode)")
+            if not bootstrap_deploy():send_alert("Bootstrap deployment failed.",success=False);sys.exit(1)
+            send_alert(f"Bootstrap deployment successful on {datetime.now().strftime('%Y-%m-%d')}. Run production forecasts to build calibration data.",success=True)
+            logger.info("\nNext steps:")
+            logger.info("1. Run: python integrated_system_production.py --mode forecast")
+            logger.info("2. Accumulate 252+ predictions with actuals")
+            logger.info("3. Future monthly retrains will include calibration")
+        else:
+            if not validate_new_model():send_alert("Validation failed: Test MAE exceeds threshold. Old model remains in production. INVESTIGATE BEFORE DEPLOYING.",success=False);sys.exit(1)
+            if not deploy_new_model():send_alert("Deployment failed. Old model may be in inconsistent state. CHECK MANUALLY.",success=False);sys.exit(1)
+            cleanup()
+            send_alert(f"New model deployed successfully on {datetime.now().strftime('%Y-%m-%d')}",success=True)
+            logger.info("\nNext steps:")
+            logger.info("1. Monitor production forecasts for next 5 days")
+            logger.info("2. Compare MAE to previous month")
+            logger.info("3. Run: python integrated_system_production.py --mode forecast")
         sys.exit(0)
     except Exception as e:
         logger.error(f"❌ Unexpected error: {e}",exc_info=True)
