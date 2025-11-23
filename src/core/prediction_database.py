@@ -19,7 +19,7 @@ class PredictionDatabase:
     def _create_schema(self):
         cursor=self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='forecasts'");table_exists=cursor.fetchone()is not None
         if not table_exists:
-            create_sql="""CREATE TABLE forecasts (prediction_id TEXT PRIMARY KEY,timestamp DATETIME NOT NULL,observation_date DATE NOT NULL,forecast_date DATE NOT NULL,horizon INTEGER NOT NULL,calendar_cohort TEXT,cohort_weight REAL,prob_up REAL,prob_down REAL,magnitude_forecast REAL,expected_vix REAL,feature_quality REAL,num_features_used INTEGER,current_vix REAL,actual_vix_change REAL,actual_direction INTEGER,direction_correct INTEGER,magnitude_error REAL,correction_type TEXT,features_used TEXT,model_version TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP,UNIQUE(forecast_date,horizon))"""
+            create_sql="""CREATE TABLE forecasts (prediction_id TEXT PRIMARY KEY,timestamp DATETIME NOT NULL,observation_date DATE NOT NULL,forecast_date DATE NOT NULL,horizon INTEGER NOT NULL,calendar_cohort TEXT,cohort_weight REAL,prob_up REAL,prob_down REAL,magnitude_forecast REAL,expected_vix REAL,feature_quality REAL,num_features_used INTEGER,current_vix REAL,actual_vix_change REAL,actual_direction INTEGER,direction_correct INTEGER,magnitude_error REAL,correction_type TEXT,features_used TEXT,model_version TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP,direction_probability REAL,direction_prediction TEXT,UNIQUE(forecast_date,horizon))"""
             self.conn.execute(create_sql);self.conn.commit();logger.info("✅ Database schema created")
         indexes=["CREATE INDEX IF NOT EXISTS idx_observation_date ON forecasts(observation_date)","CREATE INDEX IF NOT EXISTS idx_forecast_date ON forecasts(forecast_date)","CREATE INDEX IF NOT EXISTS idx_cohort ON forecasts(calendar_cohort)","CREATE INDEX IF NOT EXISTS idx_has_actual ON forecasts(actual_vix_change) WHERE actual_vix_change IS NOT NULL","CREATE INDEX IF NOT EXISTS idx_created_at ON forecasts(created_at)","CREATE INDEX IF NOT EXISTS idx_correction_type ON forecasts(correction_type)"]
         for index_sql in indexes:
@@ -28,10 +28,16 @@ class PredictionDatabase:
         self.conn.commit()
     def _migrate_schema(self):
         cursor=self.conn.execute("PRAGMA table_info(forecasts)");cols={row[1]for row in cursor.fetchall()}
-        if "correction_type"not in cols:
-            logger.info("Migrating database: adding correction_type column")
-            try:self.conn.execute("ALTER TABLE forecasts ADD COLUMN correction_type TEXT");self.conn.commit();logger.info("✅ Migration complete")
-            except sqlite3.OperationalError as e:logger.warning(f"Migration already applied: {e}")
+        migrations_needed=[]
+        if "correction_type"not in cols:migrations_needed.append(("correction_type","ALTER TABLE forecasts ADD COLUMN correction_type TEXT"))
+        if "direction_probability"not in cols:migrations_needed.append(("direction_probability","ALTER TABLE forecasts ADD COLUMN direction_probability REAL"))
+        if "direction_prediction"not in cols:migrations_needed.append(("direction_prediction","ALTER TABLE forecasts ADD COLUMN direction_prediction TEXT"))
+        if migrations_needed:
+            logger.info(f"Migrating database: adding {len(migrations_needed)} columns")
+            for col_name,sql in migrations_needed:
+                try:self.conn.execute(sql);logger.info(f"  Added: {col_name}")
+                except sqlite3.OperationalError as e:logger.warning(f"  Already exists: {col_name}")
+            self.conn.commit();logger.info("✅ Migration complete")
     def store_prediction(self,record):
         record=record.copy()
         for key in["timestamp","observation_date","forecast_date","created_at"]:
@@ -71,11 +77,11 @@ class PredictionDatabase:
         if fetcher is None:
             from core.data_fetcher import UnifiedDataFetcher
             fetcher=UnifiedDataFetcher()
-        vix_data=fetcher.fetch_yahoo("^VIX",start_date="2009-01-01")["Close"];vix_dates=set(vix_data.index.strftime("%Y-%m-%d"));query="SELECT prediction_id,forecast_date,horizon,current_vix,prob_up,magnitude_forecast FROM forecasts WHERE actual_vix_change IS NULL";cursor=self.conn.cursor();cursor.execute(query);rows=cursor.fetchall()
+        vix_data=fetcher.fetch_yahoo("^VIX",start_date="2009-01-01")["Close"];vix_dates=set(vix_data.index.strftime("%Y-%m-%d"));query="SELECT prediction_id,forecast_date,horizon,current_vix,direction_probability,direction_prediction,magnitude_forecast FROM forecasts WHERE actual_vix_change IS NULL";cursor=self.conn.cursor();cursor.execute(query);rows=cursor.fetchall()
         if len(rows)==0:logger.debug("No predictions need backfilling");return
         updated=0;skipped=0
         for row in rows:
-            pred_id,forecast_date,horizon,current_vix,prob_up,magnitude_forecast=row
+            pred_id=row[0];forecast_date=row[1];horizon=row[2];current_vix=row[3];direction_probability=row[4]if len(row)>4 else None;direction_prediction=row[5]if len(row)>5 else None;magnitude_forecast=row[6]if len(row)>6 else row[4]
             try:target_date_attempt=pd.bdate_range(start=pd.Timestamp(forecast_date),periods=horizon+1)[-1]
             except Exception as e:logger.warning(f"   Business day calc failed for {forecast_date}: {e}");skipped+=1;continue
             found_date=None
@@ -83,14 +89,19 @@ class PredictionDatabase:
                 check_date=(target_date_attempt+pd.Timedelta(days=offset)).strftime("%Y-%m-%d")
                 if check_date in vix_dates:found_date=check_date;break
             if found_date is None:skipped+=1;continue
-            actual_vix=vix_data.loc[pd.Timestamp(found_date)];actual_change=((actual_vix-current_vix)/current_vix)*100;actual_direction=1 if actual_change>0 else 0;predicted_direction=1 if prob_up>0.5 else 0;direction_correct=1 if actual_direction==predicted_direction else 0;magnitude_error=abs(actual_change-magnitude_forecast);cursor.execute("UPDATE forecasts SET actual_vix_change=?,actual_direction=?,direction_correct=?,magnitude_error=? WHERE prediction_id=?",(actual_change,actual_direction,direction_correct,magnitude_error,pred_id));updated+=1
+            actual_vix=vix_data.loc[pd.Timestamp(found_date)];actual_change=((actual_vix-current_vix)/current_vix)*100;actual_direction=1 if actual_change>0 else 0;magnitude_error=abs(actual_change-magnitude_forecast)
+            if direction_prediction is not None:dir_correct=1 if(direction_prediction=="UP"and actual_direction==1)or(direction_prediction=="DOWN"and actual_direction==0)else 0;cursor.execute("UPDATE forecasts SET actual_vix_change=?,actual_direction=?,direction_correct=?,magnitude_error=? WHERE prediction_id=?",(actual_change,actual_direction,dir_correct,magnitude_error,pred_id))
+            else:predicted_direction=1 if direction_probability>0.5 else 0;dir_correct=1 if actual_direction==predicted_direction else 0;cursor.execute("UPDATE forecasts SET actual_vix_change=?,actual_direction=?,direction_correct=?,magnitude_error=? WHERE prediction_id=?",(actual_change,actual_direction,dir_correct,magnitude_error,pred_id))
+            updated+=1
         self.conn.commit()
         if updated>0:logger.info(f"✅ Backfilled {updated} predictions")
         if skipped>0:logger.debug(f"Skipped {skipped} predictions")
     def get_performance_summary(self):
         df=self.get_predictions(with_actuals=True)
         if len(df)==0:return{"error":"No predictions with actuals"}
-        if "direction_correct"not in df.columns or df["direction_correct"].isna().all():df["predicted_direction"]=(df["prob_up"]>0.5).astype(int);df["direction_correct"]=(df["predicted_direction"]==df["actual_direction"]).astype(int)
+        if "direction_correct"not in df.columns or df["direction_correct"].isna().all():
+            if "direction_prediction"in df.columns:df["direction_correct"]=((df["direction_prediction"]=="UP")&(df["actual_direction"]==1))|((df["direction_prediction"]=="DOWN")&(df["actual_direction"]==0))
+            else:df["predicted_direction"]=(df["prob_up"]>0.5).astype(int);df["direction_correct"]=(df["predicted_direction"]==df["actual_direction"]).astype(int)
         if "magnitude_error"not in df.columns or df["magnitude_error"].isna().all():df["magnitude_error"]=np.abs(df["actual_vix_change"]-df["magnitude_forecast"])
         summary={"n_predictions":len(df),"date_range":{"start":df["forecast_date"].min().isoformat(),"end":df["forecast_date"].max().isoformat()},"direction":{"accuracy":float(df["direction_correct"].mean()),"precision":float(df[df["actual_direction"]==1]["direction_correct"].mean())if(df["actual_direction"]==1).sum()>0 else 0.0,"recall":float(df[df["actual_direction"]==1]["direction_correct"].mean())if(df["actual_direction"]==1).sum()>0 else 0.0},"magnitude":{"mae":float(df["magnitude_error"].mean()),"rmse":float(np.sqrt((df["magnitude_error"]**2).mean())),"bias":float((df["magnitude_forecast"]-df["actual_vix_change"]).mean()),"median_error":float(df["magnitude_error"].median())}};summary["by_cohort"]={}
         for cohort in df["calendar_cohort"].unique():

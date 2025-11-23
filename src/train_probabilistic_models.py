@@ -22,43 +22,48 @@ def prepare_training_data():
     logger.info("  Cohort distribution:");[logger.info(f"  {cohort}: {count}")for cohort,count in cohort_counts.items()]
     logger.info("  Data preparation complete\n")
     return complete_df,vix,training_end
-def run_feature_selection(features_df,vix):
-    logger.info(" FEATURE SELECTION")
+def run_feature_selection(features_df,vix,target_type='magnitude'):
+    logger.info(f"\n📊 FEATURE SELECTION - {target_type.upper()}")
     feature_cols=[c for c in features_df.columns if c not in["vix","spx","calendar_cohort","cohort_weight","feature_quality"]]
-    selector=SimplifiedFeatureSelector()
+    selector=SimplifiedFeatureSelector(target_type=target_type)
     selected_features,metadata=selector.select_features(features_df[feature_cols],vix)
     selector.save_results(output_dir="data_cache")
     return selected_features
-def save_training_report(forecaster,selected_features,training_end,output_dir="models"):
+def save_training_report(forecaster,mag_features,dir_features,training_end,output_dir="models"):
     output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True)
     report_file=output_path/f"training_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    report={"timestamp":datetime.now().isoformat(),"system_version":"v5.1_unified","training_end":training_end,"target_type":TARGET_CONFIG.get("target_type"),"feature_selection":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["top_n"],"selected_features":len(selected_features),"selected_feature_list":selected_features},"training_summary":{"models_trained":1,"model_types":["magnitude_regressor"],"features":len(forecaster.feature_names)},"metrics":forecaster.metrics}
+    report={"timestamp":datetime.now().isoformat(),"system_version":"v5.2_dual_model","training_end":training_end,"target_types":["magnitude_regressor","direction_classifier"],"feature_selection":{"magnitude":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["top_n"],"selected_features":len(mag_features),"selected_feature_list":mag_features},"direction":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["top_n"],"selected_features":len(dir_features),"selected_feature_list":dir_features}},"training_summary":{"models_trained":2,"model_types":["magnitude_regressor","direction_classifier"],"magnitude_features":len(forecaster.magnitude_feature_names),"direction_features":len(forecaster.direction_feature_names)},"metrics":forecaster.metrics}
     with open(report_file,"w")as f:json.dump(report,f,indent=2,default=str)
     logger.info(f"Training report: {report_file}")
-    metadata_file=output_path/"training_metadata.json";metadata={"training_end":training_end,"timestamp":datetime.now().isoformat(),"feature_count":len(forecaster.feature_names),"test_mae":forecaster.metrics.get("magnitude",{}).get("test",{}).get("mae_pct",0)}
+    metadata_file=output_path/"training_metadata.json";metadata={"training_end":training_end,"timestamp":datetime.now().isoformat(),"magnitude_feature_count":len(forecaster.magnitude_feature_names),"direction_feature_count":len(forecaster.direction_feature_names),"test_mae":forecaster.metrics.get("magnitude",{}).get("test",{}).get("mae_pct",0),"test_direction_acc":forecaster.metrics.get("direction",{}).get("test",{}).get("accuracy",0)}
     with open(metadata_file,"w")as f:json.dump(metadata,f,indent=2,default=str)
     logger.info(f"Training metadata: {metadata_file}")
 def main():
-    logger.info("SIMPLIFIED VIX FORECASTER - MAGNITUDE ONLY TRAINING PIPELINE")
-    logger.info(f"Version: 5.1 (Unified) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("DUAL MODEL VIX FORECASTER - MAGNITUDE + DIRECTION")
+    logger.info(f"Version: 5.2 (Dual Model) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     try:
         complete_df,vix,training_end=prepare_training_data()
-        selected_features=run_feature_selection(complete_df,vix)
-        with open("data_cache/feature_importance.json")as f:importance_scores=json.load(f)
-        analyzer=FeatureCorrelationAnalyzer(threshold=FEATURE_SELECTION_CONFIG.get("correlation_threshold",0.95))
-        kept_features,removed_features=analyzer.analyze_and_remove(features_df=complete_df[selected_features],importance_scores=importance_scores,protected_features=FEATURE_SELECTION_CONFIG["protected_features"])
-        analyzer.generate_report(output_dir="diagnostics")
-        logger.info(f"Removed {len(removed_features)} correlated features")
-        logger.info(f"Final feature count: {len(kept_features)}")
+        mag_features=run_feature_selection(complete_df,vix,target_type='magnitude')
+        with open("data_cache/feature_importance_magnitude.json")as f:mag_importance=json.load(f)
+        mag_analyzer=FeatureCorrelationAnalyzer(threshold=FEATURE_SELECTION_CONFIG.get("correlation_threshold",0.95))
+        mag_kept,mag_removed=mag_analyzer.analyze_and_remove(features_df=complete_df[mag_features],importance_scores=mag_importance,protected_features=FEATURE_SELECTION_CONFIG["protected_features"])
+        mag_analyzer.generate_report(output_dir="diagnostics",suffix="_magnitude")
+        logger.info(f"Magnitude: Removed {len(mag_removed)} correlated features, kept {len(mag_kept)}")
+        dir_features=run_feature_selection(complete_df,vix,target_type='direction')
+        with open("data_cache/feature_importance_direction.json")as f:dir_importance=json.load(f)
+        dir_analyzer=FeatureCorrelationAnalyzer(threshold=FEATURE_SELECTION_CONFIG.get("correlation_threshold",0.95))
+        dir_kept,dir_removed=dir_analyzer.analyze_and_remove(features_df=complete_df[dir_features],importance_scores=dir_importance,protected_features=FEATURE_SELECTION_CONFIG["protected_features"])
+        dir_analyzer.generate_report(output_dir="diagnostics",suffix="_direction")
+        logger.info(f"Direction: Removed {len(dir_removed)} correlated features, kept {len(dir_kept)}")
         logger.info("="*80+"\n")
-        logger.info("MODEL TRAINING")
-        forecaster=train_simplified_forecaster(df=complete_df,selected_features=kept_features,save_dir="models")
-        save_training_report(forecaster,kept_features,training_end,output_dir="models")
-        logger.info("TRAINING COMPLETE")
-        logger.info("Models: models/magnitude_5d_model.pkl")
+        logger.info("🚀 MODEL TRAINING")
+        forecaster=train_simplified_forecaster(df=complete_df,magnitude_features=mag_kept,direction_features=dir_kept,save_dir="models")
+        save_training_report(forecaster,mag_kept,dir_kept,training_end,output_dir="models")
+        logger.info("✅ TRAINING COMPLETE")
+        logger.info("Models: models/magnitude_5d_model.pkl + models/direction_5d_model.pkl")
         logger.info(f"Training data through: {training_end}")
     except Exception as e:
-        logger.error(f"\nTraining failed: {e}")
+        logger.error(f"\n❌ Training failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
