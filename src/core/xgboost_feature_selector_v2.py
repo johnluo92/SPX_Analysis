@@ -5,7 +5,7 @@ from typing import Dict,List,Tuple
 import numpy as np,pandas as pd
 import xgboost as xgb
 from sklearn.model_selection import TimeSeriesSplit
-from config import FEATURE_SELECTION_CONFIG,TARGET_CONFIG
+from config import FEATURE_SELECTION_CONFIG,TARGET_CONFIG, FEATURE_SELECTION_CV_PARAMS
 from core.target_calculator import TargetCalculator
 logger=logging.getLogger(__name__)
 class SimplifiedFeatureSelector:
@@ -37,8 +37,12 @@ class SimplifiedFeatureSelector:
         tscv=TimeSeriesSplit(n_splits=self.cv_folds);importance_accumulator=np.zeros(len(X.columns))
         for fold_idx,(train_idx,val_idx)in enumerate(tscv.split(X)):
             X_train=X.iloc[train_idx];y_train=y.iloc[train_idx];X_val=X.iloc[val_idx];y_val=y.iloc[val_idx]
-            if self.target_type=='direction':model=xgb.XGBClassifier(objective="binary:logistic",eval_metric="logloss",n_estimators=100,max_depth=6,learning_rate=0.1,subsample=0.8,colsample_bytree=0.8,random_state=42+fold_idx,n_jobs=-1);model.fit(X_train,y_train,verbose=False);train_pred=model.predict(X_train);val_pred=model.predict(X_val);train_acc=(train_pred==y_train).mean();val_acc=(val_pred==y_val).mean();logger.info(f"  Fold {fold_idx+1}/{self.cv_folds}: Train Acc={train_acc:.1%}, Val Acc={val_acc:.1%}")
-            else:model=xgb.XGBRegressor(objective="reg:squarederror",n_estimators=100,max_depth=6,learning_rate=0.1,subsample=0.8,colsample_bytree=0.8,random_state=42+fold_idx,n_jobs=-1);model.fit(X_train,y_train,verbose=False);train_pred=model.predict(X_train);val_pred=model.predict(X_val);train_mae=np.mean(np.abs(train_pred-y_train));val_mae=np.mean(np.abs(val_pred-y_val));logger.info(f"  Fold {fold_idx+1}/{self.cv_folds}: Train MAE={train_mae:.4f}, Val MAE={val_mae:.4f}")
+            if self.target_type=='direction':
+                model=xgb.XGBClassifier(objective="binary:logistic",eval_metric="logloss",random_state=42+fold_idx,n_jobs=-1,**FEATURE_SELECTION_CV_PARAMS)
+                model.fit(X_train,y_train,verbose=False);train_pred=model.predict(X_train);val_pred=model.predict(X_val);train_acc=(train_pred==y_train).mean();val_acc=(val_pred==y_val).mean();logger.info(f"  Fold {fold_idx+1}/{self.cv_folds}: Train Acc={train_acc:.1%}, Val Acc={val_acc:.1%}")
+            else:
+                model=xgb.XGBRegressor(objective="reg:squarederror",random_state=42+fold_idx,n_jobs=-1,**FEATURE_SELECTION_CV_PARAMS)
+                model.fit(X_train,y_train,verbose=False);train_pred=model.predict(X_train);val_pred=model.predict(X_val);train_mae=np.mean(np.abs(train_pred-y_train));val_mae=np.mean(np.abs(val_pred-y_val));logger.info(f"  Fold {fold_idx+1}/{self.cv_folds}: Train MAE={train_mae:.4f}, Val MAE={val_mae:.4f}")
             importance=model.feature_importances_;importance_accumulator+=importance
         avg_importance=importance_accumulator/self.cv_folds;importance_dict=dict(zip(X.columns,avg_importance))
         return importance_dict

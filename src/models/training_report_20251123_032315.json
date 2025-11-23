@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-23T02:32:42.085873",
+  "timestamp": "2025-11-23T03:23:15.153928",
   "system_version": "v5.2_dual_model",
   "training_end": "2025-10-31",
   "target_types": [
@@ -119,8 +119,8 @@
     },
     "direction": {
       "enabled": true,
-      "top_n": 100,
-      "selected_features": 103,
+      "top_n": 150,
+      "selected_features": 153,
       "selected_feature_list": [
         "is_fomc_period",
         "is_opex_week",
@@ -224,7 +224,57 @@
         "spx_ret_1d",
         "macd_histogram",
         "spx_vx_spread_corr_21d",
-        "vix_percentile_126d"
+        "vix_percentile_126d",
+        "vix_vs_rv_10d",
+        "yield_10y3m_velocity_21d",
+        "spx_dollar_corr_21d",
+        "risk_premium_percentile_velocity",
+        "vvix",
+        "spx_range_pct",
+        "spx_vix_corr_63d",
+        "rsi_divergence",
+        "yield_10y3m_acceleration",
+        "VXTLT_percentile_126d",
+        "vix_stretch_ma21",
+        "VXTLT_change_21d",
+        "vx_term_structure_divergence",
+        "DX1-DX2_zscore_63d",
+        "DX1-DX2",
+        "vvix_vs_ma63",
+        "vx_crude_corr_21d",
+        "vx_dollar_corr_21d",
+        "spx_kurt_21d",
+        "crude_oil_ret_21d",
+        "vvix_zscore_21d",
+        "VXTLT_percentile_63d",
+        "regime_within_regime_percentile",
+        "yield_10y3m_velocity_10d",
+        "spx_gap",
+        "vvix_zscore_63d",
+        "VXTLT_vs_ma21",
+        "vix_accel_5d",
+        "spx_ret_21d",
+        "vx_crude_divergence",
+        "spx_momentum_z_10d",
+        "equity_vol_corr_breakdown",
+        "gold_spx_divergence",
+        "spx_realized_vol_21d_velocity_3d",
+        "DX1-DX2_velocity_5d",
+        "VX1-VX2_change_21d",
+        "vix_momentum_z_21d",
+        "VX1-VX2_zscore_63d",
+        "skew_vs_vix",
+        "risk_premium_percentile_63d",
+        "vvix_percentile_21d",
+        "vix_velocity_10d",
+        "vix_vol_10d",
+        "vix_jerk_5d",
+        "spx_gap_magnitude",
+        "trend_regime",
+        "vix_percentile_21d",
+        "VX2-VX1_RATIO",
+        "reversion_strength_21d",
+        "spx_momentum_z_21d"
       ]
     }
   },
@@ -235,7 +285,7 @@
       "direction_classifier"
     ],
     "magnitude_features": 103,
-    "direction_features": 103
+    "direction_features": 153
   },
   "metrics": {
     "magnitude": {
@@ -260,18 +310,18 @@
     },
     "direction": {
       "train": {
-        "accuracy": 0.8696161048689138,
-        "avg_confidence": 0.6199859380722046
+        "accuracy": 0.6601123595505618,
+        "avg_confidence": 0.5814464092254639
       },
       "val": {
-        "accuracy": 0.6198501872659176,
-        "avg_confidence": 0.6044484972953796
+        "accuracy": 0.6235955056179775,
+        "avg_confidence": 0.5891559720039368
       },
       "test": {
-        "accuracy": 0.620754716981132,
-        "precision": 0.6290322580645161,
-        "recall": 0.46987951807228917,
-        "avg_confidence": 0.5958331227302551
+        "accuracy": 0.6433962264150943,
+        "precision": 0.6442307692307693,
+        "recall": 0.5381526104417671,
+        "avg_confidence": 0.583752453327179
       }
     }
   }

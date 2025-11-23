@@ -1,12 +1,12 @@
 {
-  "timestamp": "2025-11-23T02:32:40.104340",
+  "timestamp": "2025-11-23T03:23:13.397512",
   "target": "direction",
   "target_type": "direction",
   "horizon": 5,
   "samples": 5336,
   "total_features": 254,
-  "selected_features": 103,
-  "top_n": 100,
+  "selected_features": 153,
+  "top_n": 150,
   "cv_folds": 3,
   "protected_features": [
     "is_fomc_period",

@@ -21,18 +21,18 @@
   },
   "direction": {
     "train": {
-      "accuracy": 0.8696161048689138,
-      "avg_confidence": 0.6199859380722046
+      "accuracy": 0.6601123595505618,
+      "avg_confidence": 0.5814464092254639
     },
     "val": {
-      "accuracy": 0.6198501872659176,
-      "avg_confidence": 0.6044484972953796
+      "accuracy": 0.6235955056179775,
+      "avg_confidence": 0.5891559720039368
     },
     "test": {
-      "accuracy": 0.620754716981132,
-      "precision": 0.6290322580645161,
-      "recall": 0.46987951807228917,
-      "avg_confidence": 0.5958331227302551
+      "accuracy": 0.6433962264150943,
+      "precision": 0.6442307692307693,
+      "recall": 0.5381526104417671,
+      "avg_confidence": 0.583752453327179
     }
   }
 }

@@ -67,7 +67,7 @@ class SimplifiedVIXForecaster:
         logger.info(f"Magnitude: Train MAE={metrics['train']['mae_pct']:.2f}% | Val MAE={metrics['val']['mae_pct']:.2f}% | Test MAE={metrics['test']['mae_pct']:.2f}% | Bias={metrics['test']['bias_pct']:+.2f}%")
         return model,metrics
     def _train_direction_model(self,X_train,y_train,X_val,y_val,X_test,y_test):
-        params={"objective":"binary:logistic","eval_metric":"logloss","max_depth":10,"learning_rate":0.03,"n_estimators":350,"subsample":0.8,"colsample_bytree":0.9,"min_child_weight":10,"reg_alpha":0.8,"reg_lambda":3.0,"early_stopping_rounds":50,"seed":42,"n_jobs":-1}
+        params=XGBOOST_CONFIG["direction_params"].copy()
         model=XGBClassifier(**params);model.fit(X_train,y_train,eval_set=[(X_val,y_val)],verbose=False)
         y_train_pred=model.predict(X_train);y_val_pred=model.predict(X_val);y_test_pred=model.predict(X_test)
         y_train_proba=model.predict_proba(X_train)[:,1];y_val_proba=model.predict_proba(X_val)[:,1];y_test_proba=model.predict_proba(X_test)[:,1]
