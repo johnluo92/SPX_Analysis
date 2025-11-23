@@ -3,16 +3,41 @@ from datetime import datetime,timedelta
 from typing import Dict,List,Optional,Tuple
 import numpy as np
 import pandas as pd
-from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG,MACRO_EVENT_CONFIG
+from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG,MACRO_EVENT_CONFIG,FORWARD_FILL_LIMITS
 from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,VIX_REGIME_BINS,VIX_REGIME_LABELS,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
 from core.temporal_validator import TemporalSafetyValidator
 from core.regime_classifier import RegimeClassifier
 warnings.filterwarnings("ignore")
 try:
-    from config import CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG
+    from config import CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG,FORWARD_FILL_LIMITS
 except ImportError:
-    ENABLE_TEMPORAL_SAFETY=False;PUBLICATION_LAGS={};CALENDAR_COHORTS={};COHORT_PRIORITY=[];TARGET_CONFIG={};FEATURE_QUALITY_CONFIG={}
-    warnings.warn("⚠️ Calendar cohort config not found - cohort features disabled")
+    ENABLE_TEMPORAL_SAFETY=False;PUBLICATION_LAGS={};CALENDAR_COHORTS={};COHORT_PRIORITY=[];TARGET_CONFIG={};FEATURE_QUALITY_CONFIG={};FORWARD_FILL_LIMITS={"daily":5,"weekly":10,"monthly":45,"quarterly":135}
+    warnings.warn("⚠️ Config imports incomplete - using defaults")
+class LaborMarketFeatureEngine:
+    @staticmethod
+    def extract_initial_claims_features(icsa:pd.Series)->pd.DataFrame:
+        f=pd.DataFrame(index=icsa.index);f["initial_claims"]=icsa;f["claims_4wk_ma"]=icsa.rolling(20).mean();f["claims_velocity_4w"]=icsa.diff(20);f["claims_zscore_52w"]=calculate_robust_zscore(icsa,252);f["claims_percentile_52w"]=calculate_percentile_with_validation(icsa,252);f["claims_regime"]=calculate_regime_with_validation(icsa,bins=[0,250000,350000,500000,1000000],labels=[0,1,2,3],feature_name="claims");f["claims_velocity_zscore"]=calculate_robust_zscore(f["claims_velocity_4w"],63);return f
+class FinancialStressFeatureEngine:
+    @staticmethod
+    def extract_stress_index_features(stlfsi:pd.Series)->pd.DataFrame:
+        f=pd.DataFrame(index=stlfsi.index);f["fin_stress_index"]=stlfsi;f["stress_velocity_4w"]=stlfsi.diff(20);f["stress_zscore_52w"]=calculate_robust_zscore(stlfsi,252);f["stress_extreme"]=(stlfsi>stlfsi.rolling(252).quantile(0.9)).astype(int);f["stress_regime"]=calculate_regime_with_validation(stlfsi,bins=[-5,-1,0,2,10],labels=[0,1,2,3],feature_name="stress");return f
+class CreditSpreadFeatureEngine:
+    @staticmethod
+    def extract_credit_spread_features(spreads:Dict[str,pd.Series])->pd.DataFrame:
+        f=pd.DataFrame()
+        if"HY_OAS_All"in spreads:hy=spreads["HY_OAS_All"];f["hy_spread"]=hy;f["hy_velocity_21d"]=hy.diff(21);f["hy_zscore_252d"]=calculate_robust_zscore(hy,252)
+        if"HY_OAS_BB"in spreads:bb=spreads["HY_OAS_BB"];f["hy_bb_spread"]=bb;f["hy_bb_velocity_21d"]=bb.diff(21)
+        if"HY_OAS_B"in spreads:b=spreads["HY_OAS_B"];f["hy_b_spread"]=b;f["hy_b_velocity_21d"]=b.diff(21)
+        if"HY_OAS_CCC"in spreads:ccc=spreads["HY_OAS_CCC"];f["hy_ccc_spread"]=ccc;f["hy_ccc_velocity_21d"]=ccc.diff(21)
+        if"HY_OAS_BB"in spreads and"HY_OAS_CCC"in spreads:f["credit_quality_spread"]=spreads["HY_OAS_CCC"]-spreads["HY_OAS_BB"];f["credit_widening_regime"]=(f["credit_quality_spread"]>f["credit_quality_spread"].rolling(63).quantile(0.8)).astype(int)
+        if"IG_OAS"in spreads and"HY_OAS_All"in spreads:f["ig_hy_spread"]=spreads["HY_OAS_All"]-spreads["IG_OAS"];f["credit_stress_composite"]=calculate_percentile_with_validation(f["ig_hy_spread"],252)
+        return f
+class FundingStressFeatureEngine:
+    @staticmethod
+    def extract_sofr_features(sofr:pd.Series,fed_funds:pd.Series)->pd.DataFrame:
+        f=pd.DataFrame(index=sofr.index);f["sofr"]=sofr
+        if fed_funds is not None:f["sofr_ff_spread"]=sofr-fed_funds;f["funding_stress"]=f["sofr_ff_spread"];f["funding_stress_zscore"]=calculate_robust_zscore(f["sofr_ff_spread"],63);f["funding_stress_regime"]=calculate_regime_with_validation(f["sofr_ff_spread"],bins=[-1,-0.1,0,0.1,2],labels=[0,1,2,3],feature_name="funding")
+        f["sofr_velocity_5d"]=sofr.diff(5);return f
 class MetaFeatureEngine:
     @staticmethod
     def extract_regime_indicators(df:pd.DataFrame,vix:pd.Series,spx:pd.Series)->pd.DataFrame:
@@ -137,7 +162,7 @@ class TreasuryYieldFeatureEngine:
         return f
 class FeatureEngineer:
     def __init__(self,data_fetcher):
-        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.validator=TemporalSafetyValidator();self.regime_classifier=RegimeClassifier();self.fomc_calendar=None;self.opex_calendar=None;self.earnings_calendar=None;self.vix_futures_expiry=None;self._cohort_cache={}
+        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.labor_engine=LaborMarketFeatureEngine();self.stress_engine=FinancialStressFeatureEngine();self.credit_engine=CreditSpreadFeatureEngine();self.funding_engine=FundingStressFeatureEngine();self.validator=TemporalSafetyValidator();self.regime_classifier=RegimeClassifier();self.fomc_calendar=None;self.opex_calendar=None;self.earnings_calendar=None;self.vix_futures_expiry=None;self._cohort_cache={}
     def _load_calendar_data(self):
         if self.fomc_calendar is None:
             try:sy,ey=self.training_start_date.year,self.training_end_date.year+1;self.fomc_calendar=self.fetcher.fetch_fomc_calendar(start_year=sy,end_year=ey)
@@ -219,8 +244,13 @@ class FeatureEngineer:
             minutes_date=fomc_date+pd.Timedelta(days=days_after)
             if abs((date-minutes_date).days)<=window:return True
         return False
-    def _align_features_for_prediction(self,bf:pd.DataFrame,cf:pd.DataFrame,ff:pd.DataFrame,mf:pd.DataFrame,tf:pd.DataFrame,vvf:pd.DataFrame,mi:pd.DatetimeIndex)->pd.DataFrame:
-        tfi=tf.reindex(mi,method="ffill",limit=3);cfi=cf.reindex(mi,method="ffill",limit=5);mfi=mf.reindex(mi,method="ffill",limit=45);ffi=ff.reindex(mi,method="ffill",limit=3);vvfi=vvf.reindex(mi,method="ffill",limit=5);ba=bf.reindex(mi);al=pd.concat([ba,cfi,ffi,mfi,tfi,vvfi],axis=1);return al
+    def _apply_publication_lags(self,data:Dict[str,pd.Series],idx:pd.DatetimeIndex)->Dict[str,pd.Series]:
+        lagged={}
+        for name,series in data.items():
+            lag=PUBLICATION_LAGS.get(name,0)
+            if lag>0:lagged[name]=series.shift(lag).reindex(idx)
+            else:lagged[name]=series.reindex(idx)
+        return lagged
     def _validate_term_structure_timing(self,vix:pd.Series,cd:pd.DataFrame,pd_date:datetime=None)->bool:
         if cd is None or "VIX3M" not in cd.columns:return True
         if pd_date is None:pd_date=vix.index[-1]
@@ -245,16 +275,16 @@ class FeatureEngineer:
         print(f"Mode: {mode}");print(f"Date Ranges: Warmup Start -> Warmup End (usable period) -> Training End Date: {ss} → {(sd+timedelta(days=450)).strftime('%Y-%m-%d')} → {es}")
         spx_df=self.fetcher.fetch_yahoo("^GSPC",ss,es);vix=self.fetcher.fetch_yahoo("^VIX",ss,es);vvix=self.fetcher.fetch_yahoo("^VVIX",ss,es)
         if spx_df is None or vix is None:raise ValueError("❌ Core data fetch failed")
-        spx=spx_df["Close"].squeeze();vix=vix["Close"].squeeze();vix=vix.reindex(spx.index,method="ffill",limit=5);spx_ohlc=spx_df.reindex(spx.index,method="ffill",limit=5)
-        if vvix is not None:vvix_series=vvix["Close"].squeeze().reindex(spx.index,method="ffill",limit=5)
+        spx=spx_df["Close"].squeeze();vix=vix["Close"].squeeze();ff_daily=FORWARD_FILL_LIMITS.get("daily",5);vix=vix.reindex(spx.index,method="ffill",limit=ff_daily);spx_ohlc=spx_df.reindex(spx.index,method="ffill",limit=ff_daily)
+        if vvix is not None:vvix_series=vvix["Close"].squeeze().reindex(spx.index,method="ffill",limit=ff_daily)
         else:vvix_series=None
         cbd=self.fetcher.fetch_all_cboe()
         if cbd:
             cb=pd.DataFrame(index=spx.index)
-            for s,ser in cbd.items():cb[s]=ser.reindex(spx.index,method="ffill",limit=5)
+            for s,ser in cbd.items():cb[s]=ser.reindex(spx.index,method="ffill",limit=ff_daily)
         else:cb=pd.DataFrame(index=spx.index)
-        bf=self._build_base_features(spx,vix,spx_ohlc,cb);cbf=self._build_cboe_features(cb,vix) if not cb.empty else pd.DataFrame(index=spx.index);ff=self._build_futures_features(ss,es,spx.index,spx,cb);md=self._fetch_macro_data(ss,es,spx.index);mf=self._build_macro_features(md) if md is not None else pd.DataFrame(index=spx.index);tf=self._build_treasury_features(ss,es,spx.index);vvf=self._build_vvix_features(vvix_series,vix) if vvix_series is not None else pd.DataFrame(index=spx.index);cmb=pd.concat([bf,cbf],axis=1);mtf=self._build_meta_features(cmb,spx,vix,md);calf=self._build_calendar_features(spx.index)
-        af=pd.concat([bf,cbf,ff,mf,tf,vvf,mtf,calf],axis=1);af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)
+        bf=self._build_base_features(spx,vix,spx_ohlc,cb);cbf=self._build_cboe_features(cb,vix) if not cb.empty else pd.DataFrame(index=spx.index);ff=self._build_futures_features(ss,es,spx.index,spx,cb);md=self._fetch_macro_data(ss,es,spx.index);mf=self._build_macro_features(md) if md is not None else pd.DataFrame(index=spx.index);ef=self._build_economic_features(md);tf=self._build_treasury_features(ss,es,spx.index);vvf=self._build_vvix_features(vvix_series,vix) if vvix_series is not None else pd.DataFrame(index=spx.index);cmb=pd.concat([bf,cbf],axis=1);mtf=self._build_meta_features(cmb,spx,vix,md);calf=self._build_calendar_features(spx.index)
+        af=pd.concat([bf,cbf,ff,mf,ef,tf,vvf,mtf,calf],axis=1);af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)
         self._load_calendar_data();cohd=[{"calendar_cohort":self.get_calendar_cohort(dt)[0],"cohort_weight":self.get_calendar_cohort(dt)[1]} for dt in af.index];cohdf=pd.DataFrame(cohd,index=af.index);cohdf["is_fomc_period"]=(cohdf["calendar_cohort"]=="fomc_period").astype(int);cohdf["is_opex_week"]=(cohdf["calendar_cohort"]=="opex_week").astype(int);cohdf["is_earnings_heavy"]=(cohdf["calendar_cohort"]=="earnings_heavy").astype(int);af=pd.concat([af,cohdf],axis=1)
         af["feature_quality"]=self.validator.compute_feature_quality_batch(af);af=self.apply_quality_control(af)
         if ENABLE_TEMPORAL_SAFETY and not cb.empty:self._validate_term_structure_timing(vix,cb)
@@ -271,11 +301,11 @@ class FeatureEngineer:
         f["vix_accel_5d"]=vix.diff(5).diff(5);vm21,vm63=vix.rolling(21).mean(),vix.rolling(63).mean();f["vix_stretch_ma21"]=(vix-vm21).abs();f["vix_stretch_ma63"]=(vix-vm63).abs()
         for w in [21,63]:ma=vix.rolling(w).mean();f[f"reversion_strength_{w}d"]=(vix-ma).abs()/ma.replace(0,np.nan)
         bw=20;bma,bstd=vix.rolling(bw).mean(),vix.rolling(bw).std();bu,bl=bma+2*bstd,bma-2*bstd;f["vix_bb_position_20d"]=((vix-bl)/(bu-bl).replace(0,np.nan)).clip(0,1);f["vix_extreme_low_21d"]=(vix<vix.rolling(21).quantile(0.1)).astype(int);f["vix_regime"]=self.regime_classifier.classify_vix_series_numeric(vix);rc=f["vix_regime"].diff().fillna(0)!=0;f["days_in_regime"]=(~rc).cumsum()-(~rc).cumsum().where(rc).ffill().fillna(0)
-        regime_features = self.regime_classifier.compute_all_regime_features(vix)
+        regime_features=self.regime_classifier.compute_all_regime_features(vix)
         for col in regime_features.columns:
-            if col == 'vix_regime_numeric':continue
-            if col == 'days_in_regime' and col in f.columns:continue
-            if col not in f.columns:f[col] = regime_features[col]
+            if col=="vix_regime_numeric":continue
+            if col=="days_in_regime"and col in f.columns:continue
+            if col not in f.columns:f[col]=regime_features[col]
         if cb is not None and "VIX3M" in cb.columns:f["vix_term_structure"]=((vix/cb["VIX3M"].replace(0,np.nan))-1)*100
         else:f["vix_term_structure"]=np.nan
         for w in [1,5,10,21,63]:f[f"spx_ret_{w}d"]=spx.pct_change(w)*100
@@ -328,33 +358,44 @@ class FeatureEngineer:
         if sc:f["cboe_stress_composite"]=pd.DataFrame(sc).T.mean(axis=1);f["cboe_stress_regime"]=calculate_regime_with_validation(f["cboe_stress_composite"],bins=[0,0.33,0.66,1],labels=[0,1,2],feature_name="cboe_stress")
         return f
     def _build_futures_features(self,ss:str,es:str,idx:pd.DatetimeIndex,spx:pd.Series,cb:pd.DataFrame)->pd.DataFrame:
-        vxd={}
+        ff_daily=FORWARD_FILL_LIMITS.get("daily",5);vxd={}
         if cb is not None and "VX1-VX2" in cb.columns:vxd["VX1-VX2"]=cb["VX1-VX2"]
         if cb is not None and "VX2-VX1_RATIO" in cb.columns:vxd["VX2-VX1_RATIO"]=cb["VX2-VX1_RATIO"]
-        vxf=self.futures_engine.extract_vix_futures_features(vxd);vxf=vxf.reindex(idx,method="ffill") if not vxf.empty else pd.DataFrame(index=idx)
+        vxf=self.futures_engine.extract_vix_futures_features(vxd);vxf=vxf.reindex(idx,method="ffill",limit=ff_daily) if not vxf.empty else pd.DataFrame(index=idx)
         comd={}
         if cb is not None and "CL1-CL2" in cb.columns:comd["CL1-CL2"]=cb["CL1-CL2"]
         crd=self.fetcher.fetch_yahoo("CL=F",ss,es)
-        if crd is not None:comd["Crude_Oil"]=crd["Close"].squeeze().reindex(idx,method="ffill")
-        comf=self.futures_engine.extract_commodity_futures_features(comd);comf=comf.reindex(idx,method="ffill") if not comf.empty else pd.DataFrame(index=idx)
+        if crd is not None:comd["Crude_Oil"]=crd["Close"].squeeze().reindex(idx,method="ffill",limit=ff_daily)
+        comf=self.futures_engine.extract_commodity_futures_features(comd);comf=comf.reindex(idx,method="ffill",limit=ff_daily) if not comf.empty else pd.DataFrame(index=idx)
         dold={}
         if cb is not None and "DX1-DX2" in cb.columns:dold["DX1-DX2"]=cb["DX1-DX2"]
         dxy=self.fetcher.fetch_yahoo("DX-Y.NYB",ss,es)
-        if dxy is not None:dold["Dollar_Index"]=dxy["Close"].squeeze().reindex(idx,method="ffill")
-        dolf=self.futures_engine.extract_dollar_futures_features(dold);dolf=dolf.reindex(idx,method="ffill") if not dolf.empty else pd.DataFrame(index=idx)
-        srt=spx.pct_change(21)*100;crf=self.futures_engine.extract_futures_cross_relationships(vxd,comd,dold,srt);crf=crf.reindex(idx,method="ffill") if not crf.empty else pd.DataFrame(index=idx)
+        if dxy is not None:dold["Dollar_Index"]=dxy["Close"].squeeze().reindex(idx,method="ffill",limit=ff_daily)
+        dolf=self.futures_engine.extract_dollar_futures_features(dold);dolf=dolf.reindex(idx,method="ffill",limit=ff_daily) if not dolf.empty else pd.DataFrame(index=idx)
+        srt=spx.pct_change(21)*100;crf=self.futures_engine.extract_futures_cross_relationships(vxd,comd,dold,srt);crf=crf.reindex(idx,method="ffill",limit=ff_daily) if not crf.empty else pd.DataFrame(index=idx)
         return pd.concat([vxf,comf,dolf,crf],axis=1)
     def _fetch_macro_data(self,ss:str,es:str,idx:pd.DatetimeIndex)->pd.DataFrame:
-        fd={}
-        frs={"CPI":"CPIAUCSL"}
+        fd={};ff_monthly=FORWARD_FILL_LIMITS.get("monthly",45);ff_weekly=FORWARD_FILL_LIMITS.get("weekly",10);ff_daily=FORWARD_FILL_LIMITS.get("daily",5)
+        frs={"CPI":"CPIAUCSL","Initial_Claims":"ICSA","STL_Fin_Stress":"STLFSI4","SOFR":"SOFR","SOFR_90D":"SOFR90DAYAVG","Fed_Funds":"DFF","HY_OAS_All":"BAMLH0A0HYM2","HY_OAS_BB":"BAMLH0A1HYBB","HY_OAS_B":"BAMLH0A2HYB","HY_OAS_CCC":"BAMLH0A3HYC","IG_OAS":"BAMLC0A0CM"}
         for n,sid in frs.items():
-            try:d=self.fetcher.fetch_fred_series(sid,ss,es);(fd.update({n:d.reindex(idx,method="ffill",limit=5)}) if d is not None and not d.empty else None)
+            try:
+                d=self.fetcher.fetch_fred_series(sid,ss,es)
+                if d is not None and not d.empty:
+                    lag=PUBLICATION_LAGS.get(sid,0)
+                    if lag>0:d=d.shift(lag)
+                    if sid in ["CPIAUCSL"]:ff_limit=ff_monthly
+                    elif sid in ["ICSA","STLFSI4"]:ff_limit=ff_weekly
+                    else:ff_limit=ff_daily
+                    fd[n]=d.reindex(idx,method="ffill",limit=ff_limit)
             except:continue
         yhs={"Gold":"GC=F"}
         for n,sym in yhs.items():
-            try:d=self.fetcher.fetch_yahoo(sym,ss,es);(fd.update({n:d["Close"].reindex(idx,method="ffill",limit=5)}) if d is not None and not d.empty and "Close" in d.columns else None)
+            try:
+                d=self.fetcher.fetch_yahoo(sym,ss,es)
+                if d is not None and not d.empty and "Close" in d.columns:fd[n]=d["Close"].reindex(idx,method="ffill",limit=ff_daily)
             except:continue
-        return pd.DataFrame(fd,index=idx) if fd else None
+        df=pd.DataFrame(fd,index=idx) if fd else None
+        return df
     def _build_macro_features(self,m:pd.DataFrame)->pd.DataFrame:
         f=pd.DataFrame(index=m.index)
         if "Dollar_Index" in m.columns:
@@ -363,27 +404,39 @@ class FeatureEngineer:
         if "Bond_Vol" in m.columns:bv=m["Bond_Vol"];f["Bond_Vol_lag1"]=bv.shift(1);f["Bond_Vol_zscore_63d"]=calculate_robust_zscore(bv,63);[f.update({f"Bond_Vol_mom_{w}d":bv.diff(w)}) for w in [10,21,63]]
         if "CPI" in m.columns:[f.update({f"CPI_change_{w}d":m["CPI"].diff(w)}) for w in [10,21,63]]
         return f
+    def _build_economic_features(self,m:pd.DataFrame)->pd.DataFrame:
+        if m is None:return pd.DataFrame()
+        idx=m.index;labor_feats=self.labor_engine.extract_initial_claims_features(m["Initial_Claims"]) if "Initial_Claims" in m.columns else pd.DataFrame(index=idx)
+        stress_feats=self.stress_engine.extract_stress_index_features(m["STL_Fin_Stress"]) if "STL_Fin_Stress" in m.columns else pd.DataFrame(index=idx)
+        spread_dict={k:m[k] for k in ["HY_OAS_All","HY_OAS_BB","HY_OAS_B","HY_OAS_CCC","IG_OAS"] if k in m.columns}
+        credit_feats=self.credit_engine.extract_credit_spread_features(spread_dict) if spread_dict else pd.DataFrame(index=idx)
+        sofr_series=m["SOFR"] if "SOFR" in m.columns else None;ff_series=m["Fed_Funds"] if "Fed_Funds" in m.columns else None
+        funding_feats=self.funding_engine.extract_sofr_features(sofr_series,ff_series) if sofr_series is not None else pd.DataFrame(index=idx)
+        return pd.concat([labor_feats,stress_feats,credit_feats,funding_feats],axis=1)
     def _build_treasury_features(self,ss:str,es:str,idx:pd.DatetimeIndex)->pd.DataFrame:
-        yahoo_yields={}
-        yahoo_tickers={"^IRX":"3M","^FVX":"5Y","^TNX":"10Y","^TYX":"30Y","2YY=F":"2Y"}
+        ff_daily=FORWARD_FILL_LIMITS.get("daily",5);yahoo_yields={};yahoo_tickers={"^IRX":"3M","^FVX":"5Y","^TNX":"10Y","^TYX":"30Y","2YY=F":"2Y"}
         for ticker,name in yahoo_tickers.items():
             try:d=self.fetcher.fetch_yahoo(ticker,ss,es);(yahoo_yields.update({name:d["Close"].squeeze()}) if d is not None and "Close" in d.columns else None)
             except:continue
+        fred_yields={};ts={"DGS1MO":"1M","DGS3MO":"3M","DGS6MO":"6M","DGS1":"1Y","DGS2":"2Y","DGS5":"5Y","DGS10":"10Y","DGS30":"30Y"}
+        for sid,n in ts.items():
+            try:
+                d=self.fetcher.fetch_fred_series(sid,ss,es)
+                if d is not None and not d.empty:
+                    lag=PUBLICATION_LAGS.get(sid,1)
+                    if lag>0:d=d.shift(lag)
+                    fred_yields[sid]=d
+            except:continue
         if len(yahoo_yields)>=3:
-            ydf=pd.DataFrame(yahoo_yields,index=idx).ffill(limit=5)
-            if "2Y" not in ydf.columns:
-                print("  2YY=F not available, falling back to FRED DGS2")
-                try:dgs2=self.fetcher.fetch_fred_series("DGS2",ss,es);(ydf.update({"2Y":dgs2.reindex(idx,method="ffill",limit=5)}) if dgs2 is not None else None)
-                except:pass
-            tsp=self.treasury_engine.extract_term_spreads(ydf);csh=self.treasury_engine.extract_curve_shape(ydf);rvol=self.treasury_engine.extract_rate_volatility(ydf);return pd.concat([tsp,csh,rvol],axis=1)
-        else:
-            ts={"DGS1MO":"1M","DGS3MO":"3M","DGS6MO":"6M","DGS1":"1Y","DGS2":"2Y","DGS5":"5Y","DGS10":"10Y","DGS30":"30Y"}
-            fy={}
-            for n,sid in ts.items():
-                try:d=self.fetcher.fetch_fred_series(sid.replace("_",""),ss,es);(fy.update({n:d.reindex(idx,method="ffill",limit=5)}) if d is not None and not d.empty else None)
-                except:continue
-            if not fy:return pd.DataFrame(index=idx)
-            ydf=pd.DataFrame(fy,index=idx);ydf.columns=[c.replace("DGS","").replace("MO","M") for c in ydf.columns];tsp=self.treasury_engine.extract_term_spreads(ydf);csh=self.treasury_engine.extract_curve_shape(ydf);rvol=self.treasury_engine.extract_rate_volatility(ydf);return pd.concat([tsp,csh,rvol],axis=1)
+            ydf=pd.DataFrame(yahoo_yields,index=idx).ffill(limit=ff_daily)
+            if "2Y" not in ydf.columns and "DGS2" in fred_yields:ydf["2Y"]=fred_yields["DGS2"].reindex(idx,method="ffill",limit=ff_daily)
+            tsp_yahoo=self.treasury_engine.extract_term_spreads(ydf);csh_yahoo=self.treasury_engine.extract_curve_shape(ydf);rvol_yahoo=self.treasury_engine.extract_rate_volatility(ydf);yahoo_feats=pd.concat([tsp_yahoo,csh_yahoo,rvol_yahoo],axis=1)
+        else:yahoo_feats=pd.DataFrame(index=idx)
+        if fred_yields:
+            fdf=pd.DataFrame({k.replace("DGS","").replace("MO","M"):v for k,v in fred_yields.items()},index=idx).ffill(limit=ff_daily)
+            tsp_fred=self.treasury_engine.extract_term_spreads(fdf);csh_fred=self.treasury_engine.extract_curve_shape(fdf);rvol_fred=self.treasury_engine.extract_rate_volatility(fdf);fred_feats=pd.concat([tsp_fred,csh_fred,rvol_fred],axis=1);fred_feats.columns=[f"{col}_fred" for col in fred_feats.columns]
+        else:fred_feats=pd.DataFrame(index=idx)
+        return pd.concat([yahoo_feats,fred_feats],axis=1) if not yahoo_feats.empty or not fred_feats.empty else pd.DataFrame(index=idx)
     def _build_meta_features(self,cmb:pd.DataFrame,spx:pd.Series,vix:pd.Series,md:pd.DataFrame)->pd.DataFrame:
         return pd.concat([self.meta_engine.extract_regime_indicators(cmb,vix,spx),self.meta_engine.extract_cross_asset_relationships(cmb,md),self.meta_engine.extract_rate_of_change_features(cmb),self.meta_engine.extract_percentile_rankings(cmb)],axis=1)
     def _build_calendar_features(self,idx:pd.DatetimeIndex)->pd.DataFrame:
