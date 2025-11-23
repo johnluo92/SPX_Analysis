@@ -271,6 +271,11 @@ class FeatureEngineer:
         f["vix_accel_5d"]=vix.diff(5).diff(5);vm21,vm63=vix.rolling(21).mean(),vix.rolling(63).mean();f["vix_stretch_ma21"]=(vix-vm21).abs();f["vix_stretch_ma63"]=(vix-vm63).abs()
         for w in [21,63]:ma=vix.rolling(w).mean();f[f"reversion_strength_{w}d"]=(vix-ma).abs()/ma.replace(0,np.nan)
         bw=20;bma,bstd=vix.rolling(bw).mean(),vix.rolling(bw).std();bu,bl=bma+2*bstd,bma-2*bstd;f["vix_bb_position_20d"]=((vix-bl)/(bu-bl).replace(0,np.nan)).clip(0,1);f["vix_extreme_low_21d"]=(vix<vix.rolling(21).quantile(0.1)).astype(int);f["vix_regime"]=self.regime_classifier.classify_vix_series_numeric(vix);rc=f["vix_regime"].diff().fillna(0)!=0;f["days_in_regime"]=(~rc).cumsum()-(~rc).cumsum().where(rc).ffill().fillna(0)
+        regime_features = self.regime_classifier.compute_all_regime_features(vix)
+        for col in regime_features.columns:
+            if col == 'vix_regime_numeric':continue
+            if col == 'days_in_regime' and col in f.columns:continue
+            if col not in f.columns:f[col] = regime_features[col]
         if cb is not None and "VIX3M" in cb.columns:f["vix_term_structure"]=((vix/cb["VIX3M"].replace(0,np.nan))-1)*100
         else:f["vix_term_structure"]=np.nan
         for w in [1,5,10,21,63]:f[f"spx_ret_{w}d"]=spx.pct_change(w)*100

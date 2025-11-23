@@ -89,13 +89,15 @@ class VIXForecaster:
         self.db.commit()
         logger.info(f"✅ Bootstrap: {generated} generated, {skipped} skipped")
         return generated
-    def generate_november_forecasts(self):
-        logger.info("📅 GENERATING NOVEMBER 2025 FORECASTS")
-        nov_start="2025-11-01";yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    def generate_current_month_forecasts(self):
+        now = datetime.now()
+        month_start = now.replace(day=1).strftime("%Y-%m-%d")
+        logger.info(f"📅 GENERATING {now.strftime('%B %Y')} FORECASTS")
+        yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d")
         feature_data=self.get_features(yesterday,force_historical=False)
-        df=feature_data["features"];nov_start_ts=pd.Timestamp(nov_start)
-        df=df[df.index>=nov_start_ts]
-        logger.info(f"November period: {nov_start} → {yesterday} ({len(df)} days)")
+        df=feature_data["features"];month_start_ts=pd.Timestamp(month_start)
+        df=df[df.index>=month_start_ts]
+        logger.info(f"November period: {month_start} → {yesterday} ({len(df)} days)")
         generated=0;skipped=0
         for date in df.index:
             forecast_date=date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
@@ -141,7 +143,7 @@ def main():
         logger.info("⚠️  Calibration data missing - bootstrapping...");forecaster.bootstrap_calibration();logger.info("📊 Backfilling actuals...");forecaster.db.backfill_actuals(forecaster.data_fetcher);logger.info("📊 Fitting calibrator...");cal=ForecastCalibrator();result=cal.fit_from_database(forecaster.db)
         if result:cal.save("models");forecaster.calibrator=cal;logger.info("✅ Calibrator fitted and saved")
         else:logger.warning("⚠️  Calibrator fitting failed")
-        forecaster.generate_november_forecasts();logger.info("📊 Backfilling November actuals...");forecaster.db.backfill_actuals(forecaster.data_fetcher)
+        forecaster.generate_current_month_forecasts();logger.info("📊 Backfilling November actuals...");forecaster.db.backfill_actuals(forecaster.data_fetcher)
     elif args.rebuild_calibration or not forecaster.calibrator.fitted:
         logger.info("📊 Refitting calibrator...");forecaster.db.backfill_actuals(forecaster.data_fetcher);cal=ForecastCalibrator();result=cal.fit_from_database(forecaster.db)
         if result:cal.save("models");forecaster.calibrator=cal;logger.info("✅ Calibrator refitted")
