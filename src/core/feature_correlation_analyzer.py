@@ -13,18 +13,18 @@ class FeatureCorrelationAnalyzer:
         self.correlation_matrix = None
         self.removed_features = []
         self.kept_features = []
-        
+
     def analyze_and_remove(self, features_df, importance_scores, protected_features):
         """
         Main method: removes correlated features based on importance
         """
         # 1. Compute correlation matrix
         self.correlation_matrix = features_df.corr().abs()
-        
+
         # 2. Find correlated pairs
         upper_tri = np.triu(np.ones_like(self.correlation_matrix), k=1)
         high_corr_pairs = []
-        
+
         for i in range(len(self.correlation_matrix)):
             for j in range(i+1, len(self.correlation_matrix)):
                 if self.correlation_matrix.iloc[i, j] > self.threshold:
@@ -32,7 +32,7 @@ class FeatureCorrelationAnalyzer:
                     feat_j = self.correlation_matrix.columns[j]
                     corr_val = self.correlation_matrix.iloc[i, j]
                     high_corr_pairs.append((feat_i, feat_j, corr_val))
-        
+
         # 3. Decide which to keep based on importance
         to_remove = set()
         for feat_i, feat_j, corr in high_corr_pairs:
@@ -50,17 +50,17 @@ class FeatureCorrelationAnalyzer:
                     to_remove.add(feat_i)
                 else:
                     to_remove.add(feat_j)
-        
+
         self.removed_features = list(to_remove)
         self.kept_features = [f for f in features_df.columns if f not in to_remove]
-        
+
         return self.kept_features, self.removed_features
-    
-    def generate_report(self, output_dir="diagnostics"):
+
+    def generate_report(self, output_dir="diagnostics", suffix=""):
         """Generate correlation heatmap and report"""
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
-        
+
         # Save correlation pairs
         report = {
             "threshold": self.threshold,
@@ -69,10 +69,11 @@ class FeatureCorrelationAnalyzer:
             "features_kept": len(self.kept_features),
             "removed_features": self.removed_features
         }
-        
-        with open(output_path / "correlation_report.json", "w") as f:
+
+        report_filename = f"correlation_report{suffix}.json"
+        with open(output_path / report_filename, "w") as f:
             json.dump(report, f, indent=2)
-        
+
         # Generate heatmap (top 50 features only)
         top_50 = self.kept_features[:50] if len(self.kept_features) > 50 else self.kept_features
         plt.figure(figsize=(16, 14))
@@ -83,7 +84,9 @@ class FeatureCorrelationAnalyzer:
             square=True,
             linewidths=0.5
         )
-        plt.title("Feature Correlation Matrix (Top 50 Features)")
+        title_suffix = suffix.replace("_", " ").title() if suffix else ""
+        plt.title(f"Feature Correlation Matrix{title_suffix} (Top 50 Features)")
         plt.tight_layout()
-        plt.savefig(output_path / "correlation_heatmap.png", dpi=150)
+        heatmap_filename = f"correlation_heatmap{suffix}.png"
+        plt.savefig(output_path / heatmap_filename, dpi=150)
         plt.close()

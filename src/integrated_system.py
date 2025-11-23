@@ -136,8 +136,8 @@ def main():
         else:logger.warning("⚠️  Calibrator fitting failed")
     logger.info("📊 TODAY'S FORECAST");yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d");feature_data=forecaster.get_features(yesterday,force_historical=False);df=feature_data["features"];latest_available=df.index[-1].strftime("%Y-%m-%d");logger.info(f"Latest data: {latest_available}");forecast=forecaster.generate_forecast(latest_available,df=df)
     if forecast:
-        logger.info(f"Current VIX: {forecast['current_vix']:.2f}");logger.info(f"Direction: {forecast['direction']} ({forecast['direction_probability']:.1%} confidence)");logger.info(f"Magnitude: {forecast['magnitude_pct']:+.2f}% → {forecast['expected_vix']:.2f}")
+        cohort=forecast.get('metadata',{}).get('calendar_cohort','unknown');logger.info(f"Current VIX: {forecast['current_vix']:.2f}");logger.info(f"Direction: {forecast['direction']} ({forecast['direction_probability']:.1%} confidence)");logger.info(f"Magnitude: {forecast['magnitude_pct']:+.2f}% → {forecast['expected_vix']:.2f}")
         if forecast['calibration']['correction_type']!='not_fitted':logger.info(f"Calibration: {forecast['calibration']['adjustment']:+.3f}% ({forecast['calibration']['correction_type']})")
-        logger.info(f"Regime: {forecast['current_regime']} → {forecast['expected_regime']} | Actionable: {'YES'if forecast['actionable']else'NO'}");total_preds=len(forecaster.db.get_predictions());with_actuals=len(forecaster.db.get_predictions(with_actuals=True));logger.info(f"Database: {total_preds} predictions ({with_actuals} with actuals)");sys.exit(0)
+        logger.info(f"Regime: {forecast['current_regime']} → {forecast['expected_regime']} | Cohort: {cohort} | Actionable: {'YES'if forecast['actionable']else'NO'}");total_preds=len(forecaster.db.get_predictions());with_actuals=len(forecaster.db.get_predictions(with_actuals=True));logger.info(f"Database: {total_preds} predictions ({with_actuals} with actuals)");sys.exit(0)
     else:logger.error("❌ Forecast generation failed");sys.exit(1)
 if __name__=="__main__":main()

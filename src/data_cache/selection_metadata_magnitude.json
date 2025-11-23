@@ -1,12 +1,12 @@
 {
-  "timestamp": "2025-11-22T23:20:49.364748",
+  "timestamp": "2025-11-23T02:32:36.556210",
   "target": "log_vix_change",
   "target_type": "magnitude",
   "horizon": 5,
   "samples": 5336,
   "total_features": 254,
-  "selected_features": 153,
-  "top_n": 150,
+  "selected_features": 103,
+  "top_n": 100,
   "cv_folds": 3,
   "protected_features": [
     "is_fomc_period",
