@@ -1,9 +1,12 @@
 {
-  "timestamp": "2025-11-24T11:24:00.635904",
+  "timestamp": "2025-11-24T12:33:42.415114",
   "target": "log_vix_change",
   "target_type": "magnitude",
   "horizon": 5,
-  "samples": 5336,
+  "samples_total": 5336,
+  "samples_trainval": 4539,
+  "samples_test_excluded": 797,
+  "test_exclusion_enabled": true,
   "total_features": 287,
   "selected_features": 103,
   "top_n": 100,
@@ -14,91 +17,91 @@
     "is_earnings_heavy"
   ],
   "target_statistics": {
-    "mean": -4.728245082420112e-05,
-    "std": 0.14786829756324651,
-    "min": -0.6286539789685599,
+    "mean": 0.000346570111218872,
+    "std": 0.14729520298512447,
+    "min": -0.5590929286146875,
     "max": 1.1407237800592158
   },
   "top_20_features": [
     {
       "feature": "is_fomc_period",
-      "importance": 0.002141716529149562
+      "importance": 0.0009660755516961217
     },
     {
       "feature": "is_opex_week",
-      "importance": 0.00482429931871593
+      "importance": 0.0018003200908424332
     },
     {
       "feature": "is_earnings_heavy",
-      "importance": 8.724600193090736e-05
+      "importance": 0.00012135343858972192
     },
     {
       "feature": "vix_regime",
-      "importance": 0.020250498212408274
-    },
-    {
-      "feature": "vix_percentile_63d",
-      "importance": 0.013981774263083935
+      "importance": 0.014661092450842262
     },
     {
       "feature": "days_in_regime",
-      "importance": 0.012579065933823585
+      "importance": 0.013971592532470822
     },
     {
-      "feature": "vix_vs_ma10",
-      "importance": 0.0121800203807652
+      "feature": "vvix_vix_ratio",
+      "importance": 0.012401959206908942
     },
     {
-      "feature": "risk_premium_zscore",
-      "importance": 0.011197254993021488
-    },
-    {
-      "feature": "credit_stress_composite",
-      "importance": 0.0110447408282198
-    },
-    {
-      "feature": "risk_premium_percentile_252d",
-      "importance": 0.010833122115582228
-    },
-    {
-      "feature": "vvix_velocity_10d",
-      "importance": 0.010597312077879905
-    },
-    {
-      "feature": "SKEW_percentile_252d",
-      "importance": 0.010509362444281578
-    },
-    {
-      "feature": "spx_vol_ratio_10_63",
-      "importance": 0.01012594047933817
-    },
-    {
-      "feature": "SKEW",
-      "importance": 0.009750090725719928
-    },
-    {
-      "feature": "credit_quality_spread",
-      "importance": 0.009639569744467735
-    },
-    {
-      "feature": "vvix_vix_spread",
-      "importance": 0.009500333294272422
-    },
-    {
-      "feature": "crude_oil_ret_63d",
-      "importance": 0.009112889133393764
+      "feature": "time_in_regime_pct",
+      "importance": 0.012328551011160016
     },
     {
       "feature": "vix_velocity_5d",
-      "importance": 0.008264833129942417
+      "importance": 0.012181784026324749
     },
     {
-      "feature": "spx_vs_ma50",
-      "importance": 0.008199741458520293
+      "feature": "credit_stress_composite",
+      "importance": 0.011861753277480602
+    },
+    {
+      "feature": "liquidity_stress_composite",
+      "importance": 0.011403274675831198
+    },
+    {
+      "feature": "vix_vs_ma10",
+      "importance": 0.0111916096881032
+    },
+    {
+      "feature": "6m_vol_63d_fred",
+      "importance": 0.011001687869429589
+    },
+    {
+      "feature": "yield_curve_vol_avg_fred",
+      "importance": 0.010855123191140592
+    },
+    {
+      "feature": "risk_premium_zscore",
+      "importance": 0.010556114837527275
+    },
+    {
+      "feature": "risk_premium_velocity",
+      "importance": 0.010318443225696684
+    },
+    {
+      "feature": "hy_spread",
+      "importance": 0.01030666045844555
+    },
+    {
+      "feature": "crude_oil_ret_63d",
+      "importance": 0.010064866580069064
+    },
+    {
+      "feature": "vix_zscore_252d",
+      "importance": 0.009763289336115121
     },
     {
       "feature": "VXTLT",
-      "importance": 0.008182477205991745
+      "importance": 0.009369774255901575
+    },
+    {
+      "feature": "risk_premium_percentile_252d",
+      "importance": 0.0090374574996531
     }
   ]
 }

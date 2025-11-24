@@ -3,16 +3,11 @@ from datetime import datetime,timedelta
 from typing import Dict,List,Optional,Tuple
 import numpy as np
 import pandas as pd
-from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG,MACRO_EVENT_CONFIG,FORWARD_FILL_LIMITS
-from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,VIX_REGIME_BINS,VIX_REGIME_LABELS,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
+from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,PUBLICATION_LAGS,MACRO_EVENT_CONFIG,FORWARD_FILL_LIMITS
+from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
 from core.temporal_validator import TemporalSafetyValidator
 from core.regime_classifier import RegimeClassifier
 warnings.filterwarnings("ignore")
-try:
-    from config import CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,FEATURE_QUALITY_CONFIG,PUBLICATION_LAGS,TARGET_CONFIG,FORWARD_FILL_LIMITS
-except ImportError:
-    ENABLE_TEMPORAL_SAFETY=False;PUBLICATION_LAGS={};CALENDAR_COHORTS={};COHORT_PRIORITY=[];TARGET_CONFIG={};FEATURE_QUALITY_CONFIG={};FORWARD_FILL_LIMITS={"daily":5,"weekly":10,"monthly":45,"quarterly":135}
-    warnings.warn("⚠️ Config imports incomplete - using defaults")
 class LaborMarketFeatureEngine:
     @staticmethod
     def extract_initial_claims_features(icsa:pd.Series)->pd.DataFrame:

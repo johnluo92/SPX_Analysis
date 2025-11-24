@@ -2,22 +2,22 @@
 ---------------------------------------------------------------------------------
 
 Core Files
-1.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/calculations.py
-2.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/data_fetcher.py
-3.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/feature_correlation_analyzer.py
-4.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/feature_engineer.py
-5.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/forecast_calibrator.py
-6.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/prediction_database.py
-7.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/regime_classifier.py
-8.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/target_calculator.py
-9.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/temporal_validator.py
-10.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/xgboost_feature_selector_v2.py
-11.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/core/xgboost_trainer_v3.py
+1.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/calculations.py
+2.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/data_fetcher.py
+3.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/feature_correlation_analyzer.py
+4.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/feature_engineer.py
+5.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/forecast_calibrator.py
+6.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/prediction_database.py
+7.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/regime_classifier.py
+8.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/target_calculator.py
+9.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/temporal_validator.py
+10.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/xgboost_feature_selector_v2.py
+11.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/core/xgboost_trainer_v3.py
 
 Root src Files
-12.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/config.py
-13.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/integrated_system.py
-14.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/c529840/src/train_probabilistic_models.py
+12.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/config.py
+13.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/integrated_system.py
+14.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/fc5456a/src/train_probabilistic_models.py
 
 are these two files functionally/logically the same? i compressed/minified the larger file and want to double check. I intentionally removed almost all white spaces/comments/ and compressed everything without molesting the logic. please confirm.
 ---------------------------------------------------------------------------------

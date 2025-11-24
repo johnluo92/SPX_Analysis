@@ -2,7 +2,7 @@ import argparse,json,logging,sys
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
-from config import TARGET_CONFIG,TRAINING_YEARS,FEATURE_SELECTION_CONFIG,get_last_complete_month_end
+from config import TARGET_CONFIG,TRAINING_YEARS,FEATURE_SELECTION_CONFIG,XGBOOST_CONFIG,get_last_complete_month_end
 from core.data_fetcher import UnifiedDataFetcher
 from core.feature_engineer import FeatureEngineer
 from core.xgboost_feature_selector_v2 import SimplifiedFeatureSelector
@@ -25,15 +25,16 @@ def prepare_training_data():
 def run_feature_selection(features_df,vix,target_type='magnitude'):
     logger.info(f"\n📊 FEATURE SELECTION - {target_type.upper()}")
     feature_cols=[c for c in features_df.columns if c not in["vix","spx","calendar_cohort","cohort_weight","feature_quality"]]
-    top_n = FEATURE_SELECTION_CONFIG[f"{target_type}_top_n"]
-    selector = SimplifiedFeatureSelector(target_type=target_type, top_n=top_n)
-    selected_features, metadata = selector.select_features(features_df[feature_cols], vix)
+    test_start_idx=int(len(features_df)*(1-XGBOOST_CONFIG["cv_config"]["test_size"]))
+    top_n=FEATURE_SELECTION_CONFIG[f"{target_type}_top_n"]
+    selector=SimplifiedFeatureSelector(target_type=target_type,top_n=top_n)
+    selected_features,metadata=selector.select_features(features_df[feature_cols],vix,test_start_idx=test_start_idx)
     selector.save_results(output_dir="data_cache")
     return selected_features
 def save_training_report(forecaster,mag_features,dir_features,training_end,output_dir="models"):
     output_path=Path(output_dir);output_path.mkdir(parents=True,exist_ok=True)
     report_file=output_path/f"training_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    report={"timestamp":datetime.now().isoformat(),"system_version":"v5.2_dual_model","training_end":training_end,"target_types":["magnitude_regressor","direction_classifier"],"feature_selection":{"magnitude":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["magnitude_top_n"],"selected_features":len(mag_features),"selected_feature_list":mag_features},"direction":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["direction_top_n"],"selected_features":len(dir_features),"selected_feature_list":dir_features}},"training_summary":{"models_trained":2,"model_types":["magnitude_regressor","direction_classifier"],"magnitude_features":len(forecaster.magnitude_feature_names),"direction_features":len(forecaster.direction_feature_names)},"metrics":forecaster.metrics}
+    report={"timestamp":datetime.now().isoformat(),"system_version":"v5.3_dual_model","training_end":training_end,"target_types":["magnitude_regressor","direction_classifier"],"feature_selection":{"magnitude":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["magnitude_top_n"],"selected_features":len(mag_features),"selected_feature_list":mag_features},"direction":{"enabled":True,"top_n":FEATURE_SELECTION_CONFIG["direction_top_n"],"selected_features":len(dir_features),"selected_feature_list":dir_features}},"training_summary":{"models_trained":2,"model_types":["magnitude_regressor","direction_classifier"],"magnitude_features":len(forecaster.magnitude_feature_names),"direction_features":len(forecaster.direction_feature_names)},"metrics":forecaster.metrics}
     with open(report_file,"w")as f:json.dump(report,f,indent=2,default=str)
     logger.info(f"Training report: {report_file}")
     metadata_file=output_path/"training_metadata.json";metadata={"training_end":training_end,"timestamp":datetime.now().isoformat(),"magnitude_feature_count":len(forecaster.magnitude_feature_names),"direction_feature_count":len(forecaster.direction_feature_names),"test_mae":forecaster.metrics.get("magnitude",{}).get("test",{}).get("mae_pct",0),"test_direction_acc":forecaster.metrics.get("direction",{}).get("test",{}).get("accuracy",0)}
@@ -41,7 +42,7 @@ def save_training_report(forecaster,mag_features,dir_features,training_end,outpu
     logger.info(f"Training metadata: {metadata_file}")
 def main():
     logger.info("DUAL MODEL VIX FORECASTER - MAGNITUDE + DIRECTION")
-    logger.info(f"Version: 5.2 (Dual Model) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"Version: 5.3 (Dual Model) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     try:
         complete_df,vix,training_end=prepare_training_data()
         mag_features=run_feature_selection(complete_df,vix,target_type='magnitude')
