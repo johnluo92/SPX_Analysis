@@ -23,7 +23,7 @@ class SimplifiedVIXForecaster:
         for warning in validation["warnings"]:logger.warning(f"  ⚠️  {warning}")
         stats=validation["stats"];logger.info(f"Valid targets: {stats['count']} | UP: {df['target_direction'].sum()} ({df['target_direction'].mean():.1%}) | DOWN: {len(df)-df['target_direction'].sum()}")
         X_mag,mag_names=self._prepare_features(df,magnitude_features);X_dir,dir_names=self._prepare_features(df,direction_features);self.magnitude_feature_names=mag_names;self.direction_feature_names=dir_names
-        total_samples=len(X_mag);train_end_idx=int(total_samples*0.80);val_end_idx=int(total_samples*0.90)
+        total_samples=len(X_mag);test_size=XGBOOST_CONFIG["cv_config"]["test_size"];val_size=XGBOOST_CONFIG["cv_config"]["val_size"];train_end_idx=int(total_samples*(1-test_size-val_size));val_end_idx=int(total_samples*(1-test_size))
         X_mag_train=X_mag.iloc[:train_end_idx];X_mag_val=X_mag.iloc[train_end_idx:val_end_idx];X_mag_test=X_mag.iloc[val_end_idx:]
         X_dir_train=X_dir.iloc[:train_end_idx];X_dir_val=X_dir.iloc[train_end_idx:val_end_idx];X_dir_test=X_dir.iloc[val_end_idx:]
         y_direction_train=df.iloc[:train_end_idx]["target_direction"];y_direction_val=df.iloc[train_end_idx:val_end_idx]["target_direction"];y_direction_test=df.iloc[val_end_idx:]["target_direction"]
@@ -82,7 +82,7 @@ class SimplifiedVIXForecaster:
         dir_proba=self.direction_model.predict_proba(X_dir)[0];direction="UP"if dir_proba[1]>0.5 else"DOWN";direction_confidence=float(max(dir_proba[0],dir_proba[1]));direction_probability=float(dir_proba[1])
         expected_vix=current_vix*(1+magnitude_pct/100)
         current_regime=self._get_regime(current_vix);expected_regime=self._get_regime(expected_vix);regime_change=current_regime!=expected_regime
-        regime_threshold=XGBOOST_CONFIG["regime_thresholds"].get(current_regime,{}).get("threshold",8.0);actionable=direction_confidence>0.70
+        actionable=direction_confidence>XGBOOST_CONFIG["actionable_confidence_threshold"]
         return{"magnitude_pct":float(magnitude_pct),"magnitude_log":float(magnitude_log),"expected_vix":float(expected_vix),"current_vix":float(current_vix),"direction":direction,"direction_probability":direction_probability,"direction_confidence":direction_confidence,"current_regime":current_regime,"expected_regime":expected_regime,"regime_change":regime_change,"actionable":actionable}
     def _save_models(self,save_dir):
         save_path=Path(save_dir);save_path.mkdir(parents=True,exist_ok=True)
