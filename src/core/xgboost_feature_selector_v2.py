@@ -34,7 +34,7 @@ class SimplifiedFeatureSelector:
         self._print_summary(selected,importance_scores)
         return selected,self.metadata
     def _compute_importance(self,X:pd.DataFrame,y:pd.Series)->Dict[str,float]:
-        tscv=TimeSeriesSplit(n_splits=self.cv_folds);importance_accumulator=np.zeros(len(X.columns))
+        tscv=TimeSeriesSplit(n_splits=self.cv_folds, gap=5);importance_accumulator=np.zeros(len(X.columns))
         for fold_idx,(train_idx,val_idx)in enumerate(tscv.split(X)):
             X_train=X.iloc[train_idx];y_train=y.iloc[train_idx];X_val=X.iloc[val_idx];y_val=y.iloc[val_idx]
             if self.target_type=='direction':

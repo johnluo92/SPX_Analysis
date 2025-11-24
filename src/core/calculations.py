@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import Union,List,Optional
+from config import REGIME_BOUNDARIES
 def calculate_robust_zscore(series:pd.Series,window:int,min_std:float=1e-8)->pd.Series:
     rolling_mean=series.rolling(window).mean();rolling_std=series.rolling(window).std().clip(lower=min_std)
     return(series-rolling_mean)/rolling_std
@@ -52,12 +53,12 @@ def exponential_decay_weights(length:int,halflife:int)->np.ndarray:
     decay_factor=0.5**(1/halflife);positions=np.arange(length);weights=decay_factor**positions[::-1]
     return weights/weights.sum()
 DEFAULT_ZSCORE_WINDOW=63;DEFAULT_PERCENTILE_WINDOW=63;DEFAULT_MIN_STD=1e-8;DEFAULT_MIN_DATA_PCT=0.7
-VIX_REGIME_BINS=[0,16.77,24.40,39.67,100];VIX_REGIME_LABELS=[0,1,2,3]
+VIX_REGIME_LABELS=[0,1,2,3]
 SKEW_REGIME_BINS=[0,130,145,160,200];SKEW_REGIME_LABELS=[0,1,2,3]
 if __name__=="__main__":
     print("Running calculation module validation tests...\n")
     test_series=pd.Series([10,12,15,20,18,16,14,22,25,28]);zscore=calculate_robust_zscore(test_series,window=5);print("✓ Z-score test passed")
-    vix_test=pd.Series([12,20,30,45]);regimes=calculate_regime_with_validation(vix_test,bins=VIX_REGIME_BINS,labels=VIX_REGIME_LABELS,feature_name="vix_test")
+    vix_test=pd.Series([12,20,30,45]);regimes=calculate_regime_with_validation(vix_test,bins=REGIME_BOUNDARIES,labels=VIX_REGIME_LABELS,feature_name="vix_test")
     assert list(regimes)==[0,1,2,3],"Regime test failed"
     print("✓ Regime classification test passed")
     percentile=calculate_percentile_with_validation(test_series,window=5)
