@@ -7,10 +7,11 @@ from dotenv import load_dotenv
 load_dotenv();warnings.filterwarnings("ignore")
 class DataFetchLogger:
     def __init__(self,name="DataFetcher"):
-        self.logger=logging.getLogger(name);self.logger.handlers.clear();self.logger.propagate=False;h=logging.StreamHandler();h.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",datefmt="%H:%M:%S"));self.logger.addHandler(h);self.logger.setLevel(logging.WARNING)
+        self.logger=logging.getLogger(name);self.logger.handlers.clear();self.logger.propagate=False;h=logging.StreamHandler();h.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",datefmt="%H:%M:%S"));self.logger.addHandler(h);self.logger.setLevel(logging.ERROR)  # Changed from WARNING to ERROR
     def info(self,msg):self.logger.info(msg)
     def warning(self,msg):self.logger.warning(msg)
     def error(self,msg):self.logger.error(msg)
+    def debug(self,msg):self.logger.debug(msg)  # Added debug method
 class UnifiedDataFetcher:
     QUARTERLY_SERIES={"GDP","GDPC1"}
     MONTHLY_SERIES={"UNRATE","CPIAUCSL","CPILFESL","PCEPI","PCEPILFE","UMCSENT","INDPRO","PAYEMS","M1SL","M2SL"}
@@ -20,7 +21,7 @@ class UnifiedDataFetcher:
     CBOE_FILES={"SKEW":"SKEW_INDEX_CBOE.csv","PCCI":"PCCI_INDX_CBOE.csv","PCCE":"PCCE_EQUITIES_CBOE.csv","PCC":"PCC_INDX_EQ_TOTAL_CBOE.csv","COR1M":"COR1M_CBOE.csv","COR3M":"COR3M_CBOE.csv","VXTH":"VXTH_TAILHEDGE_CBOE.csv","CNDR":"CNDR_SPX_IRON_CONDOR_CBOE.csv","VX1-VX2":"VX1-VX2.csv","VX2-VX1_RATIO":"(VX2-VX1)OVER(VX1).csv","CL1-CL2":"CL1-CL2.csv","DX1-DX2":"DX1-DX2.csv","BVOL":"BVOL.csv","BFLY":"BFLY.csv","DSPX":"DSPX.csv","VPN":"VPN.csv","GAMMA":"GAMMA.csv","VIX_VIX3M":"VIXoverVIX3M.csv","VXTLT":"VXTLT.csv","GOLDSILVER":"GOLDSILVER_RATIO.csv"}
     def __init__(self,cache_dir="./data_cache",cboe_data_dir="./CBOE_Data_Archive"):
         self.fred_base_url="https://api.stlouisfed.org/fred/series/observations";self.fred_api_key=os.getenv("FRED_API_KEY");self.cache_dir=Path(cache_dir);self.cache_dir.mkdir(exist_ok=True);self.cboe_data_dir=Path(cboe_data_dir);self.logger=DataFetchLogger()
-        if not self.fred_api_key:self.logger.warning("FRED API key missing - FRED fetches will fail")
+        if not self.fred_api_key:self.logger.error("FRED API key missing - FRED fetches will fail")
         try:
             from config import FORWARD_FILL_LIMITS,FRED_SERIES_METADATA
             self.forward_fill_limits=FORWARD_FILL_LIMITS;self.fred_metadata=FRED_SERIES_METADATA
@@ -43,7 +44,7 @@ class UnifiedDataFetcher:
             if cache_path.exists()and new_data is not None and not new_data.empty:
                 cached_df=pd.read_parquet(cache_path)
                 if not cached_df.empty:combined=pd.concat([cached_df,new_data]);combined=combined[~combined.index.duplicated(keep="last")];return combined.sort_index()
-        except Exception as e:self.logger.warning(f"Cache merge failed: {e}")
+        except Exception as e:self.logger.debug(f"Cache merge failed: {e}")  # Changed to debug
         return new_data
     def _normalize_data(self,data,name,min_rows=10):
         if data is None or(hasattr(data,"empty")and data.empty):return None
@@ -68,7 +69,7 @@ class UnifiedDataFetcher:
         if series_id in self.WEEKLY_SERIES:return len(pd.bdate_range(last_dt,now))-1>2
         return len(pd.bdate_range(last_dt,now))-1>1 if series_id in self.DAILY_SERIES else(now-last_dt).days>2
     def fetch_fred(self,series_id,start_date=None,end_date=None,incremental=True):
-        if not self.fred_api_key:self.logger.warning(f"FRED:{series_id}: Cannot fetch - API key missing");return None
+        if not self.fred_api_key:self.logger.error(f"FRED:{series_id}: Cannot fetch - API key missing");return None
         cache_path=self.cache_dir/f"fred_{series_id}.parquet";fetch_start=start_date
         if incremental and cache_path.exists():
             last_date=self._get_last_date_from_cache(cache_path)
@@ -85,17 +86,17 @@ class UnifiedDataFetcher:
                 if cache_path.exists():
                     try:
                         cached_df=pd.read_parquet(cache_path)
-                        if series_id in cached_df.columns:self.logger.warning(f"FRED:{series_id}: No new data available, using existing cache");return cached_df[series_id]
+                        if series_id in cached_df.columns:return cached_df[series_id]  # Removed warning
                     except:pass
-                self.logger.warning(f"FRED:{series_id}: No data returned from API");return None
+                return None  # Removed warning
             obs=data["observations"];df=pd.DataFrame(obs);df["date"]=pd.to_datetime(df["date"]);df=df[df["value"]!="."];df["value"]=pd.to_numeric(df["value"],errors="coerce");df=df.dropna(subset=["value"]);df=df.set_index("date")[["value"]];df.columns=[series_id];df=self._normalize_data(df,f"FRED:{series_id}")
             if df is None:
                 if cache_path.exists():
                     try:
                         cached_df=pd.read_parquet(cache_path)
-                        if series_id in cached_df.columns:self.logger.warning(f"FRED:{series_id}: Data processing issue, using existing cache");return cached_df[series_id]
+                        if series_id in cached_df.columns:return cached_df[series_id]  # Removed warning
                     except:pass
-                self.logger.warning(f"FRED:{series_id}: Data normalization failed");return None
+                return None  # Removed warning
             ff_limit=self._get_forward_fill_limit(series_id)
             if series_id in self.QUARTERLY_SERIES or series_id in self.MONTHLY_SERIES or series_id in self.WEEKLY_SERIES:date_range=pd.date_range(df.index[0],df.index[-1],freq="D");df=df.reindex(date_range,method="ffill",limit=ff_limit);df.index=pd.DatetimeIndex(df.index.date)
             if incremental and cache_path.exists():df=self._merge_with_cache(df,cache_path)
@@ -104,9 +105,9 @@ class UnifiedDataFetcher:
             if cache_path.exists():
                 try:
                     cached_df=pd.read_parquet(cache_path)
-                    if series_id in cached_df.columns:self.logger.warning(f"FRED:{series_id}: Fetch failed, using existing cache - {str(e)[:100]}");return cached_df[series_id]
+                    if series_id in cached_df.columns:return cached_df[series_id]  # Removed warning - cache fallback is normal
                 except:pass
-            self.logger.warning(f"FRED:{series_id}: Fetch failed - {str(e)[:100]}")
+            self.logger.error(f"FRED:{series_id}: Fetch failed with no cache available - {str(e)[:100]}")  # Only error if no cache
             return None
     def fetch_fred_series(self,series_id,start_date=None,end_date=None,incremental=True):
         return self.fetch_fred(series_id,start_date,end_date,incremental)
@@ -136,7 +137,7 @@ class UnifiedDataFetcher:
                     if(cache_start<=start_dt)and(cache_end>=end_dt):
                         filtered_df=cached_df[(cached_df.index>=start_dt)&(cached_df.index<=end_dt)]
                         return filtered_df if not filtered_df.empty else None
-            except Exception as e:self.logger.warning(f"Yahoo:{symbol}: Cache read failed - {e}")
+            except Exception as e:self.logger.debug(f"Yahoo:{symbol}: Cache read failed - {e}")
         fetch_start=start_date or"2000-01-01";is_incremental_fetch=False
         if is_historical_request:incremental=False
         if incremental and cache_path.exists():
@@ -166,21 +167,18 @@ class UnifiedDataFetcher:
                 if cache_path.exists():
                     try:
                         cached_df=pd.read_parquet(cache_path)
-                        if not cached_df.empty:
-                            if not is_incremental_fetch:self.logger.warning(f"Yahoo:{symbol}: No new data available, using existing cache")
-                            return cached_df
+                        if not cached_df.empty:return cached_df  # Removed warning
                     except:pass
-                self.logger.warning(f"Yahoo:{symbol}: No data returned");return None
+                return None  # Removed warning
             min_rows=1 if is_incremental_fetch else 10
             df=self._normalize_data(df,f"Yahoo:{symbol}",min_rows=min_rows)
             if df is None:
                 if cache_path.exists():
                     try:
                         cached_df=pd.read_parquet(cache_path)
-                        if not is_incremental_fetch:self.logger.warning(f"Yahoo:{symbol}: Data processing issue, using existing cache")
-                        return cached_df
+                        return cached_df  # Removed warning
                     except:pass
-                self.logger.warning(f"Yahoo:{symbol}: Data normalization failed");return None
+                return None  # Removed warning
             if incremental and cache_path.exists():df=self._merge_with_cache(df,cache_path)
             df.to_parquet(cache_path)
             if is_historical_request:
@@ -192,28 +190,27 @@ class UnifiedDataFetcher:
                 try:
                     cached_df=pd.read_parquet(cache_path)
                     if not cached_df.empty:
-                        self.logger.warning(f"Yahoo:{symbol}: Fetch failed, using existing cache - {str(e)[:100]}")
                         if is_historical_request:
                             start_dt=pd.to_datetime(start_date)if start_date else cached_df.index[0]
                             cached_df=cached_df[(cached_df.index>=start_dt)&(cached_df.index<=end_dt)]
-                        return cached_df
+                        return cached_df  # Removed warning - cache fallback is normal
                 except:pass
-            self.logger.error(f"Yahoo:{symbol}: Fetch failed - {str(e)[:100]}");return None
+            self.logger.error(f"Yahoo:{symbol}: Fetch failed with no cache available - {str(e)[:100]}");return None
     def fetch_price(self,symbol):
         try:
             ticker=yf.Ticker(symbol);data=ticker.history(period="1d")
             if not data.empty:return float(data["Close"].iloc[-1])
-        except Exception as e:self.logger.warning(f"Price fetch failed for {symbol}: {str(e)[:100]}")
+        except Exception as e:self.logger.debug(f"Price fetch failed for {symbol}: {str(e)[:100]}")
         return None
     def fetch_cboe_series(self,symbol):
-        if symbol not in self.CBOE_FILES:self.logger.warning(f"CBOE:{symbol}: Unknown symbol");return None
+        if symbol not in self.CBOE_FILES:self.logger.error(f"CBOE:{symbol}: Unknown symbol");return None
         file_path=self.cboe_data_dir/self.CBOE_FILES[symbol]
-        if not file_path.exists():self.logger.warning(f"CBOE:{symbol}: File not found at {file_path}");return None
+        if not file_path.exists():self.logger.error(f"CBOE:{symbol}: File not found at {file_path}");return None
         try:
             df=pd.read_csv(file_path,parse_dates=[0],index_col=0,converters={1:lambda x:pd.to_numeric(x,errors="coerce")})
             for col in df.columns:df[col]=pd.to_numeric(df[col],errors="coerce")
             df=self._normalize_data(df,f"CBOE:{symbol}")
-            if df is None or df.empty:self.logger.warning(f"CBOE:{symbol}: Data normalization failed or empty");return None
+            if df is None or df.empty:self.logger.error(f"CBOE:{symbol}: Data normalization failed or empty");return None
             series=df.iloc[:,0]if len(df.columns)>0 else None
             if series is not None:series=series.astype(np.float64)
             return series
@@ -235,7 +232,7 @@ class UnifiedDataFetcher:
             df=df.set_index("date");df=self._normalize_data(df,"FOMC:calendar")
             if df is None or df.empty:self.logger.error("FOMC: Calendar normalization failed");return None
             df=df[(df.index.year>=start_year)&(df.index.year<=end_year)]
-            if df.empty:self.logger.warning(f"FOMC: No meetings found in range {start_year}-{end_year}");return None
+            if df.empty:self.logger.error(f"FOMC: No meetings found in range {start_year}-{end_year}");return None
             self.logger.info(f"FOMC: {len(df)} meetings ({start_year}-{end_year})");return df
         except Exception as e:self.logger.error(f"FOMC: Failed to load calendar - {str(e)[:100]}");return None
     def update_fomc_calendar_from_csv(self,csv_path):
