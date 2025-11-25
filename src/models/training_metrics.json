@@ -37,5 +37,11 @@
       "recall": 0.6843575418994413,
       "avg_confidence": 0.5983641743659973
     }
+  },
+  "direction_calibrated": {
+    "test_accuracy": 0.6469104665825978,
+    "test_precision": 0.6133720930232558,
+    "test_recall": 0.5893854748603352,
+    "avg_confidence": 0.6308408975601196
   }
 }
