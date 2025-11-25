@@ -1,0 +1,107 @@
+{
+  "timestamp": "2025-11-25T10:57:00.185471",
+  "target": "log_vix_change",
+  "target_type": "magnitude",
+  "horizon": 5,
+  "samples_total": 5336,
+  "samples_trainval": 4539,
+  "samples_test_excluded": 797,
+  "test_exclusion_enabled": true,
+  "total_features": 287,
+  "selected_features": 64,
+  "top_n": 61,
+  "cv_folds": 5,
+  "protected_features": [
+    "is_fomc_period",
+    "is_opex_week",
+    "is_earnings_heavy"
+  ],
+  "target_statistics": {
+    "mean": 0.000346570111218872,
+    "std": 0.14729520298512447,
+    "min": -0.5590929286146875,
+    "max": 1.1407237800592158
+  },
+  "top_20_features": [
+    {
+      "feature": "is_fomc_period",
+      "importance": 0.0010694820201024413
+    },
+    {
+      "feature": "is_opex_week",
+      "importance": 0.0025339749176055194
+    },
+    {
+      "feature": "is_earnings_heavy",
+      "importance": 0.0
+    },
+    {
+      "feature": "vix_velocity_5d",
+      "importance": 0.017986738122999668
+    },
+    {
+      "feature": "vix_vs_ma10",
+      "importance": 0.014439551159739494
+    },
+    {
+      "feature": "days_in_regime",
+      "importance": 0.013239226117730141
+    },
+    {
+      "feature": "regime_expected_return_5d",
+      "importance": 0.012412497401237487
+    },
+    {
+      "feature": "risk_premium_percentile_21d",
+      "importance": 0.011091057676821947
+    },
+    {
+      "feature": "vix_regime",
+      "importance": 0.010971753718331456
+    },
+    {
+      "feature": "vvix_ret_10d",
+      "importance": 0.010769456252455711
+    },
+    {
+      "feature": "spx_ret_5d",
+      "importance": 0.009735303767956793
+    },
+    {
+      "feature": "crude_oil_ret_63d",
+      "importance": 0.00942017650231719
+    },
+    {
+      "feature": "6m_vol_63d_fred",
+      "importance": 0.008731738105416298
+    },
+    {
+      "feature": "vvix",
+      "importance": 0.008578092232346535
+    },
+    {
+      "feature": "hy_b_velocity_21d",
+      "importance": 0.008305113622918725
+    },
+    {
+      "feature": "risk_premium_zscore",
+      "importance": 0.008303666487336159
+    },
+    {
+      "feature": "vix_velocity_3d_pct",
+      "importance": 0.00818018764257431
+    },
+    {
+      "feature": "vxtlt_vix_spread",
+      "importance": 0.00798180173151195
+    },
+    {
+      "feature": "claims_velocity_4w",
+      "importance": 0.007968478370457888
+    },
+    {
+      "feature": "vix_vs_rv_21d",
+      "importance": 0.00795772997662425
+    }
+  ]
+}

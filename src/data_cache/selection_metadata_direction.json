@@ -1,0 +1,105 @@
+{
+  "timestamp": "2025-11-25T10:57:02.460542",
+  "target": "direction",
+  "target_type": "direction",
+  "horizon": 5,
+  "samples_total": 5336,
+  "samples_trainval": 4539,
+  "samples_test_excluded": 797,
+  "test_exclusion_enabled": true,
+  "total_features": 287,
+  "selected_features": 85,
+  "top_n": 82,
+  "cv_folds": 5,
+  "protected_features": [
+    "is_fomc_period",
+    "is_opex_week",
+    "is_earnings_heavy"
+  ],
+  "target_statistics": {
+    "up_pct": 0.4635382242784754,
+    "down_pct": 0.5364617757215246
+  },
+  "top_20_features": [
+    {
+      "feature": "is_fomc_period",
+      "importance": 0.0010698385536670684
+    },
+    {
+      "feature": "is_opex_week",
+      "importance": 0.0013000245904549955
+    },
+    {
+      "feature": "is_earnings_heavy",
+      "importance": 0.0
+    },
+    {
+      "feature": "vix_velocity_5d",
+      "importance": 0.012624500412493944
+    },
+    {
+      "feature": "vix_zscore_252d",
+      "importance": 0.010072310734540225
+    },
+    {
+      "feature": "vix_vs_ma10",
+      "importance": 0.009942095074802638
+    },
+    {
+      "feature": "spx_realized_vol_63d",
+      "importance": 0.00913986749947071
+    },
+    {
+      "feature": "spx_realized_vol_21d",
+      "importance": 0.00812192801386118
+    },
+    {
+      "feature": "crude_oil_ret_10d",
+      "importance": 0.00801963796839118
+    },
+    {
+      "feature": "spx_ret_5d",
+      "importance": 0.007914172578603029
+    },
+    {
+      "feature": "vxtlt_vix_spread",
+      "importance": 0.007634579110890627
+    },
+    {
+      "feature": "rsi_14",
+      "importance": 0.0075789799913764
+    },
+    {
+      "feature": "hy_spread",
+      "importance": 0.007488072477281093
+    },
+    {
+      "feature": "days_in_regime",
+      "importance": 0.007438646350055933
+    },
+    {
+      "feature": "day_of_month",
+      "importance": 0.007200698368251324
+    },
+    {
+      "feature": "vx_curve_acceleration",
+      "importance": 0.0071896187961101535
+    },
+    {
+      "feature": "reversion_strength_63d",
+      "importance": 0.007184296101331711
+    },
+    {
+      "feature": "dxy_ret_10d",
+      "importance": 0.006998331099748611
+    },
+    {
+      "feature": "vix_vs_ma63",
+      "importance": 0.006939116958528757
+    },
+    {
+      "feature": "vix_percentile_63d",
+      "importance": 0.006787218060344458
+    }
+  ]
+}

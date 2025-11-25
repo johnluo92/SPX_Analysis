@@ -6,7 +6,7 @@ import numpy as np,pandas as pd
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import accuracy_score,mean_absolute_error,mean_squared_error,precision_score,recall_score
 from xgboost import XGBRegressor,XGBClassifier
-from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE,REGIME_BOUNDARIES,REGIME_NAMES,QUALITY_FILTER_CONFIG,DIRECTION_CALIBRATION_CONFIG,ENSEMBLE_CONFIG
+from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE,REGIME_BOUNDARIES,REGIME_NAMES,QUALITY_FILTER_CONFIG,DIRECTION_CALIBRATION_CONFIG,ENSEMBLE_CONFIG, MAGNITUDE_PARAMS, DIRECTION_PARAMS
 from core.target_calculator import TargetCalculator
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
@@ -84,7 +84,7 @@ class SimplifiedVIXForecaster:
         X=df[feature_cols].copy()
         return X,feature_cols
     def _train_magnitude_model(self,X_train,y_train,X_val,y_val,X_test,y_test,df):
-        params=XGBOOST_CONFIG["magnitude_params"].copy();model=XGBRegressor(**params)
+        params=MAGNITUDE_PARAMS.copy();model=XGBRegressor(**params)
         train_weights=None;val_weights=None
         if 'cohort_weight' in df.columns:
             train_weights=df.loc[X_train.index,'cohort_weight'].values;val_weights=df.loc[X_val.index,'cohort_weight'].values;logger.info(f"Using cohort weights: mean={train_weights.mean():.3f}")
@@ -101,7 +101,7 @@ class SimplifiedVIXForecaster:
         if metrics['test']['clipped_pct']>5.0:logger.warning(f"  ⚠️  High clipping rate: {metrics['test']['clipped_pct']:.1f}% of test predictions - consider retraining with tighter regularization")
         return model,metrics
     def _train_direction_model(self,X_train,y_train,X_val,y_val,X_test,y_test,df):
-        params=XGBOOST_CONFIG["direction_params"].copy();model=XGBClassifier(**params)
+        params=DIRECTION_PARAMS.copy().copy();model=XGBClassifier(**params)
         train_weights=None;val_weights=None
         if 'cohort_weight' in df.columns:
             train_weights=df.loc[X_train.index,'cohort_weight'].values;val_weights=df.loc[X_val.index,'cohort_weight'].values;logger.info(f"Using cohort weights: mean={train_weights.mean():.3f}")
@@ -119,10 +119,7 @@ class SimplifiedVIXForecaster:
             dir_proba=float(self.direction_calibrator.transform([dir_proba_raw])[0])
         else:dir_proba=float(dir_proba_raw)
         direction="UP"if dir_proba>0.5 else"DOWN"
-        if self.ensemble_enabled:
-            ensemble_confidence=self._compute_ensemble_confidence(magnitude_pct,dir_proba,current_vix);actionable=ensemble_confidence>ENSEMBLE_CONFIG["actionable_threshold"]
-        else:
-            ensemble_confidence=float(max(dir_proba,1-dir_proba));actionable=ensemble_confidence>XGBOOST_CONFIG["actionable_confidence_threshold"]
+        ensemble_confidence=self._compute_ensemble_confidence(magnitude_pct,dir_proba,current_vix);actionable=ensemble_confidence>ENSEMBLE_CONFIG["actionable_threshold"]
         expected_vix=current_vix*(1+magnitude_pct/100);current_regime=self._get_regime(current_vix);expected_regime=self._get_regime(expected_vix);regime_change=current_regime!=expected_regime
         return {"magnitude_pct":float(magnitude_pct),"magnitude_log":float(magnitude_log),"expected_vix":float(expected_vix),"current_vix":float(current_vix),"direction":direction,"direction_probability":dir_proba,"direction_confidence":ensemble_confidence,"current_regime":current_regime,"expected_regime":expected_regime,"regime_change":regime_change,"actionable":actionable,"ensemble_enabled":self.ensemble_enabled,"calibration_enabled":self.calibration_enabled}
     def _save_models(self,save_dir):
