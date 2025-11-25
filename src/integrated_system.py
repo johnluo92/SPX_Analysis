@@ -2,7 +2,7 @@ import argparse,json,logging,sys
 from datetime import datetime
 from pathlib import Path
 import numpy as np,pandas as pd
-from config import CALIBRATION_WINDOW_DAYS,MIN_SAMPLES_FOR_CORRECTION,TARGET_CONFIG,TRAINING_YEARS
+from config import CALIBRATION_WINDOW_DAYS,MIN_SAMPLES_FOR_CORRECTION,TARGET_CONFIG,TRAINING_YEARS,ENSEMBLE_CONFIG
 from core.data_fetcher import UnifiedDataFetcher
 from core.feature_engineer import FeatureEngineer as UnifiedFeatureEngine
 from core.forecast_calibrator import ForecastCalibrator
@@ -26,6 +26,7 @@ def retrain_model():
     from train_probabilistic_models import main as train_main
     try:train_main();logger.info("✅ Retraining complete");return True
     except Exception as e:logger.error(f"❌ Retraining failed: {e}");return False
+
 class VIXForecaster:
     def __init__(self):
         self.data_fetcher=UnifiedDataFetcher();self.feature_engine=UnifiedFeatureEngine(data_fetcher=self.data_fetcher);self.forecaster=SimplifiedVIXForecaster();self.calibrator=ForecastCalibrator();self.validator=TemporalValidator();self.db=PredictionDatabase();self._feature_cache=None;self._feature_cache_end_date=None;self._feature_cache_force_historical=None
@@ -119,8 +120,92 @@ class VIXForecaster:
         forecast_date=obs_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"]);pred_id=f"pred_{forecast_date.strftime('%Y%m%d')}_h{TARGET_CONFIG['horizon_days']}";conf_pct=abs(forecast["magnitude_pct"]);scale=min(conf_pct/20.0,1.0);prob_up=0.5+(0.5*scale)if forecast["direction"]=="UP"else 0.5-(0.5*scale);prob_down=1.0-prob_up;correction_type="calibrated"if calibrated else"not_fitted"
         pred={"prediction_id":pred_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":obs_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(obs["vix"]),"calendar_cohort":obs.get("calendar_cohort","mid_cycle"),"cohort_weight":float(obs.get("cohort_weight",1.0)),"prob_up":float(prob_up),"prob_down":float(prob_down),"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast.get("metadata",{}).get("feature_quality",1.0)),"num_features_used":len(self.forecaster.magnitude_feature_names)+len(self.forecaster.direction_feature_names),"correction_type":correction_type,"features_used":(",".join(self.forecaster.magnitude_feature_names[:5])+","+",".join(self.forecaster.direction_feature_names[:5])),"model_version":"v5.3_dual","direction_probability":forecast.get("direction_probability",0.5),"direction_prediction":forecast.get("direction","UNKNOWN"),"direction_correct":None}
         self.db.store_prediction(pred);self.db.commit()
+
+    def print_enhanced_forecast(self,forecast,cohort):
+        """Enhanced forecast display showing full ensemble breakdown"""
+        logger.info("\n"+"="*80)
+        logger.info("📊 DUAL-MODEL FORECAST BREAKDOWN")
+        logger.info("="*80)
+
+        # Current state
+        logger.info(f"\n🎯 CURRENT STATE:")
+        logger.info(f"   VIX Level: {forecast['current_vix']:.2f}")
+        logger.info(f"   Regime: {forecast['current_regime']}")
+        logger.info(f"   Market Cohort: {cohort}")
+        logger.info(f"   Cohort Weight: {forecast.get('metadata',{}).get('cohort_weight',1.0):.2f}x")
+        logger.info(f"   Feature Quality: {forecast.get('metadata',{}).get('feature_quality',1.0):.1%}")
+
+        # Magnitude model
+        mag_pct=forecast['magnitude_pct']
+        mag_conf=0.5+min(abs(mag_pct)/10.0,0.5)*0.5
+        logger.info(f"\n📉 MAGNITUDE MODEL:")
+        logger.info(f"   Forecast: {mag_pct:+.2f}%")
+        logger.info(f"   Expected VIX: {forecast['expected_vix']:.2f}")
+        logger.info(f"   Confidence: {mag_conf:.1%}")
+        if forecast['calibration']['correction_type']!='not_fitted':
+            logger.info(f"   Calibration Adj: {forecast['calibration']['adjustment']:+.3f}% ({forecast['calibration']['correction_type']})")
+
+        # Direction model
+        dir_prob=forecast['direction_probability']
+        dir_conf=max(dir_prob,1-dir_prob)
+        logger.info(f"\n🎲 DIRECTION MODEL:")
+        logger.info(f"   Prediction: {forecast['direction']}")
+        logger.info(f"   Probability: {dir_prob:.1%} {'UP' if dir_prob>0.5 else 'DOWN'}")
+        logger.info(f"   Confidence: {dir_conf:.1%}")
+        if self.forecaster.calibration_enabled:
+            logger.info(f"   Calibration: {'✓ ENABLED' if self.forecaster.direction_calibrator is not None else '✗ NOT FITTED'}")
+
+        # Model agreement
+        predicted_up=dir_prob>0.5
+        magnitude_up=mag_pct>0
+        models_agree=predicted_up==magnitude_up
+
+        agreement_symbol="✓"if models_agree else"✗"
+        agreement_text="ALIGNED"if models_agree else"DIVERGENT"
+        agreement_desc="Both models agree"if models_agree else"Models disagree"
+
+        logger.info(f"\n🔄 MODEL AGREEMENT:")
+        logger.info(f"   Status: {agreement_symbol} {agreement_text}")
+        logger.info(f"   {agreement_desc}")
+
+        if not models_agree:
+            logger.info(f"   → Magnitude says: {'UP' if magnitude_up else 'DOWN'}")
+            logger.info(f"   → Direction says: {'UP' if predicted_up else 'DOWN'}")
+            logger.info(f"   ⚠️  Confidence penalized for disagreement")
+
+        # Ensemble confidence
+        ens_conf=forecast['direction_confidence']
+        actionable=forecast['actionable']
+        ens_threshold=ENSEMBLE_CONFIG.get("actionable_threshold",0.65)
+
+        logger.info(f"\n🎯 ENSEMBLE CONFIDENCE:")
+        if self.forecaster.ensemble_enabled:
+            logger.info(f"   Method: Weighted Reconciliation")
+            logger.info(f"   Magnitude Weight: {ENSEMBLE_CONFIG['confidence_weights']['magnitude']:.1%}")
+            logger.info(f"   Direction Weight: {ENSEMBLE_CONFIG['confidence_weights']['direction']:.1%}")
+            logger.info(f"   Agreement Weight: {ENSEMBLE_CONFIG['confidence_weights']['agreement']:.1%}")
+        else:
+            logger.info(f"   Method: Raw Direction Confidence")
+        logger.info(f"   Final Confidence: {ens_conf:.1%}")
+        logger.info(f"   Actionable: {'✓ YES' if actionable else '✗ NO'} (threshold: {ens_threshold:.0%})")
+
+        # Regime transition
+        logger.info(f"\n🏛️  REGIME FORECAST:")
+        logger.info(f"   Current: {forecast['current_regime']}")
+        logger.info(f"   Expected: {forecast['expected_regime']}")
+        if forecast['regime_change']:
+            logger.info(f"   ⚠️  REGIME CHANGE EXPECTED")
+        else:
+            logger.info(f"   ✓ Staying in current regime")
+
+        # Summary
+        logger.info(f"\n{'='*80}")
+        summary_color="🟢"if actionable else"🟡"
+        logger.info(f"{summary_color} SUMMARY: {forecast['direction']} {abs(mag_pct):.1f}% | Confidence: {ens_conf:.0%} | {'Actionable' if actionable else 'Not Actionable'}")
+        logger.info("="*80+"\n")
+
 def main():
-    parser=argparse.ArgumentParser(description="VIX Forecasting System v5.3 - Dual Model");parser.add_argument("--force-retrain",action="store_true");parser.add_argument("--force-bootstrap",action="store_true");parser.add_argument("--rebuild-calibration",action="store_true");args=parser.parse_args();Path("logs").mkdir(exist_ok=True);Path("models").mkdir(exist_ok=True);logger.info(f"VIX FORECASTING SYSTEM v5.3 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    parser=argparse.ArgumentParser(description="VIX Forecasting System v5.3 - Dual Model (Enhanced Display)");parser.add_argument("--force-retrain",action="store_true");parser.add_argument("--force-bootstrap",action="store_true");parser.add_argument("--rebuild-calibration",action="store_true");args=parser.parse_args();Path("logs").mkdir(exist_ok=True);Path("models").mkdir(exist_ok=True);logger.info(f"VIX FORECASTING SYSTEM v5.3 (Enhanced) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     stale,reason=check_model_stale();logger.info(f"Model: {reason}")
     if stale or args.force_retrain:
         if not retrain_model():sys.exit(1)
@@ -134,10 +219,10 @@ def main():
         logger.info("📊 Refitting calibrator...");forecaster.db.backfill_actuals(forecaster.data_fetcher);cal=ForecastCalibrator();result=cal.fit_from_database(forecaster.db)
         if result:cal.save("models");forecaster.calibrator=cal;logger.info("✅ Calibrator refitted")
         else:logger.warning("⚠️  Calibrator fitting failed")
-    logger.info("📊 TODAY'S FORECAST");yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d");feature_data=forecaster.get_features(yesterday,force_historical=False);df=feature_data["features"];latest_available=df.index[-1].strftime("%Y-%m-%d");logger.info(f"Latest data: {latest_available}");forecast=forecaster.generate_forecast(latest_available,df=df)
+    yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d");feature_data=forecaster.get_features(yesterday,force_historical=False);df=feature_data["features"];latest_available=df.index[-1].strftime("%Y-%m-%d");forecast=forecaster.generate_forecast(latest_available,df=df)
     if forecast:
-        cohort=forecast.get('metadata',{}).get('calendar_cohort','unknown');logger.info(f"Current VIX: {forecast['current_vix']:.2f}");logger.info(f"Direction: {forecast['direction']} ({forecast['direction_probability']:.1%} confidence)");logger.info(f"Magnitude: {forecast['magnitude_pct']:+.2f}% → {forecast['expected_vix']:.2f}")
-        if forecast['calibration']['correction_type']!='not_fitted':logger.info(f"Calibration: {forecast['calibration']['adjustment']:+.3f}% ({forecast['calibration']['correction_type']})")
-        logger.info(f"Regime: {forecast['current_regime']} → {forecast['expected_regime']} | Cohort: {cohort} | Actionable: {'YES'if forecast['actionable']else'NO'}");total_preds=len(forecaster.db.get_predictions());with_actuals=len(forecaster.db.get_predictions(with_actuals=True));logger.info(f"Database: {total_preds} predictions ({with_actuals} with actuals)");sys.exit(0)
+        cohort=forecast.get('metadata',{}).get('calendar_cohort','unknown')
+        forecaster.print_enhanced_forecast(forecast,cohort)
+        total_preds=len(forecaster.db.get_predictions());with_actuals=len(forecaster.db.get_predictions(with_actuals=True));logger.info(f"📊 Database: {total_preds} predictions ({with_actuals} with actuals)");sys.exit(0)
     else:logger.error("❌ Forecast generation failed");sys.exit(1)
 if __name__=="__main__":main()

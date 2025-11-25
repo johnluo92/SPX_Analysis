@@ -1,53 +1,74 @@
 {
-  "timestamp": "2025-11-24T14:52:43.664995",
-  "shared_cv_params": {
-    "n_estimators": 132,
-    "max_depth": 3,
-    "learning_rate": 0.05443804854933884,
-    "subsample": 0.8043528044821504,
-    "colsample_bytree": 0.8411487526908331
+  "timestamp": "2025-11-24T23:42:20.433639",
+  "trial_number": 0,
+  "metrics": {
+    "magnitude_mae": 0,
+    "magnitude_bias": 0,
+    "direction_accuracy": 0,
+    "direction_f1": 0,
+    "ensemble_confidence": 0,
+    "n_magnitude_features": 0,
+    "n_direction_features": 0,
+    "quality_filtered_pct": 0
   },
-  "magnitude": {
-    "top_n": 70,
-    "params": {
-      "mag_max_depth": 3,
-      "mag_lr": 0.013333979990710348,
-      "mag_n_est": 436,
-      "mag_sub": 0.7408821620490594,
-      "mag_col_tree": 0.9161856094034918,
-      "mag_col_lvl": 0.8823117529536932,
-      "mag_mcw": 8,
-      "mag_alpha": 1.1390098170283531,
-      "mag_lambda": 3.709669372190882,
-      "mag_gamma": 0.3022938864923187
+  "parameters": {
+    "cv": {
+      "cv_n_est": 125,
+      "cv_depth": 5,
+      "cv_lr": 0.07242113527908035,
+      "cv_sub": 0.8697316968394073,
+      "cv_col": 0.7812037280884873
     },
-    "metrics": {
-      "val_mae": 10.482433175065593,
-      "val_bias": -0.2641476103402941,
-      "n_features": 73,
-      "max_pred": 0.17039182782173157
-    }
-  },
-  "direction": {
-    "top_n": 96,
-    "params": {
-      "dir_max_depth": 5,
-      "dir_lr": 0.04193520698187749,
-      "dir_n_est": 481,
-      "dir_sub": 0.8288174481341304,
-      "dir_col_tree": 0.7643852945727637,
-      "dir_mcw": 6,
-      "dir_alpha": 1.9222026480231809,
-      "dir_lambda": 3.144702032529232,
-      "dir_gamma": 0.4038434659303372,
-      "dir_scale": 1.1705566728468912
+    "magnitude": {
+      "top_n": 69,
+      "model": {
+        "depth": 3,
+        "lr": 0.028580510658069373,
+        "n_est": 514,
+        "sub": 0.7499184455395899,
+        "col_tree": 0.8285586096034029,
+        "col_lvl": 0.8481036422155106,
+        "mcw": 4,
+        "alpha": 2.7441435260846028,
+        "lambda": 2.682096494749166,
+        "gamma": 0.17927321684337577
+      }
     },
-    "metrics": {
-      "val_acc": 0.6192259675405742,
-      "val_prec": 0.5604395604395604,
-      "val_rec": 0.5845272206303725,
-      "val_f1": 0.5722300140252455,
-      "n_features": 99
+    "direction": {
+      "top_n": 84,
+      "model": {
+        "depth": 6,
+        "lr": 0.07627784399074539,
+        "n_est": 524,
+        "sub": 0.7670150292181416,
+        "col_tree": 0.6744180285015959,
+        "mcw": 12,
+        "alpha": 2.1003812343490034,
+        "lambda": 2.3661147045343363,
+        "gamma": 0.3980707640445081,
+        "scale": 0.9171942605576092
+      }
+    },
+    "ensemble": {
+      "mag_weight": 0.41648852816008436,
+      "dir_weight": 0.39246782213565523,
+      "agree_weight": 0.17727374508106508,
+      "small_thresh": 1.7751067647801508,
+      "med_thresh": 4.912726728878614,
+      "large_thresh": 11.673295021425664,
+      "bonus_strong": 0.1431945018642116,
+      "bonus_mod": 0.07038603981386293,
+      "penalty_sev": 0.2917779342083569,
+      "penalty_mod": 0.11394938606520419,
+      "penalty_min": 0.04460723242676091
+    },
+    "quality_threshold": 0.7202230023486418,
+    "correlation_threshold": 0.9626028989507416,
+    "cohort_weights": {
+      "fomc_period": 1.3832290311184183,
+      "opex_week": 1.1061753482887409,
+      "earnings_heavy": 1.2909729556485983,
+      "mid_cycle": 1.0
     }
   }
 }

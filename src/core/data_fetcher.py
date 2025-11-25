@@ -157,7 +157,9 @@ class UnifiedDataFetcher:
                         cached_df=pd.read_parquet(cache_path)
                         if not cached_df.empty:return cached_df
                     except:pass
-                fetch_start=(last_dt-timedelta(days=2)).strftime("%Y-%m-%d");is_incremental_fetch=True
+                lookback_days = 5;lookback_date = last_dt - timedelta(days=lookback_days)
+                while lookback_date.weekday() >= 5:lookback_date -= timedelta(days=1)
+                fetch_start = lookback_date.strftime("%Y-%m-%d");is_incremental_fetch = True
         try:
             ticker=yf.Ticker(symbol)
             if end_date:fetch_end=(pd.Timestamp(end_date)+timedelta(days=1)).strftime("%Y-%m-%d")
