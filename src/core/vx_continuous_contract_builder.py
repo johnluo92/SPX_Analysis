@@ -40,8 +40,7 @@ class VXContinuousContractBuilder:
         if not missing:return 0
         print(f"   Fetching {len(missing)} contracts for {date.date()}...");updated=0
         for filename in missing:
-            parts=filename.replace('.csv','').split('_');exp_date=parts[2]
-            url=f"https://cdn.cboe.com/data/us/futures/market_statistics/historical_data/VX/VX_{exp_date}.csv";filepath=self.vx_dir/filename
+            parts=filename.replace('.csv','').split('_');exp_date=parts[2];url=f"https://cdn.cboe.com/data/us/futures/market_statistics/historical_data/VX/VX_{exp_date}.csv";filepath=self.vx_dir/filename
             try:
                 response=requests.get(url,timeout=15);response.raise_for_status()
                 if len(response.text)>100:filepath.write_text(response.text);updated+=1;time.sleep(0.3)
@@ -52,8 +51,7 @@ class VXContinuousContractBuilder:
         if not filepath.exists():return pd.DataFrame()
         try:
             df=pd.read_csv(filepath,parse_dates=['Trade Date'],index_col='Trade Date')
-            df=df.rename(columns={'Open':'open','High':'high','Low':'low','Close':'close','Settle':'settle','Volume':'volume','Open Interest':'open_interest'})
-            df['close']=df['settle']
+            df=df.rename(columns={'Open':'open','High':'high','Low':'low','Close':'close','Settle':'settle','Total Volume':'volume','Open Interest':'open_interest'});df['close']=df['settle']
             for col in ['open','high','low','close','settle','volume','open_interest']:
                 if col in df.columns:df[col]=pd.to_numeric(df[col],errors='coerce')
             return df
@@ -79,8 +77,7 @@ class VXContinuousContractBuilder:
             if len(active)<position:continue
             contract=active.iloc[position-1];df=self._load_raw_contract(contract['filename'])
             if df.empty or date not in df.index:continue
-            row=df.loc[date]
-            new_data.append({'date':date,'open':row['open'],'high':row['high'],'low':row['low'],'close':row['close'],'settle':row['settle'],'volume':row['volume'],'open_interest':row['open_interest'],'contract_code':contract['contract_code'],'expiry_date':contract['expiry_date']})
+            row=df.loc[date];new_data.append({'date':date,'open':row['open'],'high':row['high'],'low':row['low'],'close':row['close'],'settle':row['settle'],'volume':row['volume'],'open_interest':row['open_interest'],'contract_code':contract['contract_code'],'expiry_date':contract['expiry_date']})
         if not new_data:return cached
         new_df=pd.DataFrame(new_data).set_index('date');new_df['roll_event']=new_df['contract_code']!=new_df['contract_code'].shift(1);adjusted=self._apply_backwards_ratio_adjustment(new_df)
         if not cached.empty:
@@ -126,8 +123,7 @@ class VXContinuousContractBuilder:
             if not df.empty:contracts[f'VX{position}']=df
         return contracts
     def check_system_health(self):
-        health={'raw_contracts':0,'cached_contracts':0,'staleness_days':{},'missing_dates':[],'issues':[]}
-        raw_files=list(self.vx_dir.glob('VX_*.csv'));health['raw_contracts']=len(raw_files)
+        health={'raw_contracts':0,'cached_contracts':0,'staleness_days':{},'missing_dates':[],'issues':[]};raw_files=list(self.vx_dir.glob('VX_*.csv'));health['raw_contracts']=len(raw_files)
         for position in range(1,7):
             cache_file=self.cache_dir/f"VX{position}.parquet"
             if cache_file.exists():

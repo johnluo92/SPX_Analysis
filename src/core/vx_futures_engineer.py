@@ -11,11 +11,7 @@ class VXFuturesEngineer:
         vx_contracts=get_vx_continuous_contracts(start_date=start_date,end_date=end_date,cboe_vx_dir=self.cboe_vx_dir,cache_dir=self.cache_dir)
         if not vx_contracts:raise ValueError("Failed to load VX continuous contracts")
         print(f"   ✓ Loaded {len(vx_contracts)} continuous contracts")
-        term_features=self.extract_term_structure_features(vx_contracts)
-        roll_features=self.extract_roll_yield_features(vx_contracts)
-        oi_features=self.extract_open_interest_features(vx_contracts)
-        volume_features=self.extract_volume_liquidity_features(vx_contracts)
-        range_features=self.extract_intraday_range_features(vx_contracts)
+        term_features=self.extract_term_structure_features(vx_contracts);roll_features=self.extract_roll_yield_features(vx_contracts);oi_features=self.extract_open_interest_features(vx_contracts);volume_features=self.extract_volume_liquidity_features(vx_contracts);range_features=self.extract_intraday_range_features(vx_contracts)
         all_features=pd.concat([term_features,roll_features,oi_features,volume_features,range_features],axis=1)
         all_features=all_features.loc[:,~all_features.columns.duplicated()]
         if target_index is not None:all_features=all_features.reindex(target_index,method='ffill',limit=5)
@@ -26,54 +22,53 @@ class VXFuturesEngineer:
         if not indices:return pd.DataFrame()
         common_index=indices[0]
         for idx in indices[1:]:common_index=common_index.intersection(idx)
-        features=pd.DataFrame(index=common_index)
-        vx_prices={}
+        features=pd.DataFrame(index=common_index);vx_prices={}
         for name,df in vx_contracts.items():
             if not df.empty and'settle'in df.columns:vx_prices[name]=df['settle'].reindex(common_index)
         if'VX1'in vx_prices and'VX2'in vx_prices:features['vx1_vx2_spread']=vx_prices['VX1']-vx_prices['VX2']
         if'VX1'in vx_prices and'VX3'in vx_prices:features['vx1_vx3_spread']=vx_prices['VX1']-vx_prices['VX3']
+        if'VX1'in vx_prices and'VX4'in vx_prices:features['vx1_vx4_spread']=vx_prices['VX1']-vx_prices['VX4']
         if'VX1'in vx_prices and'VX6'in vx_prices:features['vx1_vx6_spread']=vx_prices['VX1']-vx_prices['VX6']
+        if'VX2'in vx_prices and'VX3'in vx_prices:features['vx2_vx3_spread']=vx_prices['VX2']-vx_prices['VX3']
+        if'VX2'in vx_prices and'VX4'in vx_prices:features['vx2_vx4_spread']=vx_prices['VX2']-vx_prices['VX4']
+        if'VX3'in vx_prices and'VX6'in vx_prices:features['vx3_vx6_spread']=vx_prices['VX3']-vx_prices['VX6']
         if'VX1'in vx_prices and'VX6'in vx_prices:features['vx_curve_slope']=(vx_prices['VX6']-vx_prices['VX1'])/5
         if all(k in vx_prices for k in['VX1','VX2','VX3']):
-            features['vx_curve_curvature']=vx_prices['VX1']-2*vx_prices['VX2']+vx_prices['VX3']
-            spread_12=vx_prices['VX1']-vx_prices['VX2'];spread_23=vx_prices['VX2']-vx_prices['VX3']
-            features['vx_curve_skew']=spread_12-spread_23
+            features['vx_curve_curvature']=vx_prices['VX1']-2*vx_prices['VX2']+vx_prices['VX3'];spread_12=vx_prices['VX1']-vx_prices['VX2'];spread_23=vx_prices['VX2']-vx_prices['VX3'];features['vx_curve_skew']=spread_12-spread_23;features['vx_curve_convexity_ratio']=spread_12/spread_23.replace(0,np.nan)
+        if all(k in vx_prices for k in['VX4','VX5','VX6']):
+            features['vx_near_term_curvature']=vx_prices['VX1']-2*vx_prices['VX2']+vx_prices['VX3'];features['vx_far_term_curvature']=vx_prices['VX4']-2*vx_prices['VX5']+vx_prices['VX6']
+        if'VX1'in vx_prices and'VX6'in vx_prices:features['vx_front_vs_back_ratio']=vx_prices['VX1']/vx_prices['VX6'].replace(0,np.nan)
         if'vx1_vx2_spread'in features:
-            features['vx_curve_acceleration_5d']=features['vx1_vx2_spread'].diff(5)
-            features['vx_spread_zscore_63d']=self._calculate_zscore(features['vx1_vx2_spread'],63)
+            features['vx_curve_acceleration_5d']=features['vx1_vx2_spread'].diff(5);features['vx_spread_zscore_63d']=self._calculate_zscore(features['vx1_vx2_spread'],63);features['vx_curve_volatility_21d']=features['vx1_vx2_spread'].rolling(21).std()
             for window in[21,63,126]:features[f'vx_spread_percentile_{window}d']=self._calculate_percentile(features['vx1_vx2_spread'],window)
         if'vx1_vx2_spread'in features:
-            features['vx_contango_flag']=(features['vx1_vx2_spread']<0).astype(int)
-            features['vx_backwardation_flag']=(features['vx1_vx2_spread']>0).astype(int)
+            for window in[3,5,10]:features[f'vx_spread_velocity_{window}d']=features['vx1_vx2_spread'].diff(window)
+        if'vx1_vx2_spread'in features:
+            features['vx_contango_flag']=(features['vx1_vx2_spread']<0).astype(int);features['vx_backwardation_flag']=(features['vx1_vx2_spread']>0).astype(int)
             if'VX1'in vx_prices and'VX2'in vx_prices:
-                pct_diff=(vx_prices['VX2']-vx_prices['VX1'])/vx_prices['VX1'].replace(0,np.nan)*100
-                features['vx_steep_contango']=(pct_diff>5).astype(int)
+                pct_diff=(vx_prices['VX2']-vx_prices['VX1'])/vx_prices['VX1'].replace(0,np.nan)*100;features['vx_steep_contango']=(pct_diff>5).astype(int);pct_diff_back=(vx_prices['VX1']-vx_prices['VX2'])/vx_prices['VX2'].replace(0,np.nan)*100;features['vx_extreme_backwardation']=(pct_diff_back>10).astype(int)
+        if all(f'VX{i}'in vx_prices for i in[1,2,3]):features['vx_123_slope']=self._calculate_slope([vx_prices['VX1'],vx_prices['VX2'],vx_prices['VX3']])
+        if all(f'VX{i}'in vx_prices for i in[4,5,6]):features['vx_456_slope']=self._calculate_slope([vx_prices['VX4'],vx_prices['VX5'],vx_prices['VX6']])
+        if'VX1'in vx_prices and'VX6'in vx_prices:
+            vx1_ret=vx_prices['VX1'].pct_change();vx6_ret=vx_prices['VX6'].pct_change();features['vx_front_back_divergence']=vx1_ret-vx6_ret
         return features
     def extract_roll_yield_features(self,vx_contracts):
         indices=[df.index for df in vx_contracts.values()if not df.empty]
         if not indices:return pd.DataFrame()
         common_index=indices[0]
         for idx in indices[1:]:common_index=common_index.intersection(idx)
-        features=pd.DataFrame(index=common_index)
-        vx_prices={}
+        features=pd.DataFrame(index=common_index);vx_prices={}
         for name,df in vx_contracts.items():
             if not df.empty and'settle'in df.columns:vx_prices[name]=df['settle'].reindex(common_index)
         if'VX1'in vx_prices and'VX2'in vx_prices:
-            vx1,vx2=vx_prices['VX1'],vx_prices['VX2']
-            spread=vx1-vx2
-            features['vx_roll_yield_daily']=spread/30
-            features['vx_annualized_roll']=features['vx_roll_yield_daily']*252
-            features['vx_contango_intensity']=((vx2-vx1)/vx1.replace(0,np.nan)*100).clip(lower=0)
-            features['vx_backwardation_intensity']=((vx1-vx2)/vx2.replace(0,np.nan)*100).clip(lower=0)
-            features['vx_carry_zscore_63d']=self._calculate_zscore(features['vx_contango_intensity'],63)
+            vx1,vx2=vx_prices['VX1'],vx_prices['VX2'];spread=vx1-vx2;features['vx_roll_yield_daily']=spread/30;features['vx_annualized_roll']=features['vx_roll_yield_daily']*252;features['vx_roll_cost_pct']=((vx2-vx1)/vx1.replace(0,np.nan)*100).clip(lower=0);features['vx_roll_benefit_pct']=((vx1-vx2)/vx2.replace(0,np.nan)*100).clip(lower=0);features['vx_contango_intensity']=((vx2-vx1)/vx1.replace(0,np.nan)*100).clip(lower=0);features['vx_backwardation_intensity']=((vx1-vx2)/vx2.replace(0,np.nan)*100).clip(lower=0);features['vx_carry_zscore_63d']=self._calculate_zscore(features['vx_contango_intensity'],63);features['vx_carry_percentile_252d']=self._calculate_percentile(features['vx_contango_intensity'],252);features['vx_theoretical_pnl_5d']=features['vx_roll_yield_daily'].rolling(5).sum()
         return features
     def extract_open_interest_features(self,vx_contracts):
         indices=[df.index for df in vx_contracts.values()if not df.empty]
         if not indices:return pd.DataFrame()
         common_index=indices[0]
         for idx in indices[1:]:common_index=common_index.intersection(idx)
-        features=pd.DataFrame(index=common_index)
-        vx_oi={}
+        features=pd.DataFrame(index=common_index);vx_oi={}
         for name,df in vx_contracts.items():
             if not df.empty and'open_interest'in df.columns:vx_oi[name]=df['open_interest'].reindex(common_index)
         for i in range(1,7):
@@ -85,51 +80,60 @@ class VXFuturesEngineer:
         if'VX1'in vx_oi:
             vx1_oi=vx_oi['VX1']
             for window in[1,5,10]:features[f'vx1_oi_change_{window}d']=vx1_oi.diff(window)
-            features['vx1_oi_zscore_63d']=self._calculate_zscore(vx1_oi,63)
+            features['vx1_oi_zscore_63d']=self._calculate_zscore(vx1_oi,63);features['vx1_oi_percentile_252d']=self._calculate_percentile(vx1_oi,252);features['vx1_oi_velocity_21d']=vx1_oi.diff(5).rolling(21).mean()
         if'VX1'in vx_oi and'VX2'in vx_oi:
-            features['vx_oi_ratio_1_2']=vx_oi['VX1']/vx_oi['VX2'].replace(0,np.nan)
-            total_oi_12=vx_oi['VX1']+vx_oi['VX2']
-            features['vx_oi_imbalance']=(vx_oi['VX1']-vx_oi['VX2'])/total_oi_12.replace(0,np.nan)
+            features['vx_oi_ratio_1_2']=vx_oi['VX1']/vx_oi['VX2'].replace(0,np.nan);total_oi_12=vx_oi['VX1']+vx_oi['VX2'];features['vx_oi_imbalance']=(vx_oi['VX1']-vx_oi['VX2'])/total_oi_12.replace(0,np.nan)
+        if'VX2'in vx_oi and'VX3'in vx_oi:features['vx_oi_ratio_2_3']=vx_oi['VX2']/vx_oi['VX3'].replace(0,np.nan)
+        if all(f'VX{i}'in vx_oi for i in[1,2,3])and'vx_total_oi'in features:
+            front3_oi=vx_oi['VX1']+vx_oi['VX2']+vx_oi['VX3'];features['vx_oi_concentration_front3']=front3_oi/features['vx_total_oi'].replace(0,np.nan)
+        if'VX1'in vx_oi and'VX2'in vx_oi:
+            vx1_oi_change=vx_oi['VX1'].diff(5);vx2_oi_change=vx_oi['VX2'].diff(5);features['vx_oi_spread_divergence']=vx1_oi_change-vx2_oi_change
+        if'vx_total_oi'in features:features['vx_oi_expansion_rate']=features['vx_total_oi'].pct_change(10)*100
+        if'VX1'in vx_oi:
+            oi_change=vx_oi['VX1'].diff(5);oi_mean=oi_change.rolling(63).mean();oi_std=oi_change.rolling(63).std();oi_zscore=(oi_change-oi_mean)/oi_std.replace(0,np.nan);features['vx_oi_surge_flag']=(oi_zscore.abs()>2).astype(int)
         return features
     def extract_volume_liquidity_features(self,vx_contracts):
         indices=[df.index for df in vx_contracts.values()if not df.empty]
         if not indices:return pd.DataFrame()
         common_index=indices[0]
         for idx in indices[1:]:common_index=common_index.intersection(idx)
-        features=pd.DataFrame(index=common_index)
-        vx_volume={};vx_oi={}
+        features=pd.DataFrame(index=common_index);vx_volume={};vx_oi={};vx_prices={}
         for name,df in vx_contracts.items():
             if not df.empty:
                 if'volume'in df.columns:vx_volume[name]=df['volume'].reindex(common_index)
                 if'open_interest'in df.columns:vx_oi[name]=df['open_interest'].reindex(common_index)
+                if'settle'in df.columns:vx_prices[name]=df['settle'].reindex(common_index)
         if'VX1'in vx_volume:
-            vx1_vol=vx_volume['VX1']
-            features['vx1_volume']=vx1_vol
-            features['vx1_volume_ma21']=vx1_vol.rolling(21).mean()
-            vol_mean=vx1_vol.rolling(63).mean();vol_std=vx1_vol.rolling(63).std()
-            features['vx1_volume_surge']=(vx1_vol-vol_mean)/vol_std.replace(0,np.nan)
-        if'VX1'in vx_volume and'VX1'in vx_oi:features['vx1_volume_oi_ratio']=vx_volume['VX1']/vx_oi['VX1'].replace(0,np.nan)
+            vx1_vol=vx_volume['VX1'];features['vx1_volume']=vx1_vol;features['vx1_volume_ma21']=vx1_vol.rolling(21).mean();vol_mean=vx1_vol.rolling(63).mean();vol_std=vx1_vol.rolling(63).std();features['vx1_volume_surge']=(vx1_vol-vol_mean)/vol_std.replace(0,np.nan)
+        if'VX1'in vx_volume and'VX2'in vx_volume:features['vx_volume_ratio_1_2']=vx_volume['VX1']/vx_volume['VX2'].replace(0,np.nan)
+        if vx_volume:
+            features['vx_total_volume']=sum(vx_volume.values())
+            if'VX1'in vx_volume:features['vx_volume_concentration']=vx_volume['VX1']/features['vx_total_volume'].replace(0,np.nan)
+        if'VX1'in vx_volume and'VX1'in vx_oi:
+            features['vx1_volume_oi_ratio']=vx_volume['VX1']/vx_oi['VX1'].replace(0,np.nan);features['vx1_churn_zscore']=self._calculate_zscore(features['vx1_volume_oi_ratio'],63)
+        if'VX1'in vx_volume and'VX1'in vx_prices:
+            price_change=vx_prices['VX1'].pct_change();features['vx_volume_price_correlation_21d']=vx_volume['VX1'].rolling(21).corr(price_change)
+        if'VX1'in vx_volume and'VX1'in vx_prices:
+            price_change=vx_prices['VX1'].diff();up_days=price_change>0;down_days=price_change<0;vol_up=vx_volume['VX1'].where(up_days).rolling(21).mean();vol_down=vx_volume['VX1'].where(down_days).rolling(21).mean();features['vx_volume_on_up_days']=vol_up;features['vx_volume_on_down_days']=vol_down;features['vx_volume_asymmetry']=vol_up/vol_down.replace(0,np.nan)
         return features
     def extract_intraday_range_features(self,vx_contracts):
         if'VX1'not in vx_contracts or vx_contracts['VX1'].empty:return pd.DataFrame()
-        vx1=vx_contracts['VX1']
-        features=pd.DataFrame(index=vx1.index)
-        required_cols=['open','high','low','close']
+        vx1=vx_contracts['VX1'];features=pd.DataFrame(index=vx1.index);required_cols=['open','high','low','close']
         if not all(col in vx1.columns for col in required_cols):return features
-        o,h,l,c=vx1['open'],vx1['high'],vx1['low'],vx1['close']
-        features['vx1_daily_range']=h-l
-        features['vx1_daily_range_pct']=(h-l)/c.replace(0,np.nan)*100
-        prev_close=c.shift(1)
-        tr=pd.concat([h-l,(h-prev_close).abs(),(l-prev_close).abs()],axis=1).max(axis=1)
-        features['vx1_atr_14']=tr.rolling(14).mean()
-        avg_range=features['vx1_daily_range'].rolling(21).mean()
-        features['vx1_range_expansion']=features['vx1_daily_range']/avg_range.replace(0,np.nan)
+        o,h,l,c=vx1['open'],vx1['high'],vx1['low'],vx1['close'];features['vx1_daily_range']=h-l;features['vx1_daily_range_pct']=(h-l)/c.replace(0,np.nan)*100;prev_close=c.shift(1);tr=pd.concat([h-l,(h-prev_close).abs(),(l-prev_close).abs()],axis=1).max(axis=1);features['vx1_atr_14']=tr.rolling(14).mean();avg_range=features['vx1_daily_range'].rolling(21).mean();features['vx1_range_expansion']=features['vx1_daily_range']/avg_range.replace(0,np.nan);features['vx1_range_zscore_63d']=self._calculate_zscore(features['vx1_daily_range'],63);body=(c-o).abs();total_range=h-l;features['vx1_body_pct']=body/total_range.replace(0,np.nan)*100;upper_shadow=h-pd.concat([o,c],axis=1).max(axis=1);lower_shadow=pd.concat([o,c],axis=1).min(axis=1)-l;features['vx1_upper_shadow']=upper_shadow/body.replace(0,np.nan);features['vx1_lower_shadow']=lower_shadow/body.replace(0,np.nan);features['vx1_doji_flag']=(features['vx1_body_pct']<20).astype(int);features['vx1_gap']=o-prev_close;features['vx1_gap_pct']=features['vx1_gap']/prev_close.replace(0,np.nan)*100;gap_up=o>prev_close;gap_down=o<prev_close;gap_filled=(gap_up&(l<=prev_close))|(gap_down&(h>=prev_close));features['vx1_gap_filled_flag']=gap_filled.astype(int)
         return features
     def _calculate_zscore(self,series,window):
         mean=series.rolling(window).mean();std=series.rolling(window).std()
         return(series-mean)/std.replace(0,np.nan)
     def _calculate_percentile(self,series,window):
         return series.rolling(window).apply(lambda x:pd.Series(x).rank(pct=True).iloc[-1]*100,raw=False)
+    def _calculate_slope(self,price_series_list):
+        df=pd.concat(price_series_list,axis=1)
+        def row_slope(row):
+            x=np.arange(len(row));y=row.values
+            if np.any(np.isnan(y)):return np.nan
+            return np.polyfit(x,y,1)[0]
+        return df.apply(row_slope,axis=1)
 def build_vx_futures_features(start_date,end_date,cboe_vx_dir="./CBOE_VX_ALL",target_index=None):
     engineer=VXFuturesEngineer(cboe_vx_dir)
     return engineer.build_all_vx_features(start_date,end_date,target_index)
