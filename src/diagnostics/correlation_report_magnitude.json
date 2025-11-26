@@ -1,0 +1,21 @@
+{
+  "threshold": 0.863,
+  "total_features_before": 71,
+  "features_removed": 13,
+  "features_kept": 58,
+  "removed_features": [
+    "risk_premium_percentile_126d",
+    "liquidity_stress_composite",
+    "6m_vol_63d_fred",
+    "time_in_regime_pct",
+    "hy_spread",
+    "risk_premium_percentile_252d",
+    "hy_b_velocity_21d",
+    "spx_realized_vol_21d",
+    "hy_zscore_252d",
+    "vix_vs_ma252",
+    "vix_ret_5d",
+    "risk_premium_percentile_63d",
+    "hy_b_spread"
+  ]
+}

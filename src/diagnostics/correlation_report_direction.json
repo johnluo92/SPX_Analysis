@@ -1,0 +1,27 @@
+{
+  "threshold": 0.863,
+  "total_features_before": 91,
+  "features_removed": 19,
+  "features_kept": 72,
+  "removed_features": [
+    "credit_stress_composite",
+    "initial_claims",
+    "vix_zscore_63d",
+    "vix_ret_5d",
+    "VXTLT",
+    "claims_zscore_52w",
+    "vxtlt_vix_spread",
+    "VXTLT_vs_ma63",
+    "spx_realized_vol_21d",
+    "vix_percentile_252d",
+    "hy_b_spread",
+    "30y_vol_63d",
+    "yield_curve_vol_avg_fred",
+    "time_in_regime_pct",
+    "vix_velocity_10d",
+    "vix_velocity_3d_pct",
+    "VXTLT_percentile_126d",
+    "vix_vs_ma21",
+    "vix_stretch_ma63"
+  ]
+}

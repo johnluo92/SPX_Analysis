@@ -1,0 +1,47 @@
+{
+  "magnitude": {
+    "train": {
+      "mae_log": 0.09551866395801205,
+      "rmse_log": 0.13038862015258798,
+      "mae_pct": 9.834113688838439,
+      "bias_pct": -1.1099677101392929,
+      "clipped_pct": 0.0
+    },
+    "val": {
+      "mae_log": 0.1170349489158004,
+      "rmse_log": 0.16360271688673192,
+      "mae_pct": 12.235437461821705,
+      "bias_pct": -3.1142074753131426,
+      "clipped_pct": 0.0
+    },
+    "test": {
+      "mae_log": 0.10038176441978594,
+      "rmse_log": 0.14447469782700392,
+      "mae_pct": 10.321031744012283,
+      "bias_pct": -0.7378104232896227,
+      "clipped_pct": 0.0
+    }
+  },
+  "direction": {
+    "train": {
+      "accuracy": 0.8804727370400215,
+      "avg_confidence": 0.6427622437477112
+    },
+    "val": {
+      "accuracy": 0.6057571964956195,
+      "avg_confidence": 0.6148067712783813
+    },
+    "test": {
+      "accuracy": 0.592686002522068,
+      "precision": 0.5360824742268041,
+      "recall": 0.7262569832402235,
+      "avg_confidence": 0.6138651371002197
+    }
+  },
+  "direction_calibrated": {
+    "test_accuracy": 0.6242118537200504,
+    "test_precision": 0.5691244239631337,
+    "test_recall": 0.6899441340782123,
+    "avg_confidence": 0.6057255864143372
+  }
+}
