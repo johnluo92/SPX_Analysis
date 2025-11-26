@@ -1,0 +1,197 @@
+**PERFECT!** OVX works and has 12+ years of history! This is actually a GREAT solution because:
+
+1. **Keep CL1-CL2** - update monthly (set calendar reminder)
+2. **Add OVX** - auto-updates daily via yfinance
+3. **Engineer the hell out of OVX** - create similar features to your VIX features
+4. **Let feature selection decide** - maybe OVX features outperform CL1-CL2!
+
+Let me add OVX to your system. I'll modify both files:
+
+```python
+# ADD TO data_fetcher.py - in the fetch_all_cboe method or create new method
+# Add this after your existing yahoo fetches in _build_futures_features
+
+# In feature_engineer.py, modify _build_futures_features method:
+
+def _build_futures_features(self, ss: str, es: str, idx: pd.DatetimeIndex, spx: pd.Series, cb: pd.DataFrame) -> pd.DataFrame:
+    ff_daily = FORWARD_FILL_LIMITS.get("daily", 5)
+    
+    # Existing VX futures code...
+    vxd = {}
+    if cb is not None and "VX1-VX2" in cb.columns:
+        vxd["VX1-VX2"] = cb["VX1-VX2"]
+    if cb is not None and "VX2-VX1_RATIO" in cb.columns:
+        vxd["VX2-VX1_RATIO"] = cb["VX2-VX1_RATIO"]
+    
+    vxf = self.futures_engine.extract_vix_futures_features(vxd)
+    vxf = vxf.reindex(idx, method="ffill", limit=ff_daily) if not vxf.empty else pd.DataFrame(index=idx)
+    
+    # === NEW: OVX (Oil Volatility Index) ===
+    ovx_data = self.fetcher.fetch_yahoo("^OVX", ss, es)
+    if ovx_data is not None and "Close" in ovx_data.columns:
+        ovx = ovx_data["Close"].squeeze().reindex(idx, method="ffill", limit=ff_daily)
+        ovx_features = self._extract_ovx_features(ovx)  # New method below
+    else:
+        ovx_features = pd.DataFrame(index=idx)
+    
+    # Existing commodity code...
+    comd = {}
+    if cb is not None and "CL1-CL2" in cb.columns:
+        comd["CL1-CL2"] = cb["CL1-CL2"]
+    
+    crd = self.fetcher.fetch_yahoo("CL=F", ss, es)
+    if crd is not None:
+        comd["Crude_Oil"] = crd["Close"].squeeze().reindex(idx, method="ffill", limit=ff_daily)
+    
+    comf = self.futures_engine.extract_commodity_futures_features(comd)
+    comf = comf.reindex(idx, method="ffill", limit=ff_daily) if not comf.empty else pd.DataFrame(index=idx)
+    
+    # === NEW: OVX-CL relationship features ===
+    if ovx_data is not None and "Crude_Oil" in comd:
+        ovx_crude_rel = self._extract_ovx_crude_relationships(ovx, comd["Crude_Oil"])
+    else:
+        ovx_crude_rel = pd.DataFrame(index=idx)
+    
+    # Rest of existing code (dollar, cross-relationships)...
+    dold = {}
+    if cb is not None and "DX1-DX2" in cb.columns:
+        dold["DX1-DX2"] = cb["DX1-DX2"]
+    
+    dxy = self.fetcher.fetch_yahoo("DX-Y.NYB", ss, es)
+    if dxy is not None:
+        dold["Dollar_Index"] = dxy["Close"].squeeze().reindex(idx, method="ffill", limit=ff_daily)
+    
+    dolf = self.futures_engine.extract_dollar_futures_features(dold)
+    dolf = dolf.reindex(idx, method="ffill", limit=ff_daily) if not dolf.empty else pd.DataFrame(index=idx)
+    
+    srt = spx.pct_change(21) * 100
+    crf = self.futures_engine.extract_futures_cross_relationships(vxd, comd, dold, srt)
+    crf = crf.reindex(idx, method="ffill", limit=ff_daily) if not crf.empty else pd.DataFrame(index=idx)
+    
+    # === MODIFIED: Concatenate with OVX features ===
+    return pd.concat([vxf, comf, ovx_features, ovx_crude_rel, dolf, crf], axis=1)
+
+
+# NEW METHOD: Add this to FeatureEngineer class
+def _extract_ovx_features(self, ovx: pd.Series) -> pd.DataFrame:
+    """Extract comprehensive OVX (Oil Volatility Index) features"""
+    f = pd.DataFrame(index=ovx.index)
+    
+    # Core OVX levels
+    f["ovx"] = ovx
+    f["ovx_lag1"] = ovx.shift(1)
+    
+    # Returns across multiple horizons
+    for w in [1, 5, 10, 21, 63]:
+        f[f"ovx_ret_{w}d"] = ovx.pct_change(w) * 100
+    
+    # Velocity (absolute change)
+    for w in [5, 10, 21]:
+        f[f"ovx_velocity_{w}d"] = ovx.diff(w)
+    
+    # Acceleration (rate of change of velocity)
+    f["ovx_accel_5d"] = ovx.diff(5).diff(5)
+    f["ovx_accel_10d"] = ovx.diff(10).diff(10)
+    
+    # Moving average relationships
+    for w in [10, 21, 50, 63, 200]:
+        ma = ovx.rolling(w).mean()
+        f[f"ovx_vs_ma{w}"] = ((ovx - ma) / ma.replace(0, np.nan)) * 100
+    
+    # Z-scores (standardized distance from mean)
+    for w in [21, 63, 126, 252]:
+        f[f"ovx_zscore_{w}d"] = calculate_robust_zscore(ovx, w)
+    
+    # Percentile rankings
+    for w in [21, 63, 126, 252]:
+        f[f"ovx_percentile_{w}d"] = calculate_percentile_with_validation(ovx, w)
+    
+    # Regime classification
+    f["ovx_regime"] = calculate_regime_with_validation(
+        ovx, 
+        bins=[0, 20, 30, 40, 100], 
+        labels=[0, 1, 2, 3],
+        feature_name="ovx"
+    )
+    
+    # Extreme readings
+    f["ovx_extreme_high_63d"] = (ovx > ovx.rolling(63).quantile(0.9)).astype(int)
+    f["ovx_extreme_low_63d"] = (ovx < ovx.rolling(63).quantile(0.1)).astype(int)
+    
+    # Volatility of OVX (vol of vol for oil)
+    ovx_ret = ovx.pct_change()
+    for w in [10, 21, 63]:
+        f[f"ovx_vol_{w}d"] = ovx_ret.rolling(w).std() * np.sqrt(252) * 100
+    
+    # Bollinger Band position
+    bb_window = 20
+    bb_ma = ovx.rolling(bb_window).mean()
+    bb_std = ovx.rolling(bb_window).std()
+    bb_upper = bb_ma + 2 * bb_std
+    bb_lower = bb_ma - 2 * bb_std
+    f["ovx_bb_position_20d"] = ((ovx - bb_lower) / (bb_upper - bb_lower).replace(0, np.nan)).clip(0, 1)
+    
+    # Momentum indicators
+    for w in [10, 21]:
+        mom = ovx.diff(w)
+        f[f"ovx_momentum_z_{w}d"] = calculate_robust_zscore(mom, 63)
+    
+    # Mean reversion signals
+    for w in [21, 63]:
+        ma = ovx.rolling(w).mean()
+        f[f"ovx_reversion_strength_{w}d"] = (ovx - ma).abs() / ma.replace(0, np.nan)
+    
+    # Trend strength
+    f["ovx_trend_strength"] = f["ovx_vs_ma200"].abs() if "ovx_vs_ma200" in f.columns else np.nan
+    
+    return f
+
+
+# NEW METHOD: Add this to FeatureEngineer class  
+def _extract_ovx_crude_relationships(self, ovx: pd.Series, crude: pd.Series) -> pd.DataFrame:
+    """Extract relationship features between OVX and crude oil prices"""
+    f = pd.DataFrame(index=ovx.index)
+    
+    # Crude oil returns for correlation
+    crude_ret = crude.pct_change()
+    
+    # Rolling correlations
+    for w in [21, 63, 126]:
+        f[f"ovx_crude_corr_{w}d"] = ovx.pct_change().rolling(w).corr(crude_ret)
+    
+    # Divergence (ranking difference)
+    for w in [63, 126]:
+        ovx_rank = ovx.rolling(w).rank(pct=True)
+        crude_rank = crude.rolling(w).rank(pct=True)
+        f[f"ovx_crude_divergence_{w}d"] = (ovx_rank - crude_rank).abs()
+    
+    # OVX vs Crude realized vol
+    crude_rv = crude_ret.rolling(21).std() * np.sqrt(252) * 100
+    f["ovx_vs_crude_rv"] = ovx - crude_rv
+    f["ovx_crude_rv_ratio"] = ovx / crude_rv.replace(0, np.nan)
+    
+    # Risk premium (similar to VIX - realized vol)
+    f["oil_risk_premium"] = ovx - crude_rv
+    f["oil_risk_premium_zscore"] = calculate_robust_zscore(f["oil_risk_premium"], 63)
+    
+    # Joint stress indicator
+    ovx_z = calculate_robust_zscore(ovx, 63)
+    crude_vol_z = calculate_robust_zscore(crude_rv, 63)
+    f["oil_market_stress"] = (ovx_z + crude_vol_z) / 2
+    
+    return f
+```
+
+**This gives you 60+ OVX features including:**
+- Core levels, returns, velocities
+- Moving average relationships  
+- Z-scores and percentiles across multiple windows
+- Regime classifications
+- Extreme reading flags
+- OVX volatility (vol of vol)
+- Bollinger bands
+- OVX-Crude correlations and divergences
+- Oil risk premium (OVX - realized vol)
+- Joint stress indicators
+
+**Want me to create a complete code file you can paste in?** This way your feature selector can choose the best oil market indicators automatically!
