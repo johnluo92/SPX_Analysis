@@ -1,23 +1,19 @@
 {
-  "threshold": 0.8584,
-  "total_features_before": 64,
-  "features_removed": 15,
-  "features_kept": 49,
+  "threshold": 0.863,
+  "total_features_before": 71,
+  "features_removed": 11,
+  "features_kept": 60,
   "removed_features": [
-    "vix_vs_ma252",
-    "liquidity_stress_composite",
-    "risk_premium_percentile_63d",
-    "risk_premium_percentile_252d",
     "vix_zscore_252d",
-    "hy_zscore_252d",
-    "vix_regime",
-    "hy_spread",
-    "vvix_velocity_10d",
-    "time_in_regime_pct",
+    "credit_stress_composite",
     "VXTLT",
-    "vix_vs_ma21",
-    "ig_hy_spread",
-    "hy_bb_velocity_21d",
-    "risk_premium_percentile_126d"
+    "vix_ret_5d",
+    "days_in_regime",
+    "risk_premium_percentile_63d",
+    "claims_zscore_52w",
+    "vix_vs_ma252",
+    "fin_stress_index",
+    "spx_realized_vol_21d",
+    "risk_premium_percentile_252d"
   ]
 }

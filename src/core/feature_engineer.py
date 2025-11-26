@@ -7,6 +7,7 @@ from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPOR
 from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
 from core.temporal_validator import TemporalSafetyValidator
 from core.regime_classifier import RegimeClassifier
+from core.vx_futures_engineer import VXFuturesEngineer
 warnings.filterwarnings("ignore")
 class LaborMarketFeatureEngine:
     @staticmethod
@@ -90,13 +91,6 @@ class MetaFeatureEngine:
         return m
 class FuturesFeatureEngine:
     @staticmethod
-    def extract_vix_futures_features(vx:Dict[str,pd.Series])->pd.DataFrame:
-        f=pd.DataFrame()
-        if "VX1-VX2" in vx:sp=vx["VX1-VX2"];f["VX1-VX2"]=sp;f["VX1-VX2_change_21d"]=sp.diff(21);f["VX1-VX2_zscore_63d"]=calculate_robust_zscore(sp,63);f["VX1-VX2_percentile_63d"]=calculate_percentile_with_validation(sp,63)
-        if "VX2-VX1_RATIO" in vx:r=vx["VX2-VX1_RATIO"];f["VX2-VX1_RATIO"]=r;f["VX2-VX1_RATIO_velocity_10d"]=r.diff(10);f["vx_term_structure_regime"]=calculate_regime_with_validation(r,bins=[-1,-0.05,0,0.05,1],labels=[0,1,2,3],feature_name="vx_ratio")
-        if "VX1-VX2" in vx and "VX2-VX1_RATIO" in vx:sp,r=vx["VX1-VX2"],vx["VX2-VX1_RATIO"];f["vx_curve_acceleration"]=r.diff(5).diff(5);f["vx_term_structure_divergence"]=(sp.rolling(63).rank(pct=True)-r.rolling(63).rank(pct=True)).abs()
-        return f
-    @staticmethod
     def extract_commodity_futures_features(fd:Dict[str,pd.Series])->pd.DataFrame:
         f=pd.DataFrame()
         if "CL1-CL2" in fd:cls=fd["CL1-CL2"];f["CL1-CL2"]=cls;f["CL1-CL2_velocity_5d"]=cls.diff(5);f["CL1-CL2_zscore_63d"]=calculate_robust_zscore(cls,63);f["oil_term_regime"]=calculate_regime_with_validation(cls,bins=[-10,-1,0,2,20],labels=[0,1,2,3],feature_name="cl_spread")
@@ -116,13 +110,13 @@ class FuturesFeatureEngine:
             f["dxy_vol_21d"]=dxy.pct_change().rolling(21).std()*np.sqrt(252)*100
         return f
     @staticmethod
-    def extract_futures_cross_relationships(vx:Dict[str,pd.Series],cd:Dict[str,pd.Series],dd:Dict[str,pd.Series],sr:pd.Series=None)->pd.DataFrame:
+    def extract_futures_cross_relationships(vxf:pd.DataFrame,cd:Dict[str,pd.Series],dd:Dict[str,pd.Series],sr:pd.Series=None)->pd.DataFrame:
         f=pd.DataFrame()
-        if "VX1-VX2" in vx and "CL1-CL2" in cd:vs,cls=vx["VX1-VX2"],cd["CL1-CL2"];f["vx_crude_corr_21d"]=vs.rolling(21).corr(cls);f["vx_crude_divergence"]=(vs.rolling(63).rank(pct=True)-cls.rolling(63).rank(pct=True)).abs()
-        if "VX1-VX2" in vx and "Dollar_Index" in dd:f["vx_dollar_corr_21d"]=vx["VX1-VX2"].rolling(21).corr(dd["Dollar_Index"].pct_change(21)*100)
+        if "vx1_vx2_spread" in vxf.columns and "CL1-CL2" in cd:vs,cls=vxf["vx1_vx2_spread"],cd["CL1-CL2"];f["vx_crude_corr_21d"]=vs.rolling(21).corr(cls);f["vx_crude_divergence"]=(vs.rolling(63).rank(pct=True)-cls.rolling(63).rank(pct=True)).abs()
+        if "vx1_vx2_spread" in vxf.columns and "Dollar_Index" in dd:f["vx_dollar_corr_21d"]=vxf["vx1_vx2_spread"].rolling(21).corr(dd["Dollar_Index"].pct_change(21)*100)
         if "Dollar_Index" in dd and "Crude_Oil" in cd:f["dollar_crude_corr_21d"]=dd["Dollar_Index"].pct_change().rolling(21).corr(cd["Crude_Oil"].pct_change())
         if sr is not None:
-            if "VX1-VX2" in vx:f["spx_vx_spread_corr_21d"]=sr.rolling(21).corr(vx["VX1-VX2"])
+            if "vx1_vx2_spread" in vxf.columns:f["spx_vx_spread_corr_21d"]=sr.rolling(21).corr(vxf["vx1_vx2_spread"])
             if "Dollar_Index" in dd:f["spx_dollar_corr_21d"]=sr.rolling(21).corr(dd["Dollar_Index"].pct_change(21)*100)
         return f
 class TreasuryYieldFeatureEngine:
@@ -157,7 +151,7 @@ class TreasuryYieldFeatureEngine:
         return f
 class FeatureEngineer:
     def __init__(self,data_fetcher):
-        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.labor_engine=LaborMarketFeatureEngine();self.stress_engine=FinancialStressFeatureEngine();self.credit_engine=CreditSpreadFeatureEngine();self.funding_engine=FundingStressFeatureEngine();self.validator=TemporalSafetyValidator();self.regime_classifier=RegimeClassifier();self.fomc_calendar=None;self.opex_calendar=None;self.earnings_calendar=None;self.vix_futures_expiry=None;self._cohort_cache={}
+        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.labor_engine=LaborMarketFeatureEngine();self.stress_engine=FinancialStressFeatureEngine();self.credit_engine=CreditSpreadFeatureEngine();self.funding_engine=FundingStressFeatureEngine();self.vx_engineer=VXFuturesEngineer();self.validator=TemporalSafetyValidator();self.regime_classifier=RegimeClassifier();self.fomc_calendar=None;self.opex_calendar=None;self.earnings_calendar=None;self.vix_futures_expiry=None;self._cohort_cache={}
     def _load_calendar_data(self):
         if self.fomc_calendar is None:
             try:sy,ey=self.training_start_date.year,self.training_end_date.year+1;self.fomc_calendar=self.fetcher.fetch_fomc_calendar(start_year=sy,end_year=ey)
@@ -353,10 +347,9 @@ class FeatureEngineer:
         if sc:f["cboe_stress_composite"]=pd.DataFrame(sc).T.mean(axis=1);f["cboe_stress_regime"]=calculate_regime_with_validation(f["cboe_stress_composite"],bins=[0,0.33,0.66,1],labels=[0,1,2],feature_name="cboe_stress")
         return f
     def _build_futures_features(self,ss:str,es:str,idx:pd.DatetimeIndex,spx:pd.Series,cb:pd.DataFrame)->pd.DataFrame:
-        ff_daily=FORWARD_FILL_LIMITS.get("daily",5);vxd={}
-        if cb is not None and "VX1-VX2" in cb.columns:vxd["VX1-VX2"]=cb["VX1-VX2"]
-        if cb is not None and "VX2-VX1_RATIO" in cb.columns:vxd["VX2-VX1_RATIO"]=cb["VX2-VX1_RATIO"]
-        vxf=self.futures_engine.extract_vix_futures_features(vxd);vxf=vxf.reindex(idx,method="ffill",limit=ff_daily) if not vxf.empty else pd.DataFrame(index=idx)
+        ff_daily=FORWARD_FILL_LIMITS.get("daily",5)
+        try:vxf=self.vx_engineer.build_all_vx_features(start_date=ss,end_date=es,target_index=idx);vxf=vxf.reindex(idx,method="ffill",limit=ff_daily)
+        except Exception as e:warnings.warn(f"VX engineer failed: {e}. Using fallback.");vxd={};(vxd.update({"VX1-VX2":cb["VX1-VX2"]}) if cb is not None and "VX1-VX2" in cb.columns else None);(vxd.update({"VX2-VX1_RATIO":cb["VX2-VX1_RATIO"]}) if cb is not None and "VX2-VX1_RATIO" in cb.columns else None);vxf=self._legacy_vix_futures_features(vxd);vxf=vxf.reindex(idx,method="ffill",limit=ff_daily) if not vxf.empty else pd.DataFrame(index=idx)
         comd={}
         if cb is not None and "CL1-CL2" in cb.columns:comd["CL1-CL2"]=cb["CL1-CL2"]
         crd=self.fetcher.fetch_yahoo("CL=F",ss,es)
@@ -367,8 +360,14 @@ class FeatureEngineer:
         dxy=self.fetcher.fetch_yahoo("DX-Y.NYB",ss,es)
         if dxy is not None:dold["Dollar_Index"]=dxy["Close"].squeeze().reindex(idx,method="ffill",limit=ff_daily)
         dolf=self.futures_engine.extract_dollar_futures_features(dold);dolf=dolf.reindex(idx,method="ffill",limit=ff_daily) if not dolf.empty else pd.DataFrame(index=idx)
-        srt=spx.pct_change(21)*100;crf=self.futures_engine.extract_futures_cross_relationships(vxd,comd,dold,srt);crf=crf.reindex(idx,method="ffill",limit=ff_daily) if not crf.empty else pd.DataFrame(index=idx)
+        srt=spx.pct_change(21)*100;crf=self.futures_engine.extract_futures_cross_relationships(vxf,comd,dold,srt);crf=crf.reindex(idx,method="ffill",limit=ff_daily) if not crf.empty else pd.DataFrame(index=idx)
         return pd.concat([vxf,comf,dolf,crf],axis=1)
+    def _legacy_vix_futures_features(self,vxd:Dict[str,pd.Series])->pd.DataFrame:
+        f=pd.DataFrame()
+        if "VX1-VX2" in vxd:sp=vxd["VX1-VX2"];f["VX1-VX2"]=sp;f["VX1-VX2_change_21d"]=sp.diff(21);f["VX1-VX2_zscore_63d"]=calculate_robust_zscore(sp,63);f["VX1-VX2_percentile_63d"]=calculate_percentile_with_validation(sp,63)
+        if "VX2-VX1_RATIO" in vxd:r=vxd["VX2-VX1_RATIO"];f["VX2-VX1_RATIO"]=r;f["VX2-VX1_RATIO_velocity_10d"]=r.diff(10);f["vx_term_structure_regime"]=calculate_regime_with_validation(r,bins=[-1,-0.05,0,0.05,1],labels=[0,1,2,3],feature_name="vx_ratio")
+        if "VX1-VX2" in vxd and "VX2-VX1_RATIO" in vxd:sp,r=vxd["VX1-VX2"],vxd["VX2-VX1_RATIO"];f["vx_curve_acceleration"]=r.diff(5).diff(5);f["vx_term_structure_divergence"]=(sp.rolling(63).rank(pct=True)-r.rolling(63).rank(pct=True)).abs()
+        return f
     def _fetch_macro_data(self,ss:str,es:str,idx:pd.DatetimeIndex)->pd.DataFrame:
         fd={};ff_monthly=FORWARD_FILL_LIMITS.get("monthly",45);ff_weekly=FORWARD_FILL_LIMITS.get("weekly",10);ff_daily=FORWARD_FILL_LIMITS.get("daily",5)
         frs={"CPI":"CPIAUCSL","Initial_Claims":"ICSA","STL_Fin_Stress":"STLFSI4","SOFR":"SOFR","SOFR_90D":"SOFR90DAYAVG","Fed_Funds":"DFF","HY_OAS_All":"BAMLH0A0HYM2","HY_OAS_BB":"BAMLH0A1HYBB","HY_OAS_B":"BAMLH0A2HYB","HY_OAS_CCC":"BAMLH0A3HYC","IG_OAS":"BAMLC0A0CM"}
