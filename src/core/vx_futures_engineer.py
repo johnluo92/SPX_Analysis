@@ -82,25 +82,35 @@ class VXFuturesEngineer:
         print(f"   ✓ Generated {len(features.columns)} VX features")
         return features
 
+
     def _add_term_structure_features(self, features, vx_prices, vx_dte):
-        """Core term structure signals for 5-day VIX prediction"""
+        """Ratio-based features that handle discontinuities"""
 
         if 'VX1' in vx_prices and 'VX2' in vx_prices:
             vx1, vx2 = vx_prices['VX1'], vx_prices['VX2']
 
-            features['vx_front_spread'] = vx1 - vx2
-            features['vx_contango_intensity'] = (vx2 - vx1) / vx1.replace(0, np.nan) * 100
-            features['vx_spread_5d_change'] = features['vx_front_spread'].diff(5)
-            features['vx_spread_zscore_63d'] = self._zscore(features['vx_front_spread'], 63)
+            # Use RATIOS not absolute spreads
+            features['vx_contango_pct'] = ((vx2 / vx1) - 1) * 100
+            features['vx_contango_5d_change'] = features['vx_contango_pct'].diff(5)
+            features['vx_contango_zscore'] = self._zscore(features['vx_contango_pct'], 63)
+
+            # Returns instead of levels
+            features['vx1_return_5d'] = vx1.pct_change(5) * 100
+            features['vx2_return_5d'] = vx2.pct_change(5) * 100
 
         if all(f'VX{i}' in vx_prices for i in [1, 2, 3, 4]):
             vx1, vx2, vx3, vx4 = vx_prices['VX1'], vx_prices['VX2'], vx_prices['VX3'], vx_prices['VX4']
 
-            features['vx_curve_slope'] = (vx4 - vx1) / 3
-            features['vx_curve_concavity'] = vx1 - 2 * vx2 + vx3
-            features['vx_curve_steepness_ratio'] = ((vx2 - vx1) / vx1.replace(0, np.nan)) / ((vx4 - vx3) / vx3.replace(0, np.nan)).replace(0, np.nan)
+            # Curve shape ratios
+            features['vx_curve_2_1_ratio'] = vx2 / vx1
+            features['vx_curve_3_2_ratio'] = vx3 / vx2
+            features['vx_curve_4_3_ratio'] = vx4 / vx3
+
+            # Steepness
+            features['vx_curve_steepness'] = (vx4 / vx1 - 1) * 100
 
         return features
+
 
     def _add_positioning_features(self, features, vx_oi, vx_volume):
         """Positioning and flow features"""

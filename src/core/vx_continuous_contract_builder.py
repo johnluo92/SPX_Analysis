@@ -48,32 +48,86 @@ class VXContinuousContractBuilder:
                 if len(r.text)>100:fp.write_text(r.text);time.sleep(0.3)
             except:pass
         return len(missing)
-    def _load_raw_contract(self,fn):
-        fp=self.vx_dir/fn
-        if not fp.exists():return pd.DataFrame()
-        if fn in self.CORRUPTED_CONTRACTS:return pd.DataFrame()
+
+    def _load_raw_contract(self, fn):
+        fp = self.vx_dir / fn
+        if not fp.exists():
+            return pd.DataFrame()
+        if fn in self.CORRUPTED_CONTRACTS:
+            return pd.DataFrame()
+
         try:
-            df=pd.read_csv(fp,parse_dates=['Trade Date'],index_col='Trade Date')
-            df=df.rename(columns={'Open':'open','High':'high','Low':'low','Close':'close','Settle':'settle','Total Volume':'volume','Open Interest':'open_interest'})
-            for c in['open','high','low','close','settle','volume','open_interest']:
-                if c in df.columns:df[c]=pd.to_numeric(df[c],errors='coerce')
-            if df.empty:return pd.DataFrame()
-            if 'settle'not in df.columns:return pd.DataFrame()
-            valid_settle=(df['settle']>0)&df['settle'].notna()
-            if valid_settle.sum()==0:return pd.DataFrame()
-            df=df[valid_settle].copy()
-            if 'close'in df.columns:zero_close=(df['close']<=0)|df['close'].isna();df.loc[zero_close,'close']=df.loc[zero_close,'settle']
-            if 'open'in df.columns:zero_open=(df['open']<=0)|df['open'].isna();df.loc[zero_open,'open']=df.loc[zero_open,'settle']
-            if 'high'in df.columns and 'low'in df.columns:
-                invalid_hl=(df['high']<=0)|(df['low']<=0)|df['high'].isna()|df['low'].isna();df.loc[invalid_hl,'high']=df.loc[invalid_hl,'settle'];df.loc[invalid_hl,'low']=df.loc[invalid_hl,'settle']
-                inverted=df['high']<df['low'];df.loc[inverted,['high','low']]=df.loc[inverted,['low','high']].values
-                settle_above_high=df['settle']>df['high'];df.loc[settle_above_high,'high']=df.loc[settle_above_high,'settle']
-                settle_below_low=df['settle']<df['low'];df.loc[settle_below_low,'low']=df.loc[settle_below_low,'settle']
-            df['close']=df['settle']
-            for c in['volume','open_interest']:
-                if c in df.columns:neg_or_nan=(df[c]<0)|df[c].isna();df.loc[neg_or_nan,c]=0
+            df = pd.read_csv(fp, parse_dates=['Trade Date'], index_col='Trade Date')
+            df = df.rename(columns={
+                'Open': 'open', 'High': 'high', 'Low': 'low',
+                'Close': 'close', 'Settle': 'settle',
+                'Total Volume': 'volume', 'Open Interest': 'open_interest'
+            })
+
+            for c in ['open', 'high', 'low', 'close', 'settle', 'volume', 'open_interest']:
+                if c in df.columns:
+                    df[c] = pd.to_numeric(df[c], errors='coerce')
+
+            if df.empty:
+                return pd.DataFrame()
+
+            # CBOE uses Settle=0 for historical data - use Close instead
+            zero_settle = (df['settle'] == 0) | df['settle'].isna()
+            if 'close' in df.columns:
+                df.loc[zero_settle, 'settle'] = df.loc[zero_settle, 'close']
+
+            # Now filter for valid settle prices
+            valid_settle = (df['settle'] > 0) & df['settle'].notna()
+            if valid_settle.sum() == 0:
+                return pd.DataFrame()
+
+            df = df[valid_settle].copy()
+
+            # Clean open/close using settle as fallback
+            if 'close' in df.columns:
+                zero_close = (df['close'] <= 0) | df['close'].isna()
+                df.loc[zero_close, 'close'] = df.loc[zero_close, 'settle']
+
+            if 'open' in df.columns:
+                zero_open = (df['open'] <= 0) | df['open'].isna()
+                df.loc[zero_open, 'open'] = df.loc[zero_open, 'settle']
+
+            # Clean high/low
+            if 'high' in df.columns and 'low' in df.columns:
+                invalid_hl = (df['high'] <= 0) | (df['low'] <= 0) | df['high'].isna() | df['low'].isna()
+                df.loc[invalid_hl, 'high'] = df.loc[invalid_hl, 'settle']
+                df.loc[invalid_hl, 'low'] = df.loc[invalid_hl, 'settle']
+
+                inverted = df['high'] < df['low']
+                df.loc[inverted, ['high', 'low']] = df.loc[inverted, ['low', 'high']].values
+
+                settle_above_high = df['settle'] > df['high']
+                df.loc[settle_above_high, 'high'] = df.loc[settle_above_high, 'settle']
+
+                settle_below_low = df['settle'] < df['low']
+                df.loc[settle_below_low, 'low'] = df.loc[settle_below_low, 'settle']
+
+            # Ensure close matches settle for consistency
+            df['close'] = df['settle']
+
+            # Clean volume/OI
+            for c in ['volume', 'open_interest']:
+                if c in df.columns:
+                    neg_or_nan = (df[c] < 0) | df[c].isna()
+                    df.loc[neg_or_nan, c] = 0
+
+            # Final sanity check: VX futures trade 8-80 in normal times, 5-100 in extremes
+            extreme_prices = (df['settle'] < 5) | (df['settle'] > 150)
+            if extreme_prices.any():
+                print(f"   ⚠ Extreme prices in {fn}: {df[extreme_prices]['settle'].values}")
+                df = df[~extreme_prices]
+
             return df
-        except Exception:return pd.DataFrame()
+
+        except Exception as e:
+            print(f"   ✗ Failed to load {fn}: {e}")
+            return pd.DataFrame()
+
     def _build_continuous_incremental(self,pos,start_date=None):
         cache_file=self.cache_dir/f"VX{pos}.parquet";cached=pd.DataFrame()
         if cache_file.exists()and start_date:
@@ -99,22 +153,31 @@ class VXContinuousContractBuilder:
             new_data.append({'date':d,'open':row['open'],'high':row['high'],'low':row['low'],'close':row['settle'],'settle':row['settle'],'volume':row['volume'],'open_interest':row['open_interest'],'contract_code':contract['contract_code'],'expiry_date':contract['expiry_date'],'days_to_expiry':dte})
         if not new_data:return cached
         new_df=pd.DataFrame(new_data).set_index('date');new_df['roll_event']=(new_df['contract_code']!=new_df['contract_code'].shift(1)).astype(int)
+        new_df = self._filter_outliers(new_df)
         combined=pd.concat([cached,new_df])if not cached.empty else new_df;combined=combined[~combined.index.duplicated(keep='last')].sort_index()
+
+        # Final sanity check on adjusted prices
+        if 'settle' in combined.columns:
+            final_range = combined['settle'].describe()
+            if final_range['max'] > 200 or final_range['min'] < 5:
+                print(f"   ⚠ WARNING: Adjusted prices outside normal range:")
+                print(f"      Min={final_range['min']:.2f}, Max={final_range['max']:.2f}, Mean={final_range['mean']:.2f}")
+
         return self._apply_panama_adjustment(combined)
-    def _apply_panama_adjustment(self,df):
-        if 'roll_event'not in df.columns:return df
-        work=df.copy();rolls=work[work['roll_event']==1].index
-        if len(rolls)==0:return work.drop(columns=['roll_event','contract_code','expiry_date','days_to_expiry'],errors='ignore')
-        price_cols=['open','high','low','close','settle']
-        for i,roll_date in enumerate(rolls):
-            if i==0:continue
-            prev_date=work.index[work.index<roll_date][-1];old_settle=work.loc[prev_date,'settle'];new_settle_raw=work.loc[roll_date,'settle']
-            if old_settle<=0 or new_settle_raw<=0:continue
-            level_adj=old_settle/new_settle_raw;mask=work.index>=roll_date
-            for c in price_cols:
-                if c in work.columns:work.loc[mask,c]*=level_adj
-        work['roll_indicator']=work['roll_event']
-        return work.drop(columns=['roll_event','contract_code','expiry_date'],errors='ignore')
+
+    def _apply_panama_adjustment(self, df):
+        """Return unadjusted prices - handle discontinuities in feature engineering"""
+        if 'roll_event' not in df.columns:
+            return df
+
+        work = df.copy()
+        work['roll_indicator'] = work['roll_event']
+
+        # Mark which contract we're in for each period
+        work['contract_id'] = (work['roll_event'].cumsum())
+
+        return work.drop(columns=['roll_event', 'contract_code', 'expiry_date'], errors='ignore')
+
     def get_continuous_contract(self,pos,start_date=None,end_date=None,force_rebuild=False):
         cache_file=self.cache_dir/f"VX{pos}.parquet";needs,reason=self._needs_update(pos,end_date)
         if force_rebuild or needs:
@@ -136,6 +199,30 @@ class VXContinuousContractBuilder:
             if not df.empty:contracts[f'VX{pos}']=df
         print(f"   ✓ Loaded {len(contracts)} contracts")
         return contracts
+
+    def _filter_outliers(self, df, max_daily_change_pct=30):
+        """Remove extreme outliers that indicate data corruption"""
+        if df.empty or 'settle' not in df.columns:
+            return df
+
+        work = df.copy()
+        settle_returns = work['settle'].pct_change().abs()
+
+        # Flag extreme moves (>30% daily move in VX is extremely rare)
+        outliers = settle_returns > (max_daily_change_pct / 100)
+
+        if outliers.sum() > 0:
+            # For outlier days, use previous day's settle
+            for idx in work[outliers].index:
+                if idx == work.index[0]:
+                    continue  # Can't fix first row
+                prev_idx = work.index[work.index < idx][-1]
+                work.loc[idx, 'settle'] = work.loc[prev_idx, 'settle']
+                print(f"   ⚠ Filtered outlier at {idx}: {settle_returns.loc[idx]:.1%} daily change")
+
+        return work
+
+
 def get_vx_continuous_contracts(start_date=None,end_date=None,cboe_vx_dir="./CBOE_VX_ALL",cache_dir="./data_cache/vx_continuous"):
     builder=VXContinuousContractBuilder(cboe_vx_dir,cache_dir)
     return builder.get_all_continuous_contracts(start_date,end_date)
