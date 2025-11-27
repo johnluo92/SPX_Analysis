@@ -44,11 +44,11 @@ class EnhancedComprehensiveTuner:
         self.df=df;self.vix=vix;self.n_trials=n_trials;self.output_dir=Path(output_dir);self.output_dir.mkdir(parents=True,exist_ok=True);self.target_calculator=TargetCalculator();self.diversity_weight=diversity_weight;total=len(df);test_size=XGBOOST_CONFIG["cv_config"]["test_size"];val_size=XGBOOST_CONFIG["cv_config"]["val_size"];self.train_end=int(total*(1-test_size-val_size));self.val_end=int(total*(1-test_size));self.test_start=self.val_end;self.base_cols=[c for c in df.columns if c not in["vix","spx","calendar_cohort","cohort_weight","feature_quality"]]
         logger.info(f"Data splits: Train={self.train_end} | Val={self.val_end-self.train_end} | Test={total-self.val_end}");logger.info(f"Diversity weight: {self.diversity_weight:.2f}")
     def run_feature_selection(self,cv_params:Dict,target_type:str,top_n:int,correlation_threshold:float)->List[str]:
-        original_cv=cfg.FEATURE_SELECTION_CV_PARAMS.copy();original_corr=cfg.FEATURE_SELECTION_CONFIG.get("correlation_threshold",1.0)
+        original_cv=cfg.FEATURE_SELECTION_CV_PARAMS.copy()
         try:
-            cfg.FEATURE_SELECTION_CV_PARAMS.update(cv_params);cfg.FEATURE_SELECTION_CONFIG["correlation_threshold"]=correlation_threshold;selector=SimplifiedFeatureSelector(target_type=target_type,top_n=top_n);selected,_=selector.select_features(self.df[self.base_cols],self.vix,test_start_idx=self.test_start);return selected
+            cfg.FEATURE_SELECTION_CV_PARAMS.update(cv_params);selector=SimplifiedFeatureSelector(target_type=target_type,top_n=top_n,correlation_threshold=correlation_threshold);selected,_=selector.select_features(self.df[self.base_cols],self.vix,test_start_idx=self.test_start);return selected
         except Exception as e:logger.error(f"Feature selection error: {e}");return[]
-        finally:cfg.FEATURE_SELECTION_CV_PARAMS.update(original_cv);cfg.FEATURE_SELECTION_CONFIG["correlation_threshold"]=original_corr
+        finally:cfg.FEATURE_SELECTION_CV_PARAMS.update(original_cv)
     def compute_ensemble_confidence(self,magnitude_pct:float,direction_prob:float,mag_weight:float,dir_weight:float,agree_weight:float,thresholds:Dict,bonuses:Dict,penalties:Dict)->float:
         if not np.isfinite(magnitude_pct):magnitude_pct=0.0
         if not np.isfinite(direction_prob):direction_prob=0.5
@@ -188,7 +188,7 @@ XGBOOST_CONFIG['magnitude_params'].update({{
     'min_child_weight': {mag_params['mcw']},
     'reg_alpha': {mag_params['alpha']:.4f},
     'reg_lambda': {mag_params['lambda']:.4f},
-    'gamma': {mag_params['gamma']:.4f}  # NEW: Tuned for noisy targets
+    'gamma': {mag_params['gamma']:.4f}
 }})
 
 # Direction Model Parameters (Classification-Optimized)
@@ -203,7 +203,7 @@ XGBOOST_CONFIG['direction_params'].update({{
     'reg_lambda': {dir_params['lambda']:.4f},
     'gamma': {dir_params['gamma']:.4f},
     'scale_pos_weight': {dir_params['scale']:.4f},
-    'max_delta_step': {dir_params.get('max_delta', 0)}  # NEW: For imbalanced classification
+    'max_delta_step': {dir_params.get('max_delta', 0)}
 }})
 
 # Diversity Configuration (NEW)
