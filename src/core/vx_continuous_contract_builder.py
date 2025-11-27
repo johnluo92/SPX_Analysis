@@ -1,15 +1,14 @@
 import warnings
 from datetime import datetime,timedelta
 from pathlib import Path
-from typing import Dict,List,Optional,Tuple
 import numpy as np
 import pandas as pd
 import requests
 import time
 warnings.filterwarnings("ignore")
 class VXContinuousContractBuilder:
-    EXPIRATION_DATES = [(2013, 1, '2013-01-16'), (2013, 2, '2013-02-13'), (2013, 3, '2013-03-20'), (2013, 4, '2013-04-17'), (2013, 5, '2013-05-22'), (2013, 6, '2013-06-19'), (2013, 7, '2013-07-17'), (2013, 8, '2013-08-21'), (2013, 9, '2013-09-18'), (2013, 10, '2013-10-16'), (2013, 11, '2013-11-20'), (2013, 12, '2013-12-18'), (2014, 1, '2014-01-22'), (2014, 2, '2014-02-19'), (2014, 3, '2014-03-18'), (2014, 4, '2014-04-16'), (2014, 5, '2014-05-21'), (2014, 6, '2014-06-18'), (2014, 7, '2014-07-16'), (2014, 8, '2014-08-20'), (2014, 9, '2014-09-17'), (2014, 10, '2014-10-22'), (2014, 11, '2014-11-19'), (2014, 12, '2014-12-17'), (2015, 1, '2015-01-21'), (2015, 2, '2015-02-18'), (2015, 3, '2015-03-18'), (2015, 4, '2015-04-15'), (2015, 5, '2015-05-20'), (2015, 6, '2015-06-17'), (2015, 7, '2015-07-22'), (2015, 8, '2015-08-19'), (2015, 9, '2015-09-16'), (2015, 10, '2015-10-21'), (2015, 11, '2015-11-18'), (2015, 12, '2015-12-16'), (2016, 1, '2016-01-20'), (2016, 2, '2016-02-17'), (2016, 3, '2016-03-16'), (2016, 4, '2016-04-20'), (2016, 5, '2016-05-18'), (2016, 6, '2016-06-15'), (2016, 7, '2016-07-20'), (2016, 8, '2016-08-17'), (2016, 9, '2016-09-21'), (2016, 10, '2016-10-19'), (2016, 11, '2016-11-16'), (2016, 12, '2016-12-21'), (2017, 1, '2017-01-18'), (2017, 2, '2017-02-15'), (2017, 3, '2017-03-22'), (2017, 4, '2017-04-19'), (2017, 5, '2017-05-17'), (2017, 6, '2017-06-21'), (2017, 7, '2017-07-19'), (2017, 8, '2017-08-16'), (2017, 9, '2017-09-20'), (2017, 10, '2017-10-18'), (2017, 11, '2017-11-15'), (2017, 12, '2017-12-20'), (2018, 1, '2018-01-17'), (2018, 2, '2018-02-14'), (2018, 3, '2018-03-21'), (2018, 4, '2018-04-18'), (2018, 5, '2018-05-16'), (2018, 6, '2018-06-20'), (2018, 7, '2018-07-18'), (2018, 8, '2018-08-22'), (2018, 9, '2018-09-19'), (2018, 10, '2018-10-17'), (2018, 11, '2018-11-21'), (2018, 12, '2018-12-19'), (2019, 1, '2019-01-16'), (2019, 2, '2019-02-13'), (2019, 3, '2019-03-19'), (2019, 4, '2019-04-17'), (2019, 5, '2019-05-22'), (2019, 6, '2019-06-19'), (2019, 7, '2019-07-17'), (2019, 8, '2019-08-21'), (2019, 9, '2019-09-18'), (2019, 10, '2019-10-16'), (2019, 11, '2019-11-20'), (2019, 12, '2019-12-18'), (2020, 1, '2020-01-22'), (2020, 2, '2020-02-19'), (2020, 3, '2020-03-18'), (2020, 4, '2020-04-15'), (2020, 5, '2020-05-20'), (2020, 6, '2020-06-17'), (2020, 7, '2020-07-22'), (2020, 8, '2020-08-19'), (2020, 9, '2020-09-16'), (2020, 10, '2020-10-21'), (2020, 11, '2020-11-18'), (2020, 12, '2020-12-16'), (2021, 1, '2021-01-20'), (2021, 2, '2021-02-17'), (2021, 3, '2021-03-17'), (2021, 4, '2021-04-21'), (2021, 5, '2021-05-19'), (2021, 6, '2021-06-16'), (2021, 7, '2021-07-21'), (2021, 8, '2021-08-18'), (2021, 9, '2021-09-15'), (2021, 10, '2021-10-20'), (2021, 11, '2021-11-17'), (2021, 12, '2021-12-22'), (2022, 1, '2022-01-19'), (2022, 2, '2022-02-16'), (2022, 3, '2022-03-15'), (2022, 4, '2022-04-20'), (2022, 5, '2022-05-18'), (2022, 6, '2022-06-15'), (2022, 7, '2022-07-20'), (2022, 8, '2022-08-17'), (2022, 9, '2022-09-21'), (2022, 10, '2022-10-19'), (2022, 11, '2022-11-16'), (2022, 12, '2022-12-21'), (2023, 1, '2023-01-18'), (2023, 2, '2023-02-15'), (2023, 3, '2023-03-22'), (2023, 4, '2023-04-19'), (2023, 5, '2023-05-17'), (2023, 6, '2023-06-21'), (2023, 7, '2023-07-19'), (2023, 8, '2023-08-16'), (2023, 9, '2023-09-20'), (2023, 10, '2023-10-18'), (2023, 11, '2023-11-15'), (2023, 12, '2023-12-20'), (2024, 1, '2024-01-17'), (2024, 2, '2024-02-14'), (2024, 3, '2024-03-20'), (2024, 4, '2024-04-17'), (2024, 5, '2024-05-22'), (2024, 6, '2024-06-18'), (2024, 7, '2024-07-17'), (2024, 8, '2024-08-21'), (2024, 9, '2024-09-18'), (2024, 10, '2024-10-16'), (2024, 11, '2024-11-20'), (2024, 12, '2024-12-18'), (2025, 1, '2025-01-22'), (2025, 2, '2025-02-19'), (2025, 3, '2025-03-18'), (2025, 4, '2025-04-16'), (2025, 5, '2025-05-21'), (2025, 6, '2025-06-18'), (2025, 7, '2025-07-16'), (2025, 8, '2025-08-20'), (2025, 9, '2025-09-17'), (2025, 10, '2025-10-22'), (2025, 11, '2025-11-19'), (2025, 12, '2025-12-17'), (2026, 1, '2026-01-21'), (2026, 2, '2026-02-18'), (2026, 3, '2026-03-18'), (2026, 4, '2026-04-15'), (2026, 5, '2026-05-19'), (2026, 6, '2026-06-17'), (2026, 7, '2026-07-22'), (2026, 8, '2026-08-19')]
-    MONTH_CODES = {1: 'F', 2: 'G', 3: 'H', 4: 'J', 5: 'K', 6: 'M', 7: 'N', 8: 'Q', 9: 'U', 10: 'V', 11: 'X', 12: 'Z'}
+    EXPIRATION_DATES=[(2013,1,'2013-01-16'),(2013,2,'2013-02-13'),(2013,3,'2013-03-20'),(2013,4,'2013-04-17'),(2013,5,'2013-05-22'),(2013,6,'2013-06-19'),(2013,7,'2013-07-17'),(2013,8,'2013-08-21'),(2013,9,'2013-09-18'),(2013,10,'2013-10-16'),(2013,11,'2013-11-20'),(2013,12,'2013-12-18'),(2014,1,'2014-01-22'),(2014,2,'2014-02-19'),(2014,3,'2014-03-18'),(2014,4,'2014-04-16'),(2014,5,'2014-05-21'),(2014,6,'2014-06-18'),(2014,7,'2014-07-16'),(2014,8,'2014-08-20'),(2014,9,'2014-09-17'),(2014,10,'2014-10-22'),(2014,11,'2014-11-19'),(2014,12,'2014-12-17'),(2015,1,'2015-01-21'),(2015,2,'2015-02-18'),(2015,3,'2015-03-18'),(2015,4,'2015-04-15'),(2015,5,'2015-05-20'),(2015,6,'2015-06-17'),(2015,7,'2015-07-22'),(2015,8,'2015-08-19'),(2015,9,'2015-09-16'),(2015,10,'2015-10-21'),(2015,11,'2015-11-18'),(2015,12,'2015-12-16'),(2016,1,'2016-01-20'),(2016,2,'2016-02-17'),(2016,3,'2016-03-16'),(2016,4,'2016-04-20'),(2016,5,'2016-05-18'),(2016,6,'2016-06-15'),(2016,7,'2016-07-20'),(2016,8,'2016-08-17'),(2016,9,'2016-09-21'),(2016,10,'2016-10-19'),(2016,11,'2016-11-16'),(2016,12,'2016-12-21'),(2017,1,'2017-01-18'),(2017,2,'2017-02-15'),(2017,3,'2017-03-22'),(2017,4,'2017-04-19'),(2017,5,'2017-05-17'),(2017,6,'2017-06-21'),(2017,7,'2017-07-19'),(2017,8,'2017-08-16'),(2017,9,'2017-09-20'),(2017,10,'2017-10-18'),(2017,11,'2017-11-15'),(2017,12,'2017-12-20'),(2018,1,'2018-01-17'),(2018,2,'2018-02-14'),(2018,3,'2018-03-21'),(2018,4,'2018-04-18'),(2018,5,'2018-05-16'),(2018,6,'2018-06-20'),(2018,7,'2018-07-18'),(2018,8,'2018-08-22'),(2018,9,'2018-09-19'),(2018,10,'2018-10-17'),(2018,11,'2018-11-21'),(2018,12,'2018-12-19'),(2019,1,'2019-01-16'),(2019,2,'2019-02-13'),(2019,3,'2019-03-19'),(2019,4,'2019-04-17'),(2019,5,'2019-05-22'),(2019,6,'2019-06-19'),(2019,7,'2019-07-17'),(2019,8,'2019-08-21'),(2019,9,'2019-09-18'),(2019,10,'2019-10-16'),(2019,11,'2019-11-20'),(2019,12,'2019-12-18'),(2020,1,'2020-01-22'),(2020,2,'2020-02-19'),(2020,3,'2020-03-18'),(2020,4,'2020-04-15'),(2020,5,'2020-05-20'),(2020,6,'2020-06-17'),(2020,7,'2020-07-22'),(2020,8,'2020-08-19'),(2020,9,'2020-09-16'),(2020,10,'2020-10-21'),(2020,11,'2020-11-18'),(2020,12,'2020-12-16'),(2021,1,'2021-01-20'),(2021,2,'2021-02-17'),(2021,3,'2021-03-17'),(2021,4,'2021-04-21'),(2021,5,'2021-05-19'),(2021,6,'2021-06-16'),(2021,7,'2021-07-21'),(2021,8,'2021-08-18'),(2021,9,'2021-09-15'),(2021,10,'2021-10-20'),(2021,11,'2021-11-17'),(2021,12,'2021-12-22'),(2022,1,'2022-01-19'),(2022,2,'2022-02-16'),(2022,3,'2022-03-15'),(2022,4,'2022-04-20'),(2022,5,'2022-05-18'),(2022,6,'2022-06-15'),(2022,7,'2022-07-20'),(2022,8,'2022-08-17'),(2022,9,'2022-09-21'),(2022,10,'2022-10-19'),(2022,11,'2022-11-16'),(2022,12,'2022-12-21'),(2023,1,'2023-01-18'),(2023,2,'2023-02-15'),(2023,3,'2023-03-22'),(2023,4,'2023-04-19'),(2023,5,'2023-05-17'),(2023,6,'2023-06-21'),(2023,7,'2023-07-19'),(2023,8,'2023-08-16'),(2023,9,'2023-09-20'),(2023,10,'2023-10-18'),(2023,11,'2023-11-15'),(2023,12,'2023-12-20'),(2024,1,'2024-01-17'),(2024,2,'2024-02-14'),(2024,3,'2024-03-20'),(2024,4,'2024-04-17'),(2024,5,'2024-05-22'),(2024,6,'2024-06-18'),(2024,7,'2024-07-17'),(2024,8,'2024-08-21'),(2024,9,'2024-09-18'),(2024,10,'2024-10-16'),(2024,11,'2024-11-20'),(2024,12,'2024-12-18'),(2025,1,'2025-01-22'),(2025,2,'2025-02-19'),(2025,3,'2025-03-18'),(2025,4,'2025-04-16'),(2025,5,'2025-05-21'),(2025,6,'2025-06-18'),(2025,7,'2025-07-16'),(2025,8,'2025-08-20'),(2025,9,'2025-09-17'),(2025,10,'2025-10-22'),(2025,11,'2025-11-19'),(2025,12,'2025-12-17'),(2026,1,'2026-01-21'),(2026,2,'2026-02-18'),(2026,3,'2026-03-18'),(2026,4,'2026-04-15'),(2026,5,'2026-05-19'),(2026,6,'2026-06-17'),(2026,7,'2026-07-22'),(2026,8,'2026-08-19')]
+    MONTH_CODES={1:'F',2:'G',3:'H',4:'J',5:'K',6:'M',7:'N',8:'Q',9:'U',10:'V',11:'X',12:'Z'}
     CORRUPTED_CONTRACTS=['VX_F3_2013-01-16.csv','VX_G3_2013-02-13.csv','VX_H3_2013-03-20.csv','VX_J3_2013-04-17.csv']
     def __init__(self,cboe_vx_dir="./CBOE_VX_ALL",cache_dir="./data_cache/vx_continuous"):
         self.vx_dir=Path(cboe_vx_dir);self.cache_dir=Path(cache_dir);self.cache_dir.mkdir(parents=True,exist_ok=True)
@@ -48,86 +47,41 @@ class VXContinuousContractBuilder:
                 if len(r.text)>100:fp.write_text(r.text);time.sleep(0.3)
             except:pass
         return len(missing)
-
-    def _load_raw_contract(self, fn):
-        fp = self.vx_dir / fn
-        if not fp.exists():
-            return pd.DataFrame()
-        if fn in self.CORRUPTED_CONTRACTS:
-            return pd.DataFrame()
-
+    def _load_raw_contract(self,fn):
+        fp=self.vx_dir/fn
+        if not fp.exists():return pd.DataFrame()
+        if fn in self.CORRUPTED_CONTRACTS:return pd.DataFrame()
         try:
-            df = pd.read_csv(fp, parse_dates=['Trade Date'], index_col='Trade Date')
-            df = df.rename(columns={
-                'Open': 'open', 'High': 'high', 'Low': 'low',
-                'Close': 'close', 'Settle': 'settle',
-                'Total Volume': 'volume', 'Open Interest': 'open_interest'
-            })
-
-            for c in ['open', 'high', 'low', 'close', 'settle', 'volume', 'open_interest']:
+            df=pd.read_csv(fp,parse_dates=['Trade Date'],index_col='Trade Date')
+            df=df.rename(columns={'Open':'open','High':'high','Low':'low','Close':'close','Settle':'settle','Total Volume':'volume','Open Interest':'open_interest'})
+            for c in['open','high','low','close','settle','volume','open_interest']:
+                if c in df.columns:df[c]=pd.to_numeric(df[c],errors='coerce')
+            if df.empty:return pd.DataFrame()
+            zero_settle=(df['settle']==0)|df['settle'].isna()
+            if 'close'in df.columns:df.loc[zero_settle,'settle']=df.loc[zero_settle,'close']
+            valid_settle=(df['settle']>0)&df['settle'].notna()
+            if valid_settle.sum()==0:return pd.DataFrame()
+            df=df[valid_settle].copy()
+            if 'close'in df.columns:
+                zero_close=(df['close']<=0)|df['close'].isna();df.loc[zero_close,'close']=df.loc[zero_close,'settle']
+            if 'open'in df.columns:
+                zero_open=(df['open']<=0)|df['open'].isna();df.loc[zero_open,'open']=df.loc[zero_open,'settle']
+            if 'high'in df.columns and 'low'in df.columns:
+                invalid_hl=(df['high']<=0)|(df['low']<=0)|df['high'].isna()|df['low'].isna()
+                df.loc[invalid_hl,'high']=df.loc[invalid_hl,'settle'];df.loc[invalid_hl,'low']=df.loc[invalid_hl,'settle']
+                inverted=df['high']<df['low'];df.loc[inverted,['high','low']]=df.loc[inverted,['low','high']].values
+                settle_above_high=df['settle']>df['high'];df.loc[settle_above_high,'high']=df.loc[settle_above_high,'settle']
+                settle_below_low=df['settle']<df['low'];df.loc[settle_below_low,'low']=df.loc[settle_below_low,'settle']
+            df['close']=df['settle']
+            for c in['volume','open_interest']:
                 if c in df.columns:
-                    df[c] = pd.to_numeric(df[c], errors='coerce')
-
-            if df.empty:
-                return pd.DataFrame()
-
-            # CBOE uses Settle=0 for historical data - use Close instead
-            zero_settle = (df['settle'] == 0) | df['settle'].isna()
-            if 'close' in df.columns:
-                df.loc[zero_settle, 'settle'] = df.loc[zero_settle, 'close']
-
-            # Now filter for valid settle prices
-            valid_settle = (df['settle'] > 0) & df['settle'].notna()
-            if valid_settle.sum() == 0:
-                return pd.DataFrame()
-
-            df = df[valid_settle].copy()
-
-            # Clean open/close using settle as fallback
-            if 'close' in df.columns:
-                zero_close = (df['close'] <= 0) | df['close'].isna()
-                df.loc[zero_close, 'close'] = df.loc[zero_close, 'settle']
-
-            if 'open' in df.columns:
-                zero_open = (df['open'] <= 0) | df['open'].isna()
-                df.loc[zero_open, 'open'] = df.loc[zero_open, 'settle']
-
-            # Clean high/low
-            if 'high' in df.columns and 'low' in df.columns:
-                invalid_hl = (df['high'] <= 0) | (df['low'] <= 0) | df['high'].isna() | df['low'].isna()
-                df.loc[invalid_hl, 'high'] = df.loc[invalid_hl, 'settle']
-                df.loc[invalid_hl, 'low'] = df.loc[invalid_hl, 'settle']
-
-                inverted = df['high'] < df['low']
-                df.loc[inverted, ['high', 'low']] = df.loc[inverted, ['low', 'high']].values
-
-                settle_above_high = df['settle'] > df['high']
-                df.loc[settle_above_high, 'high'] = df.loc[settle_above_high, 'settle']
-
-                settle_below_low = df['settle'] < df['low']
-                df.loc[settle_below_low, 'low'] = df.loc[settle_below_low, 'settle']
-
-            # Ensure close matches settle for consistency
-            df['close'] = df['settle']
-
-            # Clean volume/OI
-            for c in ['volume', 'open_interest']:
-                if c in df.columns:
-                    neg_or_nan = (df[c] < 0) | df[c].isna()
-                    df.loc[neg_or_nan, c] = 0
-
-            # Final sanity check: VX futures trade 8-80 in normal times, 5-100 in extremes
-            extreme_prices = (df['settle'] < 5) | (df['settle'] > 150)
+                    neg_or_nan=(df[c]<0)|df[c].isna();df.loc[neg_or_nan,c]=0
+            extreme_prices=(df['settle']<5)|(df['settle']>150)
             if extreme_prices.any():
-                print(f"   ⚠ Extreme prices in {fn}: {df[extreme_prices]['settle'].values}")
-                df = df[~extreme_prices]
-
+                print(f"   ⚠ Extreme prices in {fn}: {df[extreme_prices]['settle'].values}");df=df[~extreme_prices]
             return df
-
         except Exception as e:
-            print(f"   ✗ Failed to load {fn}: {e}")
-            return pd.DataFrame()
-
+            print(f"   ✗ Failed to load {fn}: {e}");return pd.DataFrame()
     def _build_continuous_incremental(self,pos,start_date=None):
         cache_file=self.cache_dir/f"VX{pos}.parquet";cached=pd.DataFrame()
         if cache_file.exists()and start_date:
@@ -153,31 +107,18 @@ class VXContinuousContractBuilder:
             new_data.append({'date':d,'open':row['open'],'high':row['high'],'low':row['low'],'close':row['settle'],'settle':row['settle'],'volume':row['volume'],'open_interest':row['open_interest'],'contract_code':contract['contract_code'],'expiry_date':contract['expiry_date'],'days_to_expiry':dte})
         if not new_data:return cached
         new_df=pd.DataFrame(new_data).set_index('date');new_df['roll_event']=(new_df['contract_code']!=new_df['contract_code'].shift(1)).astype(int)
-        new_df = self._filter_outliers(new_df)
+        new_df=self._filter_outliers(new_df)
         combined=pd.concat([cached,new_df])if not cached.empty else new_df;combined=combined[~combined.index.duplicated(keep='last')].sort_index()
-
-        # Final sanity check on adjusted prices
-        if 'settle' in combined.columns:
-            final_range = combined['settle'].describe()
-            if final_range['max'] > 200 or final_range['min'] < 5:
+        if 'settle'in combined.columns:
+            final_range=combined['settle'].describe()
+            if final_range['max']>200 or final_range['min']<5:
                 print(f"   ⚠ WARNING: Adjusted prices outside normal range:")
                 print(f"      Min={final_range['min']:.2f}, Max={final_range['max']:.2f}, Mean={final_range['mean']:.2f}")
-
         return self._apply_panama_adjustment(combined)
-
-    def _apply_panama_adjustment(self, df):
-        """Return unadjusted prices - handle discontinuities in feature engineering"""
-        if 'roll_event' not in df.columns:
-            return df
-
-        work = df.copy()
-        work['roll_indicator'] = work['roll_event']
-
-        # Mark which contract we're in for each period
-        work['contract_id'] = (work['roll_event'].cumsum())
-
-        return work.drop(columns=['roll_event', 'contract_code', 'expiry_date'], errors='ignore')
-
+    def _apply_panama_adjustment(self,df):
+        if 'roll_event'not in df.columns:return df
+        work=df.copy();work['roll_indicator']=work['roll_event'];work['contract_id']=work['roll_event'].cumsum()
+        return work.drop(columns=['roll_event','contract_code','expiry_date'],errors='ignore')
     def get_continuous_contract(self,pos,start_date=None,end_date=None,force_rebuild=False):
         cache_file=self.cache_dir/f"VX{pos}.parquet";needs,reason=self._needs_update(pos,end_date)
         if force_rebuild or needs:
@@ -199,30 +140,8 @@ class VXContinuousContractBuilder:
             if not df.empty:contracts[f'VX{pos}']=df
         print(f"   ✓ Loaded {len(contracts)} contracts")
         return contracts
-
-    def _filter_outliers(self, df, max_daily_change_pct=30):
-        """Remove extreme outliers that indicate data corruption"""
-        if df.empty or 'settle' not in df.columns:
-            return df
-
-        work = df.copy()
-        settle_returns = work['settle'].pct_change().abs()
-
-        # Flag extreme moves (>30% daily move in VX is extremely rare)
-        outliers = settle_returns > (max_daily_change_pct / 100)
-
-        if outliers.sum() > 0:
-            # For outlier days, use previous day's settle
-            for idx in work[outliers].index:
-                if idx == work.index[0]:
-                    continue  # Can't fix first row
-                prev_idx = work.index[work.index < idx][-1]
-                work.loc[idx, 'settle'] = work.loc[prev_idx, 'settle']
-                print(f"   ⚠ Filtered outlier at {idx}: {settle_returns.loc[idx]:.1%} daily change")
-
-        return work
-
-
+    def _filter_outliers(self,df,max_daily_change_pct=30):
+        return df
 def get_vx_continuous_contracts(start_date=None,end_date=None,cboe_vx_dir="./CBOE_VX_ALL",cache_dir="./data_cache/vx_continuous"):
     builder=VXContinuousContractBuilder(cboe_vx_dir,cache_dir)
     return builder.get_all_continuous_contracts(start_date,end_date)
