@@ -14,14 +14,15 @@ class VXFuturesEngineer:
         indices=[df.index for df in vx_contracts.values()if not df.empty]
         if not indices:return pd.DataFrame()
         common_index=indices[0]
-        for idx in indices[1:]:common_index=common_index.intersection(idx)
+        for idx in indices[1:]:common_index=common_index.union(idx)
+        common_index=common_index.sort_values()
         features=pd.DataFrame(index=common_index);vx_prices={};vx_dte={};vx_volume={};vx_oi={}
         for name,df in vx_contracts.items():
             if not df.empty:
-                if 'settle'in df.columns:vx_prices[name]=df['settle'].reindex(common_index)
-                if 'days_to_expiry'in df.columns:vx_dte[name]=df['days_to_expiry'].reindex(common_index)
-                if 'volume'in df.columns:vx_volume[name]=df['volume'].reindex(common_index)
-                if 'open_interest'in df.columns:vx_oi[name]=df['open_interest'].reindex(common_index)
+                if 'settle'in df.columns:vx_prices[name]=df['settle'].reindex(common_index,method='ffill',limit=10)
+                if 'days_to_expiry'in df.columns:vx_dte[name]=df['days_to_expiry'].reindex(common_index,method='ffill',limit=10)
+                if 'volume'in df.columns:vx_volume[name]=df['volume'].reindex(common_index,method='ffill',limit=5)
+                if 'open_interest'in df.columns:vx_oi[name]=df['open_interest'].reindex(common_index,method='ffill',limit=5)
         print("   → Generating term structure features...")
         features=self._add_term_structure_features(features,vx_prices,vx_dte)
         print("   → Generating positioning features...")
@@ -35,7 +36,7 @@ class VXFuturesEngineer:
         features=self._add_regime_features(features,vx_prices)
         features=features.replace([np.inf,-np.inf],np.nan)
         if target_index is not None:features=features.reindex(target_index,method='ffill',limit=5)
-        print(f"   ✓ Generated {len(features.columns)} VX features")
+        print(f"   ✓ Generated {len(features.columns)} VX features | Coverage: {len(features)} days")
         return features
     def _add_term_structure_features(self,features,vx_prices,vx_dte):
         if 'VX1'in vx_prices and 'VX2'in vx_prices:
@@ -78,7 +79,7 @@ class VXFuturesEngineer:
         return features
     def _add_vix_basis_features(self,features,vx_prices,vix_series):
         if 'VX1'not in vx_prices:return features
-        vx1=vx_prices['VX1'];vix_aligned=vix_series.reindex(features.index)
+        vx1=vx_prices['VX1'];vix_aligned=vix_series.reindex(features.index,method='ffill',limit=5)
         features['vx_vix_basis']=vx1-vix_aligned
         features['vx_vix_basis_pct']=(vx1-vix_aligned)/vix_aligned.replace(0,np.nan)*100
         features['vx_vix_basis_zscore_63d']=self._zscore(features['vx_vix_basis'],63)

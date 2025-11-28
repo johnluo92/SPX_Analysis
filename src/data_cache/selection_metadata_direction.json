@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-27T16:01:14.481403",
+  "timestamp": "2025-11-28T14:26:19.889573",
   "target": "direction",
   "target_type": "direction",
   "horizon": 5,
@@ -7,10 +7,10 @@
   "samples_trainval": 4539,
   "samples_test_excluded": 797,
   "test_exclusion_enabled": true,
-  "total_features": 295,
-  "selected_features": 84,
-  "top_n": 81,
-  "correlation_threshold": 0.8949,
+  "total_features": 327,
+  "selected_features": 83,
+  "top_n": 80,
+  "correlation_threshold": 0.9157,
   "cv_folds": 5,
   "protected_features": [
     "is_fomc_period",
@@ -24,83 +24,83 @@
   "top_20_features": [
     {
       "feature": "is_fomc_period",
-      "importance": 0.002478259633062407
+      "importance": 0.0013204253744333982
     },
     {
       "feature": "is_opex_week",
-      "importance": 0.0017510375007987022
+      "importance": 0.001757443556562066
     },
     {
       "feature": "is_earnings_heavy",
-      "importance": 0.0
+      "importance": 0.0012073313817381858
     },
     {
-      "feature": "vix_velocity_5d",
-      "importance": 0.010045381309464575
+      "feature": "vix_velocity_5d_regime_adj",
+      "importance": 0.015105177834630012
     },
     {
-      "feature": "vix_vs_ma10",
-      "importance": 0.00975479418411851
-    },
-    {
-      "feature": "vix_zscore_252d",
-      "importance": 0.008916706126183272
-    },
-    {
-      "feature": "spx_realized_vol_63d",
-      "importance": 0.008419483341276646
+      "feature": "vix1m_vix3m_ratio",
+      "importance": 0.008195265475660563
     },
     {
       "feature": "crude_oil_ret_10d",
-      "importance": 0.008206369169056416
+      "importance": 0.007335872109979391
     },
     {
-      "feature": "vix_rv_ratio_21d",
-      "importance": 0.008159860502928495
+      "feature": "vix_vs_ma10",
+      "importance": 0.007301839767023921
     },
     {
-      "feature": "vix_percentile_252d",
-      "importance": 0.007743534352630377
-    },
-    {
-      "feature": "risk_premium_percentile_63d",
-      "importance": 0.007667793985456228
-    },
-    {
-      "feature": "spx_realized_vol_21d",
-      "importance": 0.007574034668505192
-    },
-    {
-      "feature": "bb_position_20d",
-      "importance": 0.007514093164354562
-    },
-    {
-      "feature": "day_of_month",
-      "importance": 0.007325062621384859
-    },
-    {
-      "feature": "vix_vs_ma63",
-      "importance": 0.007171287760138511
-    },
-    {
-      "feature": "crude_oil_ret_63d",
-      "importance": 0.006968153826892376
-    },
-    {
-      "feature": "month",
-      "importance": 0.006837443448603153
-    },
-    {
-      "feature": "days_in_regime",
-      "importance": 0.006818723957985639
-    },
-    {
-      "feature": "hy_spread",
-      "importance": 0.006795281264930964
+      "feature": "6m_vol_63d_fred",
+      "importance": 0.007032531313598156
     },
     {
       "feature": "reversion_strength_63d",
-      "importance": 0.0067666140384972095
+      "importance": 0.006969864945858717
+    },
+    {
+      "feature": "spx_vs_ma50",
+      "importance": 0.006966329831629992
+    },
+    {
+      "feature": "vix_zscore_252d",
+      "importance": 0.006907259300351143
+    },
+    {
+      "feature": "crude_oil_ret_63d",
+      "importance": 0.006735982932150364
+    },
+    {
+      "feature": "dxy_ret_10d",
+      "importance": 0.0067266632802784445
+    },
+    {
+      "feature": "yield_30y10y",
+      "importance": 0.006442628987133503
+    },
+    {
+      "feature": "risk_premium_zscore",
+      "importance": 0.006195572763681411
+    },
+    {
+      "feature": "vix_term_ratio_zscore_63d",
+      "importance": 0.006195454206317663
+    },
+    {
+      "feature": "hy_bb_spread",
+      "importance": 0.006171738822013139
+    },
+    {
+      "feature": "day_of_month",
+      "importance": 0.006065425090491771
+    },
+    {
+      "feature": "days_in_regime",
+      "importance": 0.006021327432245016
+    },
+    {
+      "feature": "vix_vs_rv_10d",
+      "importance": 0.005993535369634628
     }
   ]
 }
