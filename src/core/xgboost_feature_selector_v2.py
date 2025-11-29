@@ -5,7 +5,7 @@ from typing import Dict,List,Tuple,Optional
 import numpy as np,pandas as pd
 import xgboost as xgb
 from sklearn.model_selection import TimeSeriesSplit
-from config import FEATURE_SELECTION_CONFIG,TARGET_CONFIG,FEATURE_SELECTION_CV_PARAMS,XGBOOST_CONFIG
+from config import FEATURE_SELECTION_CONFIG,TARGET_CONFIG,FEATURE_SELECTION_CV_PARAMS,TRAIN_END_DATE
 from core.target_calculator import TargetCalculator
 from core.feature_correlation_analyzer import FeatureCorrelationAnalyzer
 logger=logging.getLogger(__name__)
@@ -28,7 +28,8 @@ class SimplifiedFeatureSelector:
         if self.target_type=='direction':logger.info(f"  Aligned dataset");logger.info(f"  Samples: {len(X)}");logger.info(f"  Features: {len(X.columns)}");logger.info(f"  UP: {y.sum()} ({y.mean():.1%}) | DOWN: {(~y.astype(bool)).sum()} ({(1-y.mean()):.1%})")
         else:logger.info(f"  Aligned dataset");logger.info(f"  Samples: {len(X)}");logger.info(f"  Features: {len(X.columns)}");logger.info(f"  Target range: [{y.min():.4f}, {y.max():.4f}]")
         logger.info("\n[3/6] Splitting data (excluding test set from feature selection)...")
-        if test_start_idx is None:test_start_idx=int(len(X)*(1-XGBOOST_CONFIG["cv_config"]["test_size"]))
+        if test_start_idx is None:
+            train_end_date_idx=X[X.index<=pd.Timestamp(TRAIN_END_DATE)].index[-1];test_start_idx=X.index.get_loc(train_end_date_idx)+1
         X_trainval=X.iloc[:test_start_idx];y_trainval=y.iloc[:test_start_idx];X_test=X.iloc[test_start_idx:];y_test=y.iloc[test_start_idx:]
         logger.info(f"  Train+Val: {len(X_trainval)} samples ({len(X_trainval)/len(X):.1%})");logger.info(f"  Test (excluded): {len(X_test)} samples ({len(X_test)/len(X):.1%})");logger.info(f"  ⚠️  Feature selection uses ONLY train+val data")
         logger.info(f"\n[4/6] Computing feature importance via {self.cv_folds}-fold CV (train+val only)...")

@@ -2,7 +2,7 @@ import argparse,json,logging,sys
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
-from config import TARGET_CONFIG,TRAINING_YEARS,FEATURE_SELECTION_CONFIG,XGBOOST_CONFIG,get_last_complete_month_end
+from config import TARGET_CONFIG,TRAINING_YEARS,FEATURE_SELECTION_CONFIG,XGBOOST_CONFIG,get_last_complete_month_end,TRAIN_END_DATE
 from core.data_fetcher import UnifiedDataFetcher
 from core.feature_engineer import FeatureEngineer
 from core.xgboost_feature_selector_v2 import SimplifiedFeatureSelector
@@ -25,7 +25,11 @@ def prepare_training_data():
 def run_feature_selection(features_df,vix,target_type='magnitude'):
     logger.info(f"\n📊 FEATURE SELECTION - {target_type.upper()}")
     feature_cols=[c for c in features_df.columns if c not in["vix","spx","calendar_cohort","cohort_weight","feature_quality"]]
-    test_start_idx=int(len(features_df)*(1-XGBOOST_CONFIG["cv_config"]["test_size"]))
+
+    # FIXED: Use date-based split instead of percentage
+    train_end_date_idx = features_df[features_df.index <= pd.Timestamp(TRAIN_END_DATE)].index[-1]
+    test_start_idx = features_df.index.get_loc(train_end_date_idx) + 1
+
     top_n=FEATURE_SELECTION_CONFIG[f"{target_type}_top_n"]
     selector=SimplifiedFeatureSelector(target_type=target_type,top_n=top_n)
     selected_features,metadata=selector.select_features(features_df[feature_cols],vix,test_start_idx=test_start_idx)

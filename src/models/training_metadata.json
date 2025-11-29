@@ -1,8 +1,8 @@
 {
   "training_end": "2025-10-31",
-  "timestamp": "2025-11-28T14:26:21.129909",
-  "magnitude_feature_count": 81,
-  "direction_feature_count": 82,
-  "test_mae": 10.738527171918996,
-  "test_direction_acc": 0.6317780580075663
+  "timestamp": "2025-11-29T16:37:37.887609",
+  "magnitude_feature_count": 79,
+  "direction_feature_count": 80,
+  "test_mae": 12.268571795349034,
+  "test_direction_acc": 0.6140350877192983
 }
