@@ -10,30 +10,30 @@ PUBLICATION LAG INCONSISTENCY
 ---------------------------------------------------------------------------------
 
 Core Files
-1.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/calculations.py
-2.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/data_fetcher.py
-3.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/feature_correlation_analyzer.py
-4.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/feature_engineer.py
-5.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/forecast_calibrator.py
-6.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/prediction_database.py
-7.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/regime_classifier.py
-8.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/target_calculator.py
-9.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/temporal_validator.py
-10.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/vx_continuous_contract_builder.py
-11.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/vx_futures_engineer.py
-12.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/xgboost_feature_selector_v2.py
-13.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/xgboost_trainer_v3.py
+1.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/calculations.py
+2.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/data_fetcher.py
+3.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/feature_correlation_analyzer.py
+4.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/feature_engineer.py
+5.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/forecast_calibrator.py
+6.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/prediction_database.py
+7.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/regime_classifier.py
+8.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/target_calculator.py
+9.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/temporal_validator.py
+10.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/vx_continuous_contract_builder.py
+11.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/vx_futures_engineer.py
+12.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/xgboost_feature_selector_v2.py
+13.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/xgboost_trainer_v3.py
 
 Root src Files
-14.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/config.py
-15.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/integrated_system.py
-16.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/train_probabilistic_models.py
-17.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/comprehensive_hyperparameter_tuner.py
+14.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/config.py
+15.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/integrated_system.py
+16.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/train_probabilistic_models.py
+17.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/comprehensive_hyperparameter_tuner.py
 
 are these two files functionally/logically the same? i compressed/minified the larger file and want to double check. I intentionally removed almost all white spaces/comments/ and compressed everything without molesting the logic. please confirm.
 ---------------------------------------------------------------------------------
 
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/ba69b00/src/core/anomaly_detector.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/33312c3/src/core/anomaly_detector.py
 
 Output ONLY complete, error-free code files
 Move ALL configs to config.py
@@ -49,34 +49,3 @@ unused for now
 database_investigator.py
 backtesting_engine
 anomaly_detection.py
-
-
-System Profile: Professional VIX Forecasting System
-System Overview
-This is a production-grade volatility forecasting system built over multiple years of full-time development. It predicts forward VIX movements using dual XGBoost models (magnitude regression + direction classification) trained on decades of market data. The system processes hundreds of engineered features spanning VIX dynamics, SPX microstructure, cross-asset relationships, futures term structures, CBOE proprietary indices, macro indicators, and regime-aware meta-features. All predictions are cohort-weighted (FOMC/OPEX/earnings/mid-cycle), probability-calibrated using isotonic regression, and reconciled through ensemble confidence scoring that evaluates magnitude-direction agreement.
-Architecture
-Data Layer: Unified fetcher with intelligent caching, forward-fill limits by frequency, publication lag handling, and temporal safety enforcement. Ingests from FRED, Yahoo Finance, CBOE archives, and VX futures contracts.
-Feature Engineering: Multi-stage pipeline computing momentum, mean reversion, volatility-of-volatility, term structure dynamics, regime transitions, percentile rankings, cross-asset correlations, and calendar effects. Includes quality scoring based on staleness and coverage.
-Training: Time-series cross-validation with walk-forward splits. Hyperparameter-tuned XGBoost models with cohort weighting, early stopping, and correlation-based feature selection. Separate feature sets for magnitude vs. direction optimize model diversity.
-Inference: Isotonic-calibrated probabilities, ensemble confidence thresholds for actionability, regime classification, and full prediction logging to SQLite for continuous calibration monitoring.
-Validation: Temporal validator prevents lookahead bias. Comprehensive diagnostics track accuracy by regime, confidence bucket, and cohort.
-Instructions for YOU CLAUDE.
-How to engage with this system:
-1. Read the actual code first. Fetch URLs provided, examine implementation details, understand what's already been built before suggesting anything.
-2. No hasty conclusions. This system has publication lags, forward-fill strategies, temporal safety, quality filters, regime awareness, and cohort weighting already implemented. Don't assume basic problems exist without verification.
-3. Respect the years of work. This isn't a tutorial project. When the user shows you prediction CSVs, feature statistics, or configuration files, they're giving you ground truth. Believe the data.
-4. Surgical recommendations only. If proposing changes, provide specific line numbers, exact code modifications, and clear rationale based on evidence from the user's actual data—not generic best practices.
-5. Ask diagnostic questions before prescribing solutions. When performance issues arise, propose logging/investigation steps first to identify root cause, then fix.
-6. Brevity is respect. The user values signal over noise. Keep responses focused, concrete, and actionable. No walls of boilerplate or assumed-missing features.
-This system is the user's livelihood. Treat it accordingly.
-
-
-Use 2010-2022 train, 2023 val, 2024-Oct 2025 test. This gives you:
-
-✅ Sufficient training data (13 years post-crisis)
-✅ Proper validation for isotonic calibration (1 year)
-✅ Robust test evaluation (22 months, ~440 days)
-✅ Separation between model training and production calibration
-✅ Recent test data that's actually relevant
-
-Stop overthinking it. This split is principled, practical, and appropriate for production. The validation report you showed demonstrates you need MORE test data, not less - that 68.6% test accuracy on 245 samples has high variance. With 440 samples you'll have much more reliable estimates.
