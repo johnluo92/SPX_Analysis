@@ -1,11 +1,11 @@
 {
-  "timestamp": "2025-11-29T16:37:36.774602",
+  "timestamp": "2025-11-29T18:39:24.545595",
   "target": "direction",
   "target_type": "direction",
   "horizon": 5,
   "samples_total": 4078,
-  "samples_trainval": 3121,
-  "samples_test_excluded": 957,
+  "samples_trainval": 3622,
+  "samples_test_excluded": 456,
   "test_exclusion_enabled": true,
   "total_features": 327,
   "selected_features": 83,
@@ -18,17 +18,17 @@
     "is_earnings_heavy"
   ],
   "target_statistics": {
-    "up_pct": 0.4607497596924063,
-    "down_pct": 0.5392502403075937
+    "up_pct": 0.45665378244064053,
+    "down_pct": 0.5433462175593595
   },
   "top_20_features": [
     {
       "feature": "is_fomc_period",
-      "importance": 0.003914157394319773
+      "importance": 0.0015114982379600406
     },
     {
       "feature": "is_opex_week",
-      "importance": 0.0011492541059851646
+      "importance": 0.0013345570769160986
     },
     {
       "feature": "is_earnings_heavy",
@@ -36,71 +36,71 @@
     },
     {
       "feature": "vix_percentile_252d",
-      "importance": 0.01127660358324647
-    },
-    {
-      "feature": "vix_bb_position_20d",
-      "importance": 0.010285456292331218
-    },
-    {
-      "feature": "vix_vs_ma252",
-      "importance": 0.008947797864675523
-    },
-    {
-      "feature": "vix_vs_ma63",
-      "importance": 0.00872477840166539
-    },
-    {
-      "feature": "liquidity_stress_composite",
-      "importance": 0.008427292061969637
-    },
-    {
-      "feature": "vix_velocity_5d_regime_adj",
-      "importance": 0.008309269975870847
+      "importance": 0.014099844172596932
     },
     {
       "feature": "vix_percentile_126d",
-      "importance": 0.008283158764243126
+      "importance": 0.010866921674460173
     },
     {
-      "feature": "vxtlt_vix_spread",
-      "importance": 0.007920551439747214
+      "feature": "vix_velocity_5d_regime_adj",
+      "importance": 0.010485501773655415
     },
     {
-      "feature": "VXTLT_vs_ma63",
-      "importance": 0.007818951271474361
-    },
-    {
-      "feature": "days_in_regime",
-      "importance": 0.0074587326496839525
-    },
-    {
-      "feature": "vix_momentum_z_21d",
-      "importance": 0.00720925759524107
+      "feature": "vix_bb_position_20d",
+      "importance": 0.009176313411444426
     },
     {
       "feature": "vix1m_vix3m_ratio",
-      "importance": 0.007203897880390287
+      "importance": 0.008486082358285785
     },
     {
-      "feature": "vix_percentile_63d",
-      "importance": 0.006927138986065983
+      "feature": "vxtlt_vix_spread",
+      "importance": 0.008135949121788144
     },
     {
-      "feature": "30y_vol_63d",
-      "importance": 0.006909268815070391
+      "feature": "vix_term_ratio_zscore_63d",
+      "importance": 0.007600908447057009
+    },
+    {
+      "feature": "days_in_regime",
+      "importance": 0.00752593195065856
+    },
+    {
+      "feature": "dxy_vs_ma200",
+      "importance": 0.007414754061028361
+    },
+    {
+      "feature": "vix_velocity_5d",
+      "importance": 0.007118294574320316
+    },
+    {
+      "feature": "rsi_14",
+      "importance": 0.006859693396836519
+    },
+    {
+      "feature": "risk_premium_zscore",
+      "importance": 0.006757509987801313
+    },
+    {
+      "feature": "liquidity_stress_composite",
+      "importance": 0.006749604921787977
+    },
+    {
+      "feature": "risk_premium_percentile_126d",
+      "importance": 0.0064731425605714325
+    },
+    {
+      "feature": "vix_vs_ma252",
+      "importance": 0.0064460521563887594
+    },
+    {
+      "feature": "macd_signal",
+      "importance": 0.006348031479865313
     },
     {
       "feature": "spx_realized_vol_21d",
-      "importance": 0.006844030600041151
-    },
-    {
-      "feature": "vix_zscore_63d",
-      "importance": 0.006420034868642688
-    },
-    {
-      "feature": "vix_vs_rv_21d",
-      "importance": 0.006386008951812983
+      "importance": 0.006195435952395201
     }
   ]
 }

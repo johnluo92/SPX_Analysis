@@ -1,11 +1,9 @@
 {
   "threshold": 0.9157,
   "total_features_before": 83,
-  "features_removed": 3,
-  "features_kept": 80,
+  "features_removed": 1,
+  "features_kept": 82,
   "removed_features": [
-    "vix_zscore_63d",
-    "vxtlt_vix_ratio",
     "vix_zscore_252d"
   ]
 }

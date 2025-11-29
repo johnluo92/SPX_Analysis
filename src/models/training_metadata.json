@@ -1,8 +1,19 @@
 {
   "training_end": "2025-10-31",
-  "timestamp": "2025-11-29T16:37:37.887609",
-  "magnitude_feature_count": 79,
-  "direction_feature_count": 80,
-  "test_mae": 12.268571795349034,
-  "test_direction_acc": 0.6140350877192983
+  "timestamp": "2025-11-29T18:39:25.670508",
+  "data_splits": {
+    "train_end_date": "2021-12-31",
+    "val_end_date": "2023-12-31",
+    "feature_selection_split_date": "2023-12-31",
+    "description": {
+      "train": "Training data: up to 2021-12-31",
+      "val": "Validation data: 2022-01-01 to 2023-12-31",
+      "test": "Test data: 2024-01-01 onwards",
+      "feature_selection": "Uses Train+Val (up to 2023-12-31), excludes Test"
+    }
+  },
+  "magnitude_feature_count": 81,
+  "direction_feature_count": 82,
+  "test_mae": 12.315160230656423,
+  "test_direction_acc": 0.6271929824561403
 }

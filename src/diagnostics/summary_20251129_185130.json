@@ -1,0 +1,10 @@
+{
+  "timestamp": "20251129_185130",
+  "total_features": 328,
+  "critical_issues": 68,
+  "poor_quality": 30,
+  "deprecation_candidates": 21,
+  "high_on_both": 127,
+  "total_predictions": 270,
+  "actionable_signals": 216
+}

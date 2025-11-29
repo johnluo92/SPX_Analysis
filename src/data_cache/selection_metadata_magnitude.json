@@ -1,11 +1,11 @@
 {
-  "timestamp": "2025-11-29T16:37:33.833492",
+  "timestamp": "2025-11-29T18:39:21.626563",
   "target": "log_vix_change",
   "target_type": "magnitude",
   "horizon": 5,
   "samples_total": 4078,
-  "samples_trainval": 3121,
-  "samples_test_excluded": 957,
+  "samples_trainval": 3622,
+  "samples_test_excluded": 456,
   "test_exclusion_enabled": true,
   "total_features": 327,
   "selected_features": 81,
@@ -18,91 +18,91 @@
     "is_earnings_heavy"
   ],
   "target_statistics": {
-    "mean": -0.0005421115084754624,
-    "std": 0.15677359667809754,
+    "mean": -0.0008796567213390596,
+    "std": 0.15271736971355682,
     "min": -0.5590929286146875,
     "max": 1.1407237800592158
   },
   "top_20_features": [
     {
       "feature": "is_fomc_period",
-      "importance": 0.0009092052816413343
+      "importance": 0.002823892282322049
     },
     {
       "feature": "is_opex_week",
-      "importance": 0.0016462219413369895
+      "importance": 0.0034284424968063832
     },
     {
       "feature": "is_earnings_heavy",
-      "importance": 0.00037524218205362556
+      "importance": 0.0005362777505069971
     },
     {
       "feature": "vix_velocity_5d_regime_adj",
-      "importance": 0.021835813112556935
-    },
-    {
-      "feature": "vix_velocity_5d",
-      "importance": 0.018393149133771658
-    },
-    {
-      "feature": "risk_premium_percentile_63d",
-      "importance": 0.014525596844032406
-    },
-    {
-      "feature": "vix1m_vix3m_ratio",
-      "importance": 0.013479852117598057
-    },
-    {
-      "feature": "vix_zscore_252d_x_regime_2",
-      "importance": 0.01347676170989871
+      "importance": 0.023926843702793122
     },
     {
       "feature": "vix_term_slope_short",
-      "importance": 0.012629614025354386
+      "importance": 0.02118856618180871
+    },
+    {
+      "feature": "vix_zscore_252d_x_regime_2",
+      "importance": 0.01568063721060753
+    },
+    {
+      "feature": "spx_vs_ma20",
+      "importance": 0.014000276476144791
     },
     {
       "feature": "days_in_regime",
-      "importance": 0.011515380069613456
+      "importance": 0.012908725440502167
     },
     {
-      "feature": "vvix_velocity_10d",
-      "importance": 0.011208354309201241
+      "feature": "hy_zscore_252d",
+      "importance": 0.012122864741832018
     },
     {
-      "feature": "vvix_percentile_63d",
-      "importance": 0.01076495903544128
+      "feature": "risk_premium_percentile_63d",
+      "importance": 0.011694650049321353
     },
     {
-      "feature": "vix_velocity_3d_pct",
-      "importance": 0.010171620408073068
+      "feature": "vix1m_vix3m_ratio",
+      "importance": 0.010438119620084762
     },
     {
-      "feature": "cor_term_slope_change_21d",
-      "importance": 0.009315982274711133
-    },
-    {
-      "feature": "vix_percentile_126d",
-      "importance": 0.008319376222789287
-    },
-    {
-      "feature": "vx_roll_yield_annualized",
-      "importance": 0.008250945247709751
-    },
-    {
-      "feature": "liquidity_stress_composite",
-      "importance": 0.0077112333849072455
-    },
-    {
-      "feature": "VXTLT_percentile_252d",
-      "importance": 0.007697684690356255
+      "feature": "vxtlt_vix_spread",
+      "importance": 0.010026352945715189
     },
     {
       "feature": "vix_zscore_252d",
-      "importance": 0.007473203912377357
+      "importance": 0.008982280269265175
     },
     {
-      "feature": "CL1-CL2",
-      "importance": 0.007444588840007782
+      "feature": "vix_vs_rv_21d",
+      "importance": 0.008966995496302843
+    },
+    {
+      "feature": "vix_percentile_252d",
+      "importance": 0.008757665730081498
+    },
+    {
+      "feature": "hy_b_velocity_21d",
+      "importance": 0.008037245366722345
+    },
+    {
+      "feature": "vvix_velocity_21d",
+      "importance": 0.007890955917537213
+    },
+    {
+      "feature": "fin_stress_index",
+      "importance": 0.007602731254883111
+    },
+    {
+      "feature": "vix_velocity_3d_pct",
+      "importance": 0.007495935820043087
+    },
+    {
+      "feature": "spx_ret_5d",
+      "importance": 0.007454908173531294
     }
   ]
 }
