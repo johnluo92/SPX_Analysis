@@ -1,11 +1,11 @@
 {
-  "timestamp": "2025-11-28T14:26:19.889573",
+  "timestamp": "2025-11-29T14:33:48.078431",
   "target": "direction",
   "target_type": "direction",
   "horizon": 5,
-  "samples_total": 5336,
-  "samples_trainval": 4539,
-  "samples_test_excluded": 797,
+  "samples_total": 4078,
+  "samples_trainval": 3833,
+  "samples_test_excluded": 245,
   "test_exclusion_enabled": true,
   "total_features": 327,
   "selected_features": 83,
@@ -18,89 +18,89 @@
     "is_earnings_heavy"
   ],
   "target_statistics": {
-    "up_pct": 0.4635382242784754,
-    "down_pct": 0.5364617757215246
+    "up_pct": 0.4589094703887295,
+    "down_pct": 0.5410905296112705
   },
   "top_20_features": [
     {
       "feature": "is_fomc_period",
-      "importance": 0.0013204253744333982
+      "importance": 0.002792499912902713
     },
     {
       "feature": "is_opex_week",
-      "importance": 0.001757443556562066
+      "importance": 0.0023485510610044003
     },
     {
       "feature": "is_earnings_heavy",
-      "importance": 0.0012073313817381858
+      "importance": 0.0
     },
     {
-      "feature": "vix_velocity_5d_regime_adj",
-      "importance": 0.015105177834630012
+      "feature": "vix_percentile_252d",
+      "importance": 0.01442645601928234
+    },
+    {
+      "feature": "vix_percentile_126d",
+      "importance": 0.010840461822226644
+    },
+    {
+      "feature": "vix_bb_position_20d",
+      "importance": 0.010132191050797702
     },
     {
       "feature": "vix1m_vix3m_ratio",
-      "importance": 0.008195265475660563
-    },
-    {
-      "feature": "crude_oil_ret_10d",
-      "importance": 0.007335872109979391
-    },
-    {
-      "feature": "vix_vs_ma10",
-      "importance": 0.007301839767023921
-    },
-    {
-      "feature": "6m_vol_63d_fred",
-      "importance": 0.007032531313598156
-    },
-    {
-      "feature": "reversion_strength_63d",
-      "importance": 0.006969864945858717
-    },
-    {
-      "feature": "spx_vs_ma50",
-      "importance": 0.006966329831629992
-    },
-    {
-      "feature": "vix_zscore_252d",
-      "importance": 0.006907259300351143
-    },
-    {
-      "feature": "crude_oil_ret_63d",
-      "importance": 0.006735982932150364
-    },
-    {
-      "feature": "dxy_ret_10d",
-      "importance": 0.0067266632802784445
-    },
-    {
-      "feature": "yield_30y10y",
-      "importance": 0.006442628987133503
-    },
-    {
-      "feature": "risk_premium_zscore",
-      "importance": 0.006195572763681411
-    },
-    {
-      "feature": "vix_term_ratio_zscore_63d",
-      "importance": 0.006195454206317663
-    },
-    {
-      "feature": "hy_bb_spread",
-      "importance": 0.006171738822013139
-    },
-    {
-      "feature": "day_of_month",
-      "importance": 0.006065425090491771
+      "importance": 0.009370442479848862
     },
     {
       "feature": "days_in_regime",
-      "importance": 0.006021327432245016
+      "importance": 0.007403584849089384
     },
     {
-      "feature": "vix_vs_rv_10d",
-      "importance": 0.005993535369634628
+      "feature": "vix_velocity_5d_regime_adj",
+      "importance": 0.007000562455505133
+    },
+    {
+      "feature": "vix_term_ratio_zscore_63d",
+      "importance": 0.006961262132972479
+    },
+    {
+      "feature": "month",
+      "importance": 0.006697224779054522
+    },
+    {
+      "feature": "vix_rv_ratio_21d",
+      "importance": 0.00664913970977068
+    },
+    {
+      "feature": "vix_zscore_252d",
+      "importance": 0.006374295707792044
+    },
+    {
+      "feature": "liquidity_stress_composite",
+      "importance": 0.006373655423521996
+    },
+    {
+      "feature": "spx_ret_21d",
+      "importance": 0.006173969805240631
+    },
+    {
+      "feature": "spx_realized_vol_21d",
+      "importance": 0.0061054767575114965
+    },
+    {
+      "feature": "vix_vs_ma252",
+      "importance": 0.006035040691494941
+    },
+    {
+      "feature": "vix_vol_10d",
+      "importance": 0.0058976272121071815
+    },
+    {
+      "feature": "macd_signal",
+      "importance": 0.005682478472590446
+    },
+    {
+      "feature": "30y_vol_63d",
+      "importance": 0.005662528052926064
     }
   ]
 }

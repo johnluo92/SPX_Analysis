@@ -1,0 +1,6 @@
+2025-11-28 22:09:09,955 - INFO - VIX FORECASTING SYSTEM v5.3 (Professional) | 2025-11-28 22:09:09
+2025-11-28 22:09:09,956 - INFO - Model: Model current (trained through 2025-10-31)
+2025-11-28 22:09:09,975 - INFO - ✅ Loaded direction calibrator
+2025-11-28 22:09:09,976 - INFO - ✅ Loaded models: 81 mag features, 82 dir features
+2025-11-28 22:09:09,976 - INFO - ✅ Calibrator loaded
+2025-11-28 22:10:02,339 - INFO - 📊 Database: 269 predictions (261 with actuals)

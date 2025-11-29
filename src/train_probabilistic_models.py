@@ -23,9 +23,11 @@ def prepare_training_data():
     logger.info("  Data preparation complete\n")
     return complete_df,vix,training_end
 def run_feature_selection(features_df,vix,target_type='magnitude'):
+    from config import SPLIT_DATES
+    import pandas as pd
     logger.info(f"\n📊 FEATURE SELECTION - {target_type.upper()}")
     feature_cols=[c for c in features_df.columns if c not in["vix","spx","calendar_cohort","cohort_weight","feature_quality"]]
-    test_start_idx=int(len(features_df)*(1-XGBOOST_CONFIG["cv_config"]["test_size"]))
+    test_start_idx=features_df.index.get_loc(features_df[features_df.index>pd.Timestamp(SPLIT_DATES['val_end'])].index[0])
     top_n=FEATURE_SELECTION_CONFIG[f"{target_type}_top_n"]
     selector=SimplifiedFeatureSelector(target_type=target_type,top_n=top_n)
     selected_features,metadata=selector.select_features(features_df[feature_cols],vix,test_start_idx=test_start_idx)

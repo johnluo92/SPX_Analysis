@@ -338,7 +338,6 @@ class FeatureEngineer:
             if force_historical:mode="HISTORICAL"
             else:ir=ed>(datetime.now()-timedelta(days=7));mode="RECENT" if ir else"HISTORICAL"
         sd=ed-timedelta(days=years*365+450);self.training_start_date=sd;self.training_end_date=ed;ss=sd.strftime("%Y-%m-%d");es=ed.strftime("%Y-%m-%d")
-        print(f"Mode: {mode}");print(f"Date Ranges: Warmup Start -> Warmup End (usable period) -> Training End Date: {ss} → {(sd+timedelta(days=450)).strftime('%Y-%m-%d')} → {es}")
         spx_df=self.fetcher.fetch_yahoo("^GSPC",ss,es);vix=self.fetcher.fetch_yahoo("^VIX",ss,es);vvix=self.fetcher.fetch_yahoo("^VVIX",ss,es)
         vix_term_df=self.fetcher.fetch_vix_term(["^VIX","^VIX3M","^VIX6M"],ss,es)
         if spx_df is None or vix is None:raise ValueError("❌ Core data fetch failed")
