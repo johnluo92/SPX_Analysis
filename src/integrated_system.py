@@ -121,48 +121,49 @@ class VIXForecaster:
         pred={"prediction_id":pred_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":obs_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(obs["vix"]),"calendar_cohort":obs.get("calendar_cohort","mid_cycle"),"cohort_weight":float(obs.get("cohort_weight",1.0)),"prob_up":float(prob_up),"prob_down":float(prob_down),"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast.get("metadata",{}).get("feature_quality",1.0)),"num_features_used":len(self.forecaster.magnitude_feature_names)+len(self.forecaster.direction_feature_names),"correction_type":correction_type,"features_used":(",".join(self.forecaster.magnitude_feature_names[:5])+","+",".join(self.forecaster.direction_feature_names[:5])),"model_version":"v5.3_dual","direction_probability":forecast.get("direction_probability",0.5),"direction_prediction":forecast.get("direction","UNKNOWN"),"direction_correct":None}
         self.db.store_prediction(pred);self.db.commit()
 
-    def print_enhanced_forecast(self,forecast,cohort):
+    def print_enhanced_forecast(self, forecast, cohort):
         """Enhanced forecast display showing full ensemble breakdown"""
-        logger.info("\n"+"="*80)
+        logger.info("\n" + "=" * 80)
         logger.info("📊 DUAL-MODEL FORECAST BREAKDOWN")
-        logger.info("="*80)
+        logger.info("=" * 80)
 
         # Current state
         logger.info(f"\n🎯 CURRENT STATE:")
         logger.info(f"   VIX Level: {forecast['current_vix']:.2f}")
         logger.info(f"   Regime: {forecast['current_regime']}")
         logger.info(f"   Market Cohort: {cohort}")
-        logger.info(f"   Cohort Weight: {forecast.get('metadata',{}).get('cohort_weight',1.0):.2f}x")
-        logger.info(f"   Feature Quality: {forecast.get('metadata',{}).get('feature_quality',1.0):.1%}")
+        logger.info(f"   Cohort Weight: {forecast.get('metadata', {}).get('cohort_weight', 1.0):.2f}x")
+        logger.info(f"   Feature Quality: {forecast.get('metadata', {}).get('feature_quality', 1.0):.1%}")
 
-        # Magnitude model
-        mag_pct=forecast['magnitude_pct']
-        mag_conf=0.5+min(abs(mag_pct)/10.0,0.5)*0.5
+        # Magnitude model - USE ACTUAL ENSEMBLE CONFIDENCE
+        mag_pct = forecast['magnitude_pct']
+        ens_conf = forecast['direction_confidence']  # Use actual ensemble confidence
+
         logger.info(f"\n📉 MAGNITUDE MODEL:")
         logger.info(f"   Forecast: {mag_pct:+.2f}%")
         logger.info(f"   Expected VIX: {forecast['expected_vix']:.2f}")
-        logger.info(f"   Confidence: {mag_conf:.1%}")
-        if forecast['calibration']['correction_type']!='not_fitted':
+        logger.info(f"   Confidence: {ens_conf:.1%}")  # Same as ensemble, no separate calc
+        if forecast['calibration']['correction_type'] != 'not_fitted':
             logger.info(f"   Calibration Adj: {forecast['calibration']['adjustment']:+.3f}% ({forecast['calibration']['correction_type']})")
 
         # Direction model
-        dir_prob=forecast['direction_probability']
-        dir_conf=max(dir_prob,1-dir_prob)
+        dir_prob = forecast['direction_probability']
+        dir_conf = max(dir_prob, 1 - dir_prob)
         logger.info(f"\n🎲 DIRECTION MODEL:")
         logger.info(f"   Prediction: {forecast['direction']}")
-        logger.info(f"   Probability: {dir_prob:.1%} {'UP' if dir_prob>0.5 else 'DOWN'}")
+        logger.info(f"   Probability: {dir_prob:.1%} {'UP' if dir_prob > 0.5 else 'DOWN'}")
         logger.info(f"   Confidence: {dir_conf:.1%}")
         if self.forecaster.calibration_enabled:
             logger.info(f"   Calibration: {'✓ ENABLED' if self.forecaster.direction_calibrator is not None else '✗ NOT FITTED'}")
 
         # Model agreement
-        predicted_up=dir_prob>0.5
-        magnitude_up=mag_pct>0
-        models_agree=predicted_up==magnitude_up
+        predicted_up = dir_prob > 0.5
+        magnitude_up = mag_pct > 0
+        models_agree = predicted_up == magnitude_up
 
-        agreement_symbol="✓"if models_agree else"✗"
-        agreement_text="ALIGNED"if models_agree else"DIVERGENT"
-        agreement_desc="Both models agree"if models_agree else"Models disagree"
+        agreement_symbol = "✓" if models_agree else "✗"
+        agreement_text = "ALIGNED" if models_agree else "DIVERGENT"
+        agreement_desc = "Both models agree" if models_agree else "Models disagree"
 
         logger.info(f"\n🔄 MODEL AGREEMENT:")
         logger.info(f"   Status: {agreement_symbol} {agreement_text}")
@@ -174,9 +175,8 @@ class VIXForecaster:
             logger.info(f"   ⚠️  Confidence penalized for disagreement")
 
         # Ensemble confidence
-        ens_conf=forecast['direction_confidence']
-        actionable=forecast['actionable']
-        ens_threshold=ENSEMBLE_CONFIG.get("actionable_threshold",0.65)
+        actionable = forecast['actionable']
+        ens_threshold = ENSEMBLE_CONFIG.get("actionable_threshold", 0.65)
 
         logger.info(f"\n🎯 ENSEMBLE CONFIDENCE:")
         if self.forecaster.ensemble_enabled:
@@ -199,10 +199,10 @@ class VIXForecaster:
             logger.info(f"   ✓ Staying in current regime")
 
         # Summary
-        logger.info(f"\n{'='*80}")
-        summary_color="🟢"if actionable else"🟡"
+        logger.info(f"\n{'=' * 80}")
+        summary_color = "🟢" if actionable else "🟡"
         logger.info(f"{summary_color} SUMMARY: {forecast['direction']} {abs(mag_pct):.1f}% | Confidence: {ens_conf:.0%} | {'Actionable' if actionable else 'Not Actionable'}")
-        logger.info("="*80+"\n")
+        logger.info("=" * 80 + "\n")
 
 def main():
     parser=argparse.ArgumentParser(description="VIX Forecasting System v5.3 - Dual Model (Enhanced Display)");parser.add_argument("--force-retrain",action="store_true");parser.add_argument("--force-bootstrap",action="store_true");parser.add_argument("--rebuild-calibration",action="store_true");args=parser.parse_args();Path("logs").mkdir(exist_ok=True);Path("models").mkdir(exist_ok=True);logger.info(f"VIX FORECASTING SYSTEM v5.3 (Enhanced) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
