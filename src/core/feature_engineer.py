@@ -392,8 +392,6 @@ class FeatureEngineer:
         if vix3m is not None or vix6m is not None:
             vix_term_f=self.vix_term_engine.extract_vix_term_features(vix,vix3m,vix6m)
             for col in vix_term_f.columns:f[col]=vix_term_f[col]
-        if cb is not None and "VIX3M" in cb.columns:f["vix_term_structure"]=((vix/cb["VIX3M"].replace(0,np.nan))-1)*100
-        else:f["vix_term_structure"]=np.nan
         for w in [1,5,10,21,63]:f[f"spx_ret_{w}d"]=spx.pct_change(w)*100
         for w in [20,50,200]:ma=spx.rolling(w).mean();f[f"spx_vs_ma{w}"]=((spx-ma)/ma.replace(0,np.nan))*100
         for w in [10,21]:mom=spx.pct_change(w)*100;f[f"spx_momentum_z_{w}d"]=calculate_robust_zscore(mom,63)
@@ -518,8 +516,13 @@ class FeatureEngineer:
             except:continue
         if len(yahoo_yields)>=3:
             ydf=pd.DataFrame(yahoo_yields,index=idx).ffill(limit=ff_daily)
-            if "2Y" not in ydf.columns and "DGS2" in fred_yields:ydf["2Y"]=fred_yields["DGS2"].reindex(idx,method="ffill",limit=ff_daily)
-            tsp_yahoo=self.treasury_engine.extract_term_spreads(ydf);csh_yahoo=self.treasury_engine.extract_curve_shape(ydf);rvol_yahoo=self.treasury_engine.extract_rate_volatility(ydf);yahoo_feats=pd.concat([tsp_yahoo,csh_yahoo,rvol_yahoo],axis=1)
+            if "2Y" in ydf.columns:
+                yahoo_2y_coverage = ydf["2Y"].notna().sum() / len(ydf) if len(ydf) > 0 else 0
+                if yahoo_2y_coverage < 0.5 and "DGS2" in fred_yields:ydf["2Y"] = fred_yields["DGS2"].reindex(idx, method="ffill", limit=ff_daily);print(f"⚠️  Replaced sparse Yahoo 2Y ({yahoo_2y_coverage:.1%} coverage) with FRED DGS2")
+            else:
+                if "DGS2" in fred_yields:ydf["2Y"] = fred_yields["DGS2"].reindex(idx, method="ffill", limit=ff_daily);print("ℹ️  Yahoo 2Y unavailable, using FRED DGS2")
+            tsp_yahoo=self.treasury_engine.extract_term_spreads(ydf)
+            csh_yahoo=self.treasury_engine.extract_curve_shape(ydf);rvol_yahoo=self.treasury_engine.extract_rate_volatility(ydf);yahoo_feats=pd.concat([tsp_yahoo,csh_yahoo,rvol_yahoo],axis=1)
         else:yahoo_feats=pd.DataFrame(index=idx)
         if fred_yields:
             fdf=pd.DataFrame({k.replace("DGS","").replace("MO","M"):v for k,v in fred_yields.items()},index=idx).ffill(limit=ff_daily)
