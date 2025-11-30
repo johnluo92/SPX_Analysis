@@ -1,0 +1,155 @@
+{
+  "timestamp": "2025-11-30T01:32:01.128614",
+  "optimization": {
+    "n_trials": 50,
+    "n_folds": 5,
+    "best_trial": 40,
+    "best_score": 65.83943837971373,
+    "diversity_weight": 1.5,
+    "overfitting_penalty": 10.0
+  },
+  "metrics": {
+    "magnitude": {
+      "mae": 12.63055621603931,
+      "mae_std": 3.0459514791955034,
+      "bias": -2.631560670123432,
+      "calibration_error": 0.0980504201680672,
+      "train_val_gap": 2.84877479555958
+    },
+    "direction": {
+      "accuracy": 0.6434967741935484,
+      "accuracy_std": 0.045779699593828084,
+      "f1": 0.3814483684660798,
+      "precision": 0.6556695286810376,
+      "recall": 0.2842980304719435,
+      "ece": 0.12705551380053642,
+      "brier": 0.2418334144002665,
+      "train_val_gap": 0.17724976271348197
+    },
+    "ensemble": {
+      "confidence": 0.6307299566352402,
+      "actionable_pct": 0.22784313725490196
+    },
+    "diversity": {
+      "feature_jaccard": 0.3748979642014162,
+      "feature_overlap": 0.5825,
+      "pred_correlation": 0.8221067598197063,
+      "overall_diversity": 0.4182786845835924
+    },
+    "features": {
+      "magnitude": 91,
+      "direction": 80,
+      "common": 46
+    }
+  },
+  "parameters": {
+    "data": {
+      "quality_threshold": 0.6285591349026327,
+      "cohort_weights": {
+        "fomc_period": 1.156940346904372,
+        "opex_week": 1.443212102980062,
+        "earnings_heavy": 1.013912369259113,
+        "mid_cycle": 1.0
+      }
+    },
+    "features": {
+      "mag_top_n": 88,
+      "dir_top_n": 77,
+      "correlation_threshold": 0.9462664569284243,
+      "target_overlap": 0.4644061164020318,
+      "cv": {
+        "n_estimators": 150,
+        "max_depth": 4,
+        "learning_rate": 0.04196461118625501,
+        "subsample": 0.8979196835218042,
+        "colsample_bytree": 0.9349331288909241
+      }
+    },
+    "magnitude_model": {
+      "depth": 3,
+      "lr": 0.08184824768382391,
+      "n_est": 331,
+      "sub": 0.6634246033684603,
+      "col_tree": 0.8011727461112368,
+      "col_lvl": 0.6505942899217986,
+      "mcw": 5,
+      "alpha": 4.549660944041845,
+      "lambda": 2.8007367665117355,
+      "gamma": 0.27222515991414564
+    },
+    "direction_model": {
+      "depth": 4,
+      "lr": 0.022008427619227815,
+      "n_est": 568,
+      "sub": 0.8246712803536134,
+      "col_tree": 0.7560688252181406,
+      "mcw": 14,
+      "alpha": 1.8720560039302039,
+      "lambda": 3.119161971782896,
+      "gamma": 0.3080855265254651,
+      "scale": 1.1471629688240326,
+      "max_delta": 1
+    },
+    "ensemble": {
+      "mag_weight": 0.4633850501372453,
+      "dir_weight": 0.5345828829090543,
+      "agree_weight": 0.16086030913292554,
+      "small_thresh": 2.4364886933646295,
+      "med_thresh": 7.242442212090058,
+      "large_thresh": 16.570805593538367,
+      "bonus_mod": 0.09313987204780955,
+      "bonus_strong": 0.180811691011252,
+      "penalty_min": 0.02970847366172662,
+      "penalty_mod": 0.21702356224737052,
+      "penalty_sev": 0.24608646775546364,
+      "actionable": 0.6917031309329057
+    }
+  },
+  "walk_forward_splits": [
+    {
+      "fold_num": 1,
+      "train_start": "2009-08-11",
+      "train_end": "2018-03-23",
+      "test_start": "2018-03-28",
+      "test_end": "2018-09-24",
+      "train_size": 2170,
+      "test_size": 125
+    },
+    {
+      "fold_num": 2,
+      "train_start": "2009-08-11",
+      "train_end": "2018-09-19",
+      "test_start": "2018-09-24",
+      "test_end": "2019-03-23",
+      "train_size": 2294,
+      "test_size": 124
+    },
+    {
+      "fold_num": 3,
+      "train_start": "2009-08-11",
+      "train_end": "2019-03-18",
+      "test_start": "2019-03-23",
+      "test_end": "2019-09-19",
+      "train_size": 2416,
+      "test_size": 125
+    },
+    {
+      "fold_num": 4,
+      "train_start": "2009-08-11",
+      "train_end": "2019-09-14",
+      "test_start": "2019-09-19",
+      "test_end": "2020-03-17",
+      "train_size": 2541,
+      "test_size": 124
+    },
+    {
+      "fold_num": 5,
+      "train_start": "2009-08-11",
+      "train_end": "2020-03-12",
+      "test_start": "2020-03-17",
+      "test_end": "2020-09-13",
+      "train_size": 2665,
+      "test_size": 125
+    }
+  ]
+}
