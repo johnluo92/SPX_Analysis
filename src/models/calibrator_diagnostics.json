@@ -6,16 +6,16 @@
   "min_samples": 50,
   "corrections": {
     "regime_cohort": {
-      "normal_fomc_period": 6.630170640821775
+      "normal_fomc_period": 7.459017360184704
     },
     "regime": {
-      "low_vol": 6.133187839941615,
-      "normal": 3.2603083135449995
+      "low_vol": 7.95428915180494,
+      "normal": 3.9727286411279685
     },
     "cohort": {
-      "fomc_period": 4.032186982917032,
-      "mid_cycle": 2.1728134410720816
+      "fomc_period": 4.973999696606163,
+      "mid_cycle": 2.7127035748923594
     },
-    "global": 1.5229931682130886
+    "global": 2.269609400594278
   }
 }
