@@ -1,6 +1,6 @@
 {
   "training_end": "2025-10-31",
-  "timestamp": "2025-11-30T07:47:36.522742",
+  "timestamp": "2025-11-30T16:12:14.462558",
   "data_splits": {
     "train_end_date": "2021-12-31",
     "val_end_date": "2023-12-31",
@@ -12,8 +12,8 @@
       "feature_selection": "Uses Train+Val (up to 2023-12-31), excludes Test"
     }
   },
-  "magnitude_feature_count": 90,
-  "direction_feature_count": 79,
-  "test_mae": 12.268298703176322,
-  "test_direction_acc": 0.6491228070175439
+  "magnitude_feature_count": 89,
+  "direction_feature_count": 102,
+  "test_mae": 12.125272941914828,
+  "test_direction_acc": 0.618421052631579
 }

@@ -1,9 +1,7 @@
 {
-  "threshold": 0.9463,
-  "total_features_before": 80,
-  "features_removed": 1,
-  "features_kept": 79,
-  "removed_features": [
-    "macd"
-  ]
+  "threshold": 0.9136,
+  "total_features_before": 102,
+  "features_removed": 0,
+  "features_kept": 102,
+  "removed_features": []
 }
