@@ -10,27 +10,27 @@ PUBLICATION LAG INCONSISTENCY
 ---------------------------------------------------------------------------------
 
 Core Files
-1.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/calculations.py
-2.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/data_fetcher.py
-3.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/feature_correlation_analyzer.py
-4.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/feature_engineer.py
-5.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/forecast_calibrator.py
-6.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/prediction_database.py
-7.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/regime_classifier.py
-8.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/target_calculator.py
-9.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/temporal_validator.py
-10.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/vx_continuous_contract_builder.py
-11.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/vx_futures_engineer.py
-12.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/xgboost_feature_selector_v2.py
-13.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/xgboost_trainer_v3.py
+1.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/calculations.py
+2.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/data_fetcher.py
+3.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/feature_correlation_analyzer.py
+4.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/feature_engineer.py
+5.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/forecast_calibrator.py
+6.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/prediction_database.py
+7.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/regime_classifier.py
+8.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/target_calculator.py
+9.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/temporal_validator.py
+10.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/vx_continuous_contract_builder.py
+11.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/vx_futures_engineer.py
+12.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/xgboost_feature_selector_v2.py
+13.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/xgboost_trainer_v3.py
 
 Root src Files
-14.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/config.py
-15.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/integrated_system.py
-16.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/train_probabilistic_models.py
-17.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/comprehensive_hyperparameter_tuner.py
+14.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/config.py
+15.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/integrated_system.py
+16.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/train_probabilistic_models.py
+17.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/comprehensive_hyperparameter_tuner.py
 
-18.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/7fb62d5/src/core/anomaly_detector.py
+18.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/3af1272/src/core/anomaly_detector.py
 
 
 are these two files functionally/logically the same? i compressed/minified the larger file and want to double check. I intentionally removed almost all white spaces/comments/ and compressed everything without molesting the logic. please confirm.

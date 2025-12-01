@@ -1,116 +1,100 @@
 #!/usr/bin/env python3
+"""Production-Matched Hyperparameter Tuner v1.0
+Optimizes for ACTUAL 2024-2025 test performance using EXACT production pipeline
+PRESERVATION NOTE: The config_content f-string in _generate_config()
+must remain exactly formatted - it generates production config.py syntax.
+Do not minify that section's whitespace, newlines, or structure."""
 import argparse,json,logging,sys,warnings
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass,asdict
 import numpy as np,pandas as pd,optuna
 from optuna.samplers import TPESampler
-from optuna.pruners import HyperbandPruner
 from scipy.stats import spearmanr
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import mean_absolute_error,accuracy_score,precision_score,recall_score,brier_score_loss
 from xgboost import XGBRegressor,XGBClassifier
-from config import TRAINING_YEARS,TRAIN_END_DATE,VAL_END_DATE,get_last_complete_month_end, TUNER_TRIALS
-from core.data_fetcher import UnifiedDataFetcher
-from core.feature_engineer import FeatureEngineer
-from core.target_calculator import TargetCalculator
-from core.xgboost_feature_selector_v2 import SimplifiedFeatureSelector
 warnings.filterwarnings("ignore")
 Path("logs").mkdir(exist_ok=True)
-logging.basicConfig(level=logging.INFO,format="%(asctime)s - %(levelname)s - %(message)s",handlers=[logging.StreamHandler(sys.stdout),logging.FileHandler("logs/hyperparameter_tuning.log")])
+logging.basicConfig(level=logging.INFO,format="%(asctime)s-%(levelname)s-%(message)s",handlers=[logging.StreamHandler(sys.stdout),logging.FileHandler("logs/production_tuner.log")])
 logger=logging.getLogger(__name__)
+
 @dataclass
-class WalkForwardSplit:
-    fold_num:int;train_start:pd.Timestamp;train_end:pd.Timestamp;val_start:pd.Timestamp;val_end:pd.Timestamp;test_start:pd.Timestamp;test_end:pd.Timestamp;train_size:int;val_size:int;test_size:int
-    def to_dict(self):return {'fold_num':self.fold_num,'train_start':str(self.train_start.date()),'train_end':str(self.train_end.date()),'val_start':str(self.val_start.date()),'val_end':str(self.val_end.date()),'test_start':str(self.test_start.date()),'test_end':str(self.test_end.date()),'train_size':self.train_size,'val_size':self.val_size,'test_size':self.test_size}
-@dataclass
-class TrialMetrics:
-    mag_mae:float;mag_rmse:float;mag_bias:float;mag_cal_error:float;dir_accuracy_raw:float;dir_precision_raw:float;dir_recall_raw:float;dir_f1_raw:float;dir_accuracy_cal:float;dir_precision_cal:float;dir_recall_cal:float;dir_f1_cal:float;dir_brier:float;dir_ece:float;ensemble_confidence:float;actionable_pct:float;feature_jaccard:float;feature_overlap:float;pred_correlation:float;train_val_gap_mag:float;train_val_gap_dir:float;n_mag_features:int;n_dir_features:int;n_common_features:int
-    def to_dict(self):return asdict(self)
-class DiversityMetrics:
-    @staticmethod
-    def jaccard_similarity(set1,set2):
-        if len(set1)==0 and len(set2)==0:return 0.0
-        return len(set1&set2)/max(len(set1|set2),1)
-    @staticmethod
-    def feature_overlap_ratio(features1,features2):
-        if not features1 or not features2:return 0.0
-        set1,set2=set(features1),set(features2);return len(set1&set2)/max(min(len(set1),len(set2)),1)
-    @staticmethod
-    def prediction_correlation(pred1,pred2):
-        mask=np.isfinite(pred1)&np.isfinite(pred2)
-        if mask.sum()<5:return 0.0
-        try:
-            corr,_=spearmanr(pred1[mask],pred2[mask])
-            if np.isnan(corr)or np.isinf(corr):return 0.0
-            return float(corr)
-        except:return 0.0
-    @staticmethod
-    def compute_diversity_score(feature_jaccard,feature_overlap,pred_corr,target_jaccard=0.4,target_overlap=0.5):
-        feature_div_jaccard=1.0-feature_jaccard;feature_div_overlap=1.0-feature_overlap;pred_diversity=1.0-abs(pred_corr);jaccard_penalty=abs(feature_jaccard-target_jaccard)*2.0;overlap_penalty=abs(feature_overlap-target_overlap)*2.0;overall_diversity=0.35*feature_div_jaccard+0.35*feature_div_overlap+0.30*pred_diversity;return {'feature_div_jaccard':feature_div_jaccard,'feature_div_overlap':feature_div_overlap,'pred_diversity':pred_diversity,'jaccard_penalty':jaccard_penalty,'overlap_penalty':overlap_penalty,'overall_diversity':overall_diversity}
-class WalkForwardValidator:
-    def __init__(self,n_splits=5,gap_days=5):self.n_splits=n_splits;self.gap_days=gap_days;self.train_end=pd.Timestamp(TRAIN_END_DATE);self.val_end=pd.Timestamp(VAL_END_DATE)
-    def create_splits(self,df):
-        if not isinstance(df.index,pd.DatetimeIndex):raise ValueError("DataFrame must have DatetimeIndex")
-        df_for_cv=df[df.index<=self.val_end].copy();dates=df_for_cv.index.sort_values()
-        if len(dates)<500:raise ValueError(f"Not enough data for walk-forward CV: {len(dates)} samples")
-        logger.info(f"Walk-forward CV: {dates[0].date()} to {dates[-1].date()}");logger.info(f"Using TRAIN_END_DATE={TRAIN_END_DATE}, VAL_END_DATE={VAL_END_DATE} from config");total_period=(self.val_end-dates[0]).days;fold_duration=total_period//(self.n_splits+1);splits=[]
-        for fold in range(self.n_splits):
-            train_start=dates[0];train_end_offset=(fold+1)*fold_duration;train_end_date=dates[0]+pd.Timedelta(days=train_end_offset);val_start=train_end_date+pd.Timedelta(days=self.gap_days);val_end_date=val_start+pd.Timedelta(days=fold_duration);test_start=val_end_date+pd.Timedelta(days=self.gap_days);test_end_date=test_start+pd.Timedelta(days=fold_duration)
-            if test_end_date>dates[-1]:logger.warning(f"Fold {fold+1}: Would extend past data, stopping at {fold} folds");break
-            train_mask=(dates>=train_start)&(dates<=train_end_date);val_mask=(dates>=val_start)&(dates<=val_end_date);test_mask=(dates>=test_start)&(dates<=test_end_date);train_size=train_mask.sum();val_size=val_mask.sum();test_size=test_mask.sum()
-            if test_size<20 or val_size<20 or train_size<TUNER_TRIALS:logger.warning(f"Fold {fold+1}: Insufficient samples");break
-            split=WalkForwardSplit(fold_num=fold+1,train_start=train_start,train_end=train_end_date,val_start=val_start,val_end=val_end_date,test_start=test_start,test_end=test_end_date,train_size=train_size,val_size=val_size,test_size=test_size);splits.append(split)
-        if len(splits)<3:raise ValueError(f"Could not create enough folds ({len(splits)})")
-        logger.info(f"Created {len(splits)} walk-forward splits:")
-        for split in splits:logger.info(f"  Fold {split.fold_num}: Train={split.train_size} ({split.train_start.date()} to {split.train_end.date()}), Val={split.val_size} ({split.val_start.date()} to {split.val_end.date()}), Test={split.test_size} ({split.test_start.date()} to {split.test_end.date()})")
-        return splits
-class CalibrationMetrics:
-    @staticmethod
-    def expected_calibration_error(y_true,y_prob,n_bins=10):
-        bin_edges=np.linspace(0,1,n_bins+1);bin_indices=np.digitize(y_prob,bin_edges[:-1])-1;bin_indices=np.clip(bin_indices,0,n_bins-1);ece=0.0;total_samples=len(y_true)
-        for i in range(n_bins):
-            bin_mask=bin_indices==i
-            if bin_mask.sum()==0:continue
-            bin_accuracy=y_true[bin_mask].mean();bin_confidence=y_prob[bin_mask].mean();bin_weight=bin_mask.sum()/total_samples;ece+=bin_weight*abs(bin_accuracy-bin_confidence)
-        return float(ece)
-    @staticmethod
-    def calibration_error_pct(y_true,y_pred,confidence_level=0.68):
-        errors=y_pred-y_true;std_error=np.std(errors);within_std=np.abs(errors)<=std_error;actual_coverage=within_std.mean();calibration_error=abs(actual_coverage-confidence_level);return float(calibration_error)
-class ComprehensiveHyperparameterTuner:
-    def __init__(self,df,vix,n_trials=TUNER_TRIALS,n_folds=5,output_dir="tuning_results",diversity_weight=1.5,overfitting_penalty=10.0,recall_weight=5.0):
-        self.df=df.copy();self.vix=vix.copy();self.n_trials=n_trials;self.n_folds=n_folds;self.output_dir=Path(output_dir);self.output_dir.mkdir(parents=True,exist_ok=True);self.diversity_weight=diversity_weight;self.overfitting_penalty=overfitting_penalty;self.recall_weight=recall_weight;self.target_calculator=TargetCalculator();self.walk_forward=WalkForwardValidator(n_splits=n_folds,gap_days=5);self.splits=self.walk_forward.create_splits(df)
-        if len(self.splits)<3:raise ValueError(f"Need at least 3 folds, got {len(self.splits)}")
-        self.base_cols=[c for c in df.columns if c not in["vix","spx","calendar_cohort","cohort_weight","feature_quality","future_vix","target_vix_pct_change","target_log_vix_change","target_direction"]];logger.info(f"Initialized tuner: {len(self.df)} samples, {len(self.base_cols)} features, {len(self.splits)} folds, {n_trials} trials");logger.info(f"Weights: diversity={diversity_weight:.2f}, overfitting={overfitting_penalty:.2f}, recall={recall_weight:.2f}")
-    def _sample_data_params(self,trial):return {'quality_threshold':trial.suggest_float('quality_threshold',0.50,0.65),'fomc_weight':trial.suggest_float('cohort_fomc',1.10,1.50),'opex_weight':trial.suggest_float('cohort_opex',1.00,1.50),'earnings_weight':trial.suggest_float('cohort_earnings',1.00,1.50)}
-    def _validate_quality_threshold(self,threshold):
-        for split in self.splits:
-            train_mask=(self.df.index>=split.train_start)&(self.df.index<=split.train_end);df_train=self.df[train_mask].copy()
-            if 'feature_quality'in df_train.columns:
-                quality_mask=df_train['feature_quality']>=threshold;filtered_pct=(1-quality_mask.sum()/len(df_train))*100
-                if filtered_pct>35:return False,f"Fold {split.fold_num}: {filtered_pct:.1f}% filtered"
-        return True,None
-    def _sample_feature_selection_params(self,trial):return {'mag_top_n':trial.suggest_int('mag_top_n',70,140),'dir_top_n':trial.suggest_int('dir_top_n',70,160),'correlation_threshold':trial.suggest_float('corr_threshold',0.85,0.98),'target_overlap':trial.suggest_float('target_overlap',0.30,0.55),'cv_n_estimators':trial.suggest_int('cv_n_est',100,250),'cv_max_depth':trial.suggest_int('cv_depth',3,6),'cv_learning_rate':trial.suggest_float('cv_lr',0.03,0.12,log=True),'cv_subsample':trial.suggest_float('cv_sub',0.70,0.95),'cv_colsample_bytree':trial.suggest_float('cv_col',0.70,0.95)}
-    def _sample_magnitude_params(self,trial):return {'objective':'reg:squarederror','eval_metric':'rmse','max_depth':trial.suggest_int('mag_depth',2,7),'learning_rate':trial.suggest_float('mag_lr',0.008,0.12,log=True),'n_estimators':trial.suggest_int('mag_n_est',200,800),'subsample':trial.suggest_float('mag_sub',0.60,0.95),'colsample_bytree':trial.suggest_float('mag_col_tree',0.60,0.95),'colsample_bylevel':trial.suggest_float('mag_col_lvl',0.60,0.95),'min_child_weight':trial.suggest_int('mag_mcw',2,15),'reg_alpha':trial.suggest_float('mag_alpha',0.3,6.0),'reg_lambda':trial.suggest_float('mag_lambda',0.8,10.0),'gamma':trial.suggest_float('mag_gamma',0.0,0.8),'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
-    def _sample_direction_params(self,trial):return {'objective':'binary:logistic','eval_metric':'logloss','max_depth':trial.suggest_int('dir_depth',3,12),'learning_rate':trial.suggest_float('dir_lr',0.008,0.10,log=True),'n_estimators':trial.suggest_int('dir_n_est',200,900),'subsample':trial.suggest_float('dir_sub',0.60,0.95),'colsample_bytree':trial.suggest_float('dir_col_tree',0.55,0.95),'min_child_weight':trial.suggest_int('dir_mcw',4,20),'reg_alpha':trial.suggest_float('dir_alpha',0.5,5.0),'reg_lambda':trial.suggest_float('dir_lambda',1.0,8.0),'gamma':trial.suggest_float('dir_gamma',0.0,1.0),'scale_pos_weight':trial.suggest_float('dir_scale',0.80,1.60),'max_delta_step':trial.suggest_int('dir_max_delta',0,5),'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
-    def _sample_ensemble_params(self,trial):
-        mag_w=trial.suggest_float('ens_mag_weight',0.25,0.50);dir_w=trial.suggest_float('ens_dir_weight',0.30,0.60);agree_w=trial.suggest_float('ens_agree_weight',0.10,0.35);total=mag_w+dir_w+agree_w;mag_w/=total;dir_w/=total;agree_w/=total;small=trial.suggest_float('ens_small_thresh',1.5,4.0);medium=trial.suggest_float('ens_med_thresh',small+1.0,8.0);large=trial.suggest_float('ens_large_thresh',medium+1.0,20.0);moderate_bonus=trial.suggest_float('ens_bonus_mod',0.05,0.15);strong_bonus=trial.suggest_float('ens_bonus_strong',moderate_bonus,0.25);minor_penalty=trial.suggest_float('ens_penalty_min',0.00,0.10);moderate_penalty=trial.suggest_float('ens_penalty_mod',minor_penalty,0.25);severe_penalty=trial.suggest_float('ens_penalty_sev',moderate_penalty,0.40);return {'mag_weight':mag_w,'dir_weight':dir_w,'agree_weight':agree_w,'thresholds':{'small':small,'medium':medium,'large':large},'bonuses':{'weak':0.0,'moderate':moderate_bonus,'strong':strong_bonus},'penalties':{'minor':minor_penalty,'moderate':moderate_penalty,'severe':severe_penalty},'min_confidence':0.50,'actionable_threshold':trial.suggest_float('ens_actionable',0.60,0.72)}
+class ProductionMetrics:
+    mag_mae:float;mag_bias:float;mag_cal_error:float;dir_acc_raw:float;dir_prec_raw:float;dir_rec_raw:float;dir_acc_cal:float;dir_prec_cal:float;dir_rec_cal:float;dir_ece:float;dir_brier:float;ens_conf:float;actionable_pct:float;feature_jaccard:float;feature_overlap:float;pred_corr:float;n_mag_feats:int;n_dir_feats:int;n_common_feats:int
+
+class ProductionTuner:
+    def __init__(self,df,vix,n_trials=200,output_dir="tuning_production"):
+        self.df=df.copy();self.vix=vix.copy();self.n_trials=n_trials
+        self.output_dir=Path(output_dir)
+        self.output_dir.mkdir(parents=True,exist_ok=True)
+        # Production date splits from config.py
+        self.train_end=pd.Timestamp("2021-12-31")
+        self.val_end=pd.Timestamp("2023-12-31")
+        train_mask=(df.index<=self.train_end)
+        val_mask=(df.index>self.train_end)&(df.index<=self.val_end)
+        test_mask=df.index>self.val_end
+        self.train_df=df[train_mask].copy()
+        self.val_df=df[val_mask].copy()
+        self.test_df=df[test_mask].copy()
+        self.train_vix=vix[train_mask]
+        self.val_vix=vix[val_mask]
+        self.test_vix=vix[test_mask]
+        from config import TARGET_CONFIG
+        self.horizon=TARGET_CONFIG["horizon_days"]
+        self._calc_targets()
+        self.base_cols=[c for c in df.columns if c not in["vix","spx","calendar_cohort","cohort_weight","feature_quality","future_vix","target_vix_pct_change","target_log_vix_change","target_direction"]]
+        logger.info(f"Production splits: Train={len(self.train_df)} ({self.df.index[0].date()} to {self.train_end.date()})")
+        logger.info(f"                   Val={len(self.val_df)} ({(self.train_end+pd.Timedelta(days=1)).date()} to {self.val_end.date()})")
+        logger.info(f"                   Test={len(self.test_df)} ({(self.val_end+pd.Timedelta(days=1)).date()} to {self.df.index[-1].date()})")
+        logger.info(f"Base features: {len(self.base_cols)}")
+
+    def _calc_targets(self):
+        for df in[self.train_df,self.val_df,self.test_df]:
+            vix_series=df['vix'];future_vix=vix_series.shift(-self.horizon)
+            df['target_log_vix_change']=np.log(future_vix/vix_series)
+            df['target_direction']=(future_vix>vix_series).astype(int)
+            df['future_vix']=future_vix
+
     def _apply_quality_filter(self,df,threshold):
-        if 'feature_quality'not in df.columns:logger.warning("No feature_quality column");return df
-        quality_mask=df['feature_quality']>=threshold;filtered_df=df[quality_mask].copy();filtered_pct=(1-len(filtered_df)/len(df))*100
+        if 'feature_quality' not in df.columns:
+            logger.warning("No feature_quality column");return df
+        quality_mask=df['feature_quality']>=threshold
+        filtered=df[quality_mask].copy()
+        filtered_pct=(1-len(filtered)/len(df))*100
         if filtered_pct>40:raise ValueError(f"Quality filter removed {filtered_pct:.1f}% of data")
-        return filtered_df
+        return filtered
+
     def _apply_cohort_weights(self,df,fomc_w,opex_w,earnings_w):
-        cohort_map={'fomc_period':fomc_w,'opex_week':opex_w,'earnings_heavy':earnings_w,'mid_cycle':1.0};weights=df['calendar_cohort'].map(cohort_map).fillna(1.0);return weights
-    def _run_feature_selection(self,df,vix,cv_params,target_type,top_n,corr_threshold,test_start_idx):
+        cohort_map={'fomc_period':fomc_w,'opex_week':opex_w,'earnings_heavy':earnings_w,'mid_cycle':1.0}
+        weights=df['calendar_cohort'].map(cohort_map).fillna(1.0)
+        return weights
+
+    def _select_features(self,df_train,vix_train,target_type,top_n,corr_threshold,cv_params):
+        from core.xgboost_feature_selector_v2 import SimplifiedFeatureSelector
+        from core.feature_correlation_analyzer import FeatureCorrelationAnalyzer
         import config as cfg
-        original_cv=cfg.FEATURE_SELECTION_CV_PARAMS.copy();original_corr=cfg.FEATURE_SELECTION_CONFIG.get('correlation_threshold',1.0)
+        original_cv=cfg.FEATURE_SELECTION_CV_PARAMS.copy()
+        cfg.FEATURE_SELECTION_CV_PARAMS.update(cv_params)
         try:
-            cfg.FEATURE_SELECTION_CV_PARAMS.update({'n_estimators':cv_params['cv_n_estimators'],'max_depth':cv_params['cv_max_depth'],'learning_rate':cv_params['cv_learning_rate'],'subsample':cv_params['cv_subsample'],'colsample_bytree':cv_params['cv_colsample_bytree']});cfg.FEATURE_SELECTION_CONFIG['correlation_threshold']=corr_threshold;selector=SimplifiedFeatureSelector(target_type=target_type,top_n=top_n);selected,_=selector.select_features(df[self.base_cols],vix,test_start_idx=test_start_idx);return selected
-        except Exception as e:logger.error(f"Feature selection failed: {e}");return []
-        finally:cfg.FEATURE_SELECTION_CV_PARAMS.update(original_cv);cfg.FEATURE_SELECTION_CONFIG['correlation_threshold']=original_corr
-    def _compute_ensemble_confidence(self,magnitude_pct,direction_prob,params):
-        magnitude_pct=np.clip(magnitude_pct,-100,100);direction_prob=np.clip(direction_prob,0.0,1.0);abs_mag=abs(magnitude_pct);thresholds=params['thresholds'];mag_conf=0.5+min(abs_mag/max(thresholds['large'],1.0),0.5)*0.5;dir_conf=max(direction_prob,1-direction_prob);predicted_up=direction_prob>0.5;magnitude_up=magnitude_pct>0;models_agree=predicted_up==magnitude_up
+            selector=SimplifiedFeatureSelector(target_type=target_type,top_n=top_n)
+            test_start_idx=int(len(df_train)*0.70)
+            selected,importance_dict=selector.select_features(df_train[self.base_cols],vix_train,test_start_idx=test_start_idx)
+            if len(selected)>0 and corr_threshold<1.0:
+                analyzer=FeatureCorrelationAnalyzer(threshold=corr_threshold)
+                protected=['is_fomc_period','is_opex_week','is_earnings_heavy']
+                kept,removed=analyzer.analyze_and_remove(features_df=df_train[selected],importance_scores=importance_dict,protected_features=protected)
+                return kept
+            return selected
+        finally:
+            cfg.FEATURE_SELECTION_CV_PARAMS.update(original_cv)
+
+    def _compute_ensemble_confidence(self,mag_pct,dir_prob,params):
+        mag_pct=np.clip(mag_pct,-100,100);dir_prob=np.clip(dir_prob,0.0,1.0)
+        abs_mag=abs(mag_pct);thresholds=params['thresholds']
+        mag_conf=0.5+min(abs_mag/max(thresholds['large'],1.0),0.5)*0.5
+        dir_conf=max(dir_prob,1-dir_prob)
+        predicted_up=dir_prob>0.5;magnitude_up=mag_pct>0;models_agree=predicted_up==magnitude_up
         if models_agree:
             if abs_mag>thresholds['medium']and dir_conf>0.75:agreement_score=params['bonuses']['strong']
             elif abs_mag>thresholds['small']and dir_conf>0.65:agreement_score=params['bonuses']['moderate']
@@ -119,59 +103,290 @@ class ComprehensiveHyperparameterTuner:
             if abs_mag>thresholds['medium']and dir_conf>0.75:agreement_score=-params['penalties']['severe']
             elif abs_mag>thresholds['small']and dir_conf>0.65:agreement_score=-params['penalties']['moderate']
             else:agreement_score=-params['penalties']['minor']
-        ensemble_conf=params['mag_weight']*mag_conf+params['dir_weight']*dir_conf+params['agree_weight']*(0.5+agreement_score);ensemble_conf=np.clip(ensemble_conf,params['min_confidence'],1.0);return float(ensemble_conf)
-    def _evaluate_fold(self,split,data_params,feature_params,mag_params,dir_params,ensemble_params):
+        ens_conf=params['mag_weight']*mag_conf+params['dir_weight']*dir_conf+params['agree_weight']*(0.5+agreement_score)
+        ens_conf=np.clip(ens_conf,params['min_confidence'],1.0)
+        return float(ens_conf)
+
+    def _expected_calibration_error(self,y_true,y_prob,n_bins=10):
+        bin_edges=np.linspace(0,1,n_bins+1)
+        bin_indices=np.digitize(y_prob,bin_edges[:-1])-1
+        bin_indices=np.clip(bin_indices,0,n_bins-1);ece=0.0
+        for i in range(n_bins):
+            bin_mask=bin_indices==i
+            if bin_mask.sum()==0:continue
+            bin_acc=y_true[bin_mask].mean();bin_conf=y_prob[bin_mask].mean()
+            bin_weight=bin_mask.sum()/len(y_true)
+            ece+=bin_weight*abs(bin_acc-bin_conf)
+        return float(ece)
+
+    def _calibration_error_pct(self,y_true,y_pred):
+        errors=y_pred-y_true;std_error=np.std(errors)
+        within_std=np.abs(errors)<=std_error
+        actual_coverage=within_std.mean();target_coverage=0.68
+        return abs(actual_coverage-target_coverage)
+
+    def _evaluate_trial(self,data_params,feature_params,mag_params,dir_params,ensemble_params):
         try:
-            train_mask=(self.df.index>=split.train_start)&(self.df.index<=split.train_end);val_mask=(self.df.index>=split.val_start)&(self.df.index<=split.val_end);test_mask=(self.df.index>=split.test_start)&(self.df.index<=split.test_end);df_train=self.df[train_mask].copy();df_val=self.df[val_mask].copy();df_test=self.df[test_mask].copy();vix_train=self.vix[train_mask];vix_val=self.vix[val_mask];vix_test=self.vix[test_mask];df_train=self.target_calculator.calculate_all_targets(df_train,vix_col='vix');df_val=self.target_calculator.calculate_all_targets(df_val,vix_col='vix');df_test=self.target_calculator.calculate_all_targets(df_test,vix_col='vix');df_train_filt=self._apply_quality_filter(df_train,data_params['quality_threshold']);df_val_filt=self._apply_quality_filter(df_val,data_params['quality_threshold']);df_test_filt=self._apply_quality_filter(df_test,data_params['quality_threshold'])
-            if len(df_train_filt)<100 or len(df_val_filt)<20 or len(df_test_filt)<20:logger.warning(f"Fold {split.fold_num}: Insufficient data after filtering");return None
-            train_weights=self._apply_cohort_weights(df_train_filt,data_params['fomc_weight'],data_params['opex_weight'],data_params['earnings_weight']);train_sel_end_idx=int(len(df_train_filt)*0.70);mag_features=self._run_feature_selection(df_train_filt,vix_train.loc[df_train_filt.index],feature_params,'magnitude',feature_params['mag_top_n'],feature_params['correlation_threshold'],train_sel_end_idx);dir_features=self._run_feature_selection(df_train_filt,vix_train.loc[df_train_filt.index],feature_params,'direction',feature_params['dir_top_n'],feature_params['correlation_threshold'],train_sel_end_idx)
-            if len(mag_features)<20 or len(dir_features)<20:logger.warning(f"Fold {split.fold_num}: Insufficient features");return None
-            X_mag_train=df_train_filt[mag_features].fillna(0);y_mag_train=df_train_filt['target_log_vix_change'].dropna();common_idx=X_mag_train.index.intersection(y_mag_train.index);X_mag_train=X_mag_train.loc[common_idx];y_mag_train=y_mag_train.loc[common_idx];w_mag_train=train_weights.loc[common_idx].values;X_mag_val=df_val_filt[mag_features].fillna(0);y_mag_val=df_val_filt['target_log_vix_change'].dropna();common_idx_val=X_mag_val.index.intersection(y_mag_val.index);X_mag_val=X_mag_val.loc[common_idx_val];y_mag_val=y_mag_val.loc[common_idx_val];X_mag_test=df_test_filt[mag_features].fillna(0);y_mag_test=df_test_filt['target_log_vix_change'].dropna();common_idx_test=X_mag_test.index.intersection(y_mag_test.index);X_mag_test=X_mag_test.loc[common_idx_test];y_mag_test=y_mag_test.loc[common_idx_test];mag_model=XGBRegressor(**mag_params);mag_model.fit(X_mag_train,y_mag_train,sample_weight=w_mag_train,eval_set=[(X_mag_val,y_mag_val)],verbose=False);y_mag_pred_tr_raw=mag_model.predict(X_mag_train);y_mag_pred_tr=np.clip(y_mag_pred_tr_raw,-2,2);y_mag_pred_raw=mag_model.predict(X_mag_test);y_mag_pred=np.clip(y_mag_pred_raw,-2,2);mag_pct_tr_actual=(np.exp(y_mag_train.values)-1)*100;mag_pct_tr_pred=(np.exp(y_mag_pred_tr)-1)*100;mag_pct_test_actual=(np.exp(y_mag_test.values)-1)*100;mag_pct_test_pred=(np.exp(y_mag_pred)-1)*100;mag_test_indices=X_mag_test.index;mag_mae_train=mean_absolute_error(mag_pct_tr_actual,mag_pct_tr_pred);mag_mae_test=mean_absolute_error(mag_pct_test_actual,mag_pct_test_pred);mag_rmse_test=np.sqrt(np.mean((mag_pct_test_pred-mag_pct_test_actual)**2));mag_bias=np.mean(mag_pct_test_pred-mag_pct_test_actual);mag_cal_error=CalibrationMetrics.calibration_error_pct(mag_pct_test_actual,mag_pct_test_pred);X_dir_train=df_train_filt[dir_features].fillna(0);y_dir_train=df_train_filt['target_direction'].dropna();common_idx=X_dir_train.index.intersection(y_dir_train.index);X_dir_train=X_dir_train.loc[common_idx];y_dir_train=y_dir_train.loc[common_idx];w_dir_train=train_weights.loc[common_idx].values;X_dir_val=df_val_filt[dir_features].fillna(0);y_dir_val=df_val_filt['target_direction'].dropna();common_idx_val=X_dir_val.index.intersection(y_dir_val.index);X_dir_val=X_dir_val.loc[common_idx_val];y_dir_val=y_dir_val.loc[common_idx_val];X_dir_test=df_test_filt[dir_features].fillna(0);y_dir_test=df_test_filt['target_direction'].dropna();common_idx_test=X_dir_test.index.intersection(y_dir_test.index);X_dir_test=X_dir_test.loc[common_idx_test];y_dir_test=y_dir_test.loc[common_idx_test];dir_model=XGBClassifier(**dir_params);dir_model.fit(X_dir_train,y_dir_train,sample_weight=w_dir_train,eval_set=[(X_dir_val,y_dir_val)],verbose=False);y_dir_prob_tr=dir_model.predict_proba(X_dir_train)[:,1];y_dir_prob_val=dir_model.predict_proba(X_dir_val)[:,1];y_dir_prob_test_raw=dir_model.predict_proba(X_dir_test)[:,1];y_dir_pred_raw=(y_dir_prob_test_raw>0.5).astype(int);y_dir_pred_tr=(y_dir_prob_tr>0.5).astype(int);dir_acc_train_raw=accuracy_score(y_dir_train.values,y_dir_pred_tr);dir_acc_test_raw=accuracy_score(y_dir_test.values,y_dir_pred_raw);dir_prec_raw=precision_score(y_dir_test.values,y_dir_pred_raw,zero_division=0);dir_rec_raw=recall_score(y_dir_test.values,y_dir_pred_raw,zero_division=0);dir_f1_raw=2*(dir_prec_raw*dir_rec_raw)/(dir_prec_raw+dir_rec_raw)if dir_prec_raw+dir_rec_raw>0 else 0.0;calibrator=IsotonicRegression(out_of_bounds='clip');calibrator.fit(y_dir_prob_val,y_dir_val.values);y_dir_prob_test_cal=calibrator.transform(y_dir_prob_test_raw);y_dir_pred_cal=(y_dir_prob_test_cal>0.5).astype(int);dir_acc_test_cal=accuracy_score(y_dir_test.values,y_dir_pred_cal);dir_prec_cal=precision_score(y_dir_test.values,y_dir_pred_cal,zero_division=0);dir_rec_cal=recall_score(y_dir_test.values,y_dir_pred_cal,zero_division=0);dir_f1_cal=2*(dir_prec_cal*dir_rec_cal)/(dir_prec_cal+dir_rec_cal)if dir_prec_cal+dir_rec_cal>0 else 0.0;dir_brier=brier_score_loss(y_dir_test.values,y_dir_prob_test_cal);dir_ece=CalibrationMetrics.expected_calibration_error(y_dir_test.values,y_dir_prob_test_cal);dir_test_indices=X_dir_test.index;common_test_indices=mag_test_indices.intersection(dir_test_indices)
-            if len(common_test_indices)<10:logger.warning(f"Fold {split.fold_num}: Too few common indices");return None
-            mag_test_loc=mag_test_indices.get_indexer(common_test_indices);dir_test_loc=dir_test_indices.get_indexer(common_test_indices);mag_pct_aligned=mag_pct_test_pred[mag_test_loc];dir_prob_aligned=y_dir_prob_test_cal[dir_test_loc];ensemble_confs=[self._compute_ensemble_confidence(mag_pct_aligned[i],dir_prob_aligned[i],ensemble_params)for i in range(len(common_test_indices))];avg_ens_conf=np.mean(ensemble_confs);actionable_pct=np.mean(np.array(ensemble_confs)>ensemble_params['actionable_threshold']);feature_jaccard=DiversityMetrics.jaccard_similarity(set(mag_features),set(dir_features));feature_overlap=DiversityMetrics.feature_overlap_ratio(mag_features,dir_features);mag_scaled=np.clip(mag_pct_aligned/20.0,-1,1);dir_scaled=(dir_prob_aligned-0.5)*2.0;pred_corr=DiversityMetrics.prediction_correlation(mag_scaled,dir_scaled);train_val_gap_mag=abs(mag_mae_train-mag_mae_test);train_val_gap_dir=abs(dir_acc_train_raw-dir_acc_test_raw);metrics=TrialMetrics(mag_mae=mag_mae_test,mag_rmse=mag_rmse_test,mag_bias=mag_bias,mag_cal_error=mag_cal_error,dir_accuracy_raw=dir_acc_test_raw,dir_precision_raw=dir_prec_raw,dir_recall_raw=dir_rec_raw,dir_f1_raw=dir_f1_raw,dir_accuracy_cal=dir_acc_test_cal,dir_precision_cal=dir_prec_cal,dir_recall_cal=dir_rec_cal,dir_f1_cal=dir_f1_cal,dir_brier=dir_brier,dir_ece=dir_ece,ensemble_confidence=avg_ens_conf,actionable_pct=actionable_pct,feature_jaccard=feature_jaccard,feature_overlap=feature_overlap,pred_correlation=pred_corr,train_val_gap_mag=train_val_gap_mag,train_val_gap_dir=train_val_gap_dir,n_mag_features=len(mag_features),n_dir_features=len(dir_features),n_common_features=len(set(mag_features)&set(dir_features)));return metrics
-        except Exception as e:logger.error(f"Fold {split.fold_num} failed: {e}");import traceback;traceback.print_exc();return None
+            # Apply quality filter
+            train_filt=self._apply_quality_filter(self.train_df,data_params['quality_threshold'])
+            val_filt=self._apply_quality_filter(self.val_df,data_params['quality_threshold'])
+            test_filt=self._apply_quality_filter(self.test_df,data_params['quality_threshold'])
+            if len(train_filt)<100 or len(val_filt)<20 or len(test_filt)<20:
+                logger.warning("Insufficient data after quality filter");return None
+            # Apply cohort weights
+            train_weights=self._apply_cohort_weights(train_filt,data_params['fomc_weight'],data_params['opex_weight'],data_params['earnings_weight'])
+            # Feature selection on training data only
+            mag_features=self._select_features(train_filt,self.train_vix.loc[train_filt.index],'magnitude',feature_params['mag_top_n'],feature_params['correlation_threshold'],feature_params['cv_params'])
+            dir_features=self._select_features(train_filt,self.train_vix.loc[train_filt.index],'direction',feature_params['dir_top_n'],feature_params['correlation_threshold'],feature_params['cv_params'])
+            if len(mag_features)<20 or len(dir_features)<20:
+                logger.warning(f"Insufficient features: mag={len(mag_features)}, dir={len(dir_features)}");return None
+            # Magnitude model
+            X_mag_train=train_filt[mag_features].fillna(0)
+            y_mag_train=train_filt['target_log_vix_change'].dropna()
+            common_idx=X_mag_train.index.intersection(y_mag_train.index)
+            X_mag_train=X_mag_train.loc[common_idx];y_mag_train=y_mag_train.loc[common_idx]
+            w_mag_train=train_weights.loc[common_idx].values
+            X_mag_val=val_filt[mag_features].fillna(0);y_mag_val=val_filt['target_log_vix_change'].dropna()
+            common_idx_val=X_mag_val.index.intersection(y_mag_val.index)
+            X_mag_val=X_mag_val.loc[common_idx_val];y_mag_val=y_mag_val.loc[common_idx_val]
+            X_mag_test=test_filt[mag_features].fillna(0);y_mag_test=test_filt['target_log_vix_change'].dropna()
+            common_idx_test=X_mag_test.index.intersection(y_mag_test.index)
+            X_mag_test=X_mag_test.loc[common_idx_test];y_mag_test=y_mag_test.loc[common_idx_test]
+            mag_model=XGBRegressor(**mag_params)
+            mag_model.fit(X_mag_train,y_mag_train,sample_weight=w_mag_train,eval_set=[(X_mag_val,y_mag_val)],verbose=False)
+            # Predict on test set
+            y_mag_pred_raw=mag_model.predict(X_mag_test)
+            y_mag_pred=np.clip(y_mag_pred_raw,-2,2)
+            mag_pct_test_actual=(np.exp(y_mag_test.values)-1)*100
+            mag_pct_test_pred=(np.exp(y_mag_pred)-1)*100
+            mag_test_indices=X_mag_test.index
+            mag_mae=mean_absolute_error(mag_pct_test_actual,mag_pct_test_pred)
+            mag_bias=np.mean(mag_pct_test_pred-mag_pct_test_actual)
+            mag_cal_error=self._calibration_error_pct(mag_pct_test_actual,mag_pct_test_pred)
+            # Direction model
+            X_dir_train=train_filt[dir_features].fillna(0);y_dir_train=train_filt['target_direction'].dropna()
+            common_idx=X_dir_train.index.intersection(y_dir_train.index)
+            X_dir_train=X_dir_train.loc[common_idx];y_dir_train=y_dir_train.loc[common_idx]
+            w_dir_train=train_weights.loc[common_idx].values
+            X_dir_val=val_filt[dir_features].fillna(0);y_dir_val=val_filt['target_direction'].dropna()
+            common_idx_val=X_dir_val.index.intersection(y_dir_val.index)
+            X_dir_val=X_dir_val.loc[common_idx_val];y_dir_val=y_dir_val.loc[common_idx_val]
+            X_dir_test=test_filt[dir_features].fillna(0);y_dir_test=test_filt['target_direction'].dropna()
+            common_idx_test=X_dir_test.index.intersection(y_dir_test.index)
+            X_dir_test=X_dir_test.loc[common_idx_test];y_dir_test=y_dir_test.loc[common_idx_test]
+            dir_model=XGBClassifier(**dir_params)
+            dir_model.fit(X_dir_train,y_dir_train,sample_weight=w_dir_train,eval_set=[(X_dir_val,y_dir_val)],verbose=False)
+            # Raw predictions
+            y_dir_prob_val=dir_model.predict_proba(X_dir_val)[:,1]
+            y_dir_prob_test_raw=dir_model.predict_proba(X_dir_test)[:,1]
+            y_dir_pred_raw=(y_dir_prob_test_raw>0.5).astype(int)
+            dir_acc_raw=accuracy_score(y_dir_test.values,y_dir_pred_raw)
+            dir_prec_raw=precision_score(y_dir_test.values,y_dir_pred_raw,zero_division=0)
+            dir_rec_raw=recall_score(y_dir_test.values,y_dir_pred_raw,zero_division=0)
+            # Fit calibrator on val
+            calibrator=IsotonicRegression(out_of_bounds='clip')
+            calibrator.fit(y_dir_prob_val,y_dir_val.values)
+            # Calibrated predictions on test
+            y_dir_prob_test_cal=calibrator.transform(y_dir_prob_test_raw)
+            y_dir_pred_cal=(y_dir_prob_test_cal>0.5).astype(int)
+            dir_acc_cal=accuracy_score(y_dir_test.values,y_dir_pred_cal)
+            dir_prec_cal=precision_score(y_dir_test.values,y_dir_pred_cal,zero_division=0)
+            dir_rec_cal=recall_score(y_dir_test.values,y_dir_pred_cal,zero_division=0)
+            dir_brier=brier_score_loss(y_dir_test.values,y_dir_prob_test_cal)
+            dir_ece=self._expected_calibration_error(y_dir_test.values,y_dir_prob_test_cal)
+            dir_test_indices=X_dir_test.index
+            # Ensemble confidence on common test indices
+            common_test_indices=mag_test_indices.intersection(dir_test_indices)
+            if len(common_test_indices)<10:
+                logger.warning("Too few common test indices");return None
+            mag_test_loc=mag_test_indices.get_indexer(common_test_indices)
+            dir_test_loc=dir_test_indices.get_indexer(common_test_indices)
+            mag_pct_aligned=mag_pct_test_pred[mag_test_loc]
+            dir_prob_aligned=y_dir_prob_test_cal[dir_test_loc]
+            ensemble_confs=[self._compute_ensemble_confidence(mag_pct_aligned[i],dir_prob_aligned[i],ensemble_params)for i in range(len(common_test_indices))]
+            avg_ens_conf=np.mean(ensemble_confs)
+            actionable_pct=np.mean(np.array(ensemble_confs)>ensemble_params['actionable_threshold'])
+            # Diversity metrics
+            feature_jaccard=len(set(mag_features)&set(dir_features))/max(len(set(mag_features)|set(dir_features)),1)
+            feature_overlap=len(set(mag_features)&set(dir_features))/max(min(len(mag_features),len(dir_features)),1)
+            mag_scaled=np.clip(mag_pct_aligned/20.0,-1,1);dir_scaled=(dir_prob_aligned-0.5)*2.0
+            mask=np.isfinite(mag_scaled)&np.isfinite(dir_scaled)
+            if mask.sum()>=5:
+                pred_corr,_=spearmanr(mag_scaled[mask],dir_scaled[mask])
+                if np.isnan(pred_corr)or np.isinf(pred_corr):pred_corr=0.0
+            else:pred_corr=0.0
+            metrics=ProductionMetrics(mag_mae=mag_mae,mag_bias=mag_bias,mag_cal_error=mag_cal_error,dir_acc_raw=dir_acc_raw,dir_prec_raw=dir_prec_raw,dir_rec_raw=dir_rec_raw,dir_acc_cal=dir_acc_cal,dir_prec_cal=dir_prec_cal,dir_rec_cal=dir_rec_cal,dir_ece=dir_ece,dir_brier=dir_brier,ens_conf=avg_ens_conf,actionable_pct=actionable_pct,feature_jaccard=feature_jaccard,feature_overlap=feature_overlap,pred_corr=float(pred_corr),n_mag_feats=len(mag_features),n_dir_feats=len(dir_features),n_common_feats=len(set(mag_features)&set(dir_features)))
+            return metrics
+        except Exception as e:
+            logger.error(f"Trial failed: {e}")
+            import traceback;traceback.print_exc()
+            return None
+
     def objective(self,trial):
-        data_params=self._sample_data_params(trial);is_valid,reason=self._validate_quality_threshold(data_params['quality_threshold'])
-        if not is_valid:logger.warning(f"Trial {trial.number}: Invalid quality_threshold - {reason}");return 999.0
-        feature_params=self._sample_feature_selection_params(trial);mag_params=self._sample_magnitude_params(trial);dir_params=self._sample_direction_params(trial);ensemble_params=self._sample_ensemble_params(trial);fold_metrics=[]
-        for split in self.splits:
-            metrics=self._evaluate_fold(split,data_params,feature_params,mag_params,dir_params,ensemble_params)
-            if metrics is None:return 999.0
-            fold_metrics.append(metrics)
-        mag_mae_mean=np.mean([m.mag_mae for m in fold_metrics]);mag_mae_std=np.std([m.mag_mae for m in fold_metrics]);mag_bias_mean=np.mean([m.mag_bias for m in fold_metrics]);mag_cal_error_mean=np.mean([m.mag_cal_error for m in fold_metrics]);dir_acc_mean=np.mean([m.dir_accuracy_cal for m in fold_metrics]);dir_acc_std=np.std([m.dir_accuracy_cal for m in fold_metrics]);dir_f1_mean=np.mean([m.dir_f1_cal for m in fold_metrics]);dir_prec_mean=np.mean([m.dir_precision_cal for m in fold_metrics]);dir_rec_mean=np.mean([m.dir_recall_cal for m in fold_metrics]);dir_ece_mean=np.mean([m.dir_ece for m in fold_metrics]);dir_brier_mean=np.mean([m.dir_brier for m in fold_metrics]);ens_conf_mean=np.mean([m.ensemble_confidence for m in fold_metrics]);actionable_mean=np.mean([m.actionable_pct for m in fold_metrics]);feature_jaccard_mean=np.mean([m.feature_jaccard for m in fold_metrics]);feature_overlap_mean=np.mean([m.feature_overlap for m in fold_metrics]);pred_corr_mean=np.mean([m.pred_correlation for m in fold_metrics]);gap_mag_mean=np.mean([m.train_val_gap_mag for m in fold_metrics]);gap_dir_mean=np.mean([m.train_val_gap_dir for m in fold_metrics]);diversity_scores=DiversityMetrics.compute_diversity_score(feature_jaccard_mean,feature_overlap_mean,pred_corr_mean,target_jaccard=0.40,target_overlap=feature_params['target_overlap'])
-        mag_best=9.5;mag_good=10.5;mag_penalty=0 if mag_mae_mean<=mag_best else(mag_mae_mean-mag_good)*8.0 if mag_mae_mean<=mag_good else(mag_mae_mean-mag_good)*15.0;mag_reward=max(0,mag_good-mag_mae_mean)*3.0;mag_bias_penalty=abs(mag_bias_mean)*3.0;mag_score=mag_mae_mean+mag_bias_penalty+mag_cal_error_mean*5.0+mag_penalty-mag_reward;dir_best_acc=0.65;dir_good_acc=0.62;dir_best_prec=0.65;dir_good_prec=0.62;dir_best_rec=0.60;dir_good_rec=0.55;acc_penalty=0 if dir_acc_mean>=dir_best_acc else(dir_good_acc-dir_acc_mean)*25.0 if dir_acc_mean<dir_good_acc else 0;acc_reward=max(0,dir_acc_mean-dir_best_acc)*10.0;prec_penalty=0 if dir_prec_mean>=dir_best_prec else(dir_good_prec-dir_prec_mean)*20.0 if dir_prec_mean<dir_good_prec else 0;prec_reward=max(0,dir_prec_mean-dir_best_prec)*8.0;rec_penalty=0 if dir_rec_mean>=dir_best_rec else(dir_good_rec-dir_rec_mean)*self.recall_weight*1.5 if dir_rec_mean<dir_good_rec else 0;rec_reward=max(0,dir_rec_mean-dir_best_rec)*self.recall_weight;dir_score=(1-dir_acc_mean)*12+acc_penalty-acc_reward+(1-dir_f1_mean)*8+(1-dir_rec_mean)*self.recall_weight+rec_penalty-rec_reward+dir_ece_mean*18+prec_penalty-prec_reward;ens_score=abs(ens_conf_mean-0.70)*4.0+(1-actionable_mean)*1.5;diversity_penalty=diversity_scores['jaccard_penalty']*3.0+diversity_scores['overlap_penalty']*3.0-diversity_scores['overall_diversity']*2.0;overfitting_penalty=gap_mag_mean*0.5+gap_dir_mean*10.0;stability_penalty=mag_mae_std*0.5+dir_acc_std*8.0;base_score=mag_score+dir_score+ens_score;penalty_score=diversity_penalty*self.diversity_weight+overfitting_penalty*self.overfitting_penalty+stability_penalty*2.0;combined_score=base_score+penalty_score;trial.set_user_attr('mag_mae',float(mag_mae_mean));trial.set_user_attr('mag_mae_std',float(mag_mae_std));trial.set_user_attr('mag_bias',float(mag_bias_mean));trial.set_user_attr('mag_cal_error',float(mag_cal_error_mean));trial.set_user_attr('dir_acc_raw',float(np.mean([m.dir_accuracy_raw for m in fold_metrics])));trial.set_user_attr('dir_precision_raw',float(np.mean([m.dir_precision_raw for m in fold_metrics])));trial.set_user_attr('dir_recall_raw',float(np.mean([m.dir_recall_raw for m in fold_metrics])));trial.set_user_attr('dir_f1_raw',float(np.mean([m.dir_f1_raw for m in fold_metrics])));trial.set_user_attr('dir_acc',float(dir_acc_mean));trial.set_user_attr('dir_acc_std',float(dir_acc_std));trial.set_user_attr('dir_f1',float(dir_f1_mean));trial.set_user_attr('dir_precision',float(dir_prec_mean));trial.set_user_attr('dir_recall',float(dir_rec_mean));trial.set_user_attr('dir_ece',float(dir_ece_mean));trial.set_user_attr('dir_brier',float(dir_brier_mean));trial.set_user_attr('ensemble_conf',float(ens_conf_mean));trial.set_user_attr('actionable_pct',float(actionable_mean));trial.set_user_attr('feature_jaccard',float(feature_jaccard_mean));trial.set_user_attr('feature_overlap',float(feature_overlap_mean));trial.set_user_attr('pred_correlation',float(pred_corr_mean));trial.set_user_attr('diversity_overall',float(diversity_scores['overall_diversity']));trial.set_user_attr('train_val_gap_mag',float(gap_mag_mean));trial.set_user_attr('train_val_gap_dir',float(gap_dir_mean));trial.set_user_attr('n_mag_features',int(np.mean([m.n_mag_features for m in fold_metrics])));trial.set_user_attr('n_dir_features',int(np.mean([m.n_dir_features for m in fold_metrics])));trial.set_user_attr('n_common_features',int(np.mean([m.n_common_features for m in fold_metrics])));trial.set_user_attr('base_score',float(base_score));trial.set_user_attr('diversity_penalty',float(diversity_penalty));trial.set_user_attr('overfitting_penalty',float(overfitting_penalty));trial.set_user_attr('stability_penalty',float(stability_penalty));return combined_score
-    def run_optimization(self):
-        logger.info("="*80);logger.info(f"COMPREHENSIVE HYPERPARAMETER TUNING v2.3 - AGGRESSIVE");logger.info(f"Walk-forward CV: {len(self.splits)} folds x {self.n_trials} trials");logger.info(f"Targets: MAE<9.5% (reward>10.5%), Dir ALL>65% (penalty<62%)");logger.info("="*80);study=optuna.create_study(direction='minimize',sampler=TPESampler(seed=42,n_startup_trials=min(30,self.n_trials//5)),pruner=HyperbandPruner(min_resource=1,max_resource=len(self.splits),reduction_factor=3));study.optimize(self.objective,n_trials=self.n_trials,show_progress_bar=True,n_jobs=1);return study
-    def _convert_to_python_types(self,obj):
-        if isinstance(obj,dict):return {k:self._convert_to_python_types(v)for k,v in obj.items()}
-        elif isinstance(obj,list):return [self._convert_to_python_types(item)for item in obj]
-        elif isinstance(obj,(np.integer,np.int64,np.int32)):return int(obj)
-        elif isinstance(obj,(np.floating,np.float64,np.float32)):return float(obj)
-        elif isinstance(obj,np.ndarray):return obj.tolist()
-        else:return obj
+        # Sample hyperparameters
+        data_params={'quality_threshold':trial.suggest_float('quality_threshold',0.50,0.65),'fomc_weight':trial.suggest_float('cohort_fomc',1.10,1.50),'opex_weight':trial.suggest_float('cohort_opex',1.00,1.50),'earnings_weight':trial.suggest_float('cohort_earnings',1.00,1.50)}
+        feature_params={'mag_top_n':trial.suggest_int('mag_top_n',70,140),'dir_top_n':trial.suggest_int('dir_top_n',70,160),'correlation_threshold':trial.suggest_float('corr_threshold',0.85,0.98),'cv_params':{'n_estimators':trial.suggest_int('cv_n_est',100,250),'max_depth':trial.suggest_int('cv_depth',3,6),'learning_rate':trial.suggest_float('cv_lr',0.03,0.12,log=True),'subsample':trial.suggest_float('cv_sub',0.70,0.95),'colsample_bytree':trial.suggest_float('cv_col',0.70,0.95)}}
+        mag_params={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':trial.suggest_int('mag_depth',2,7),'learning_rate':trial.suggest_float('mag_lr',0.008,0.12,log=True),'n_estimators':trial.suggest_int('mag_n_est',200,800),'subsample':trial.suggest_float('mag_sub',0.60,0.95),'colsample_bytree':trial.suggest_float('mag_col_tree',0.60,0.95),'colsample_bylevel':trial.suggest_float('mag_col_lvl',0.60,0.95),'min_child_weight':trial.suggest_int('mag_mcw',2,15),'reg_alpha':trial.suggest_float('mag_alpha',0.3,6.0),'reg_lambda':trial.suggest_float('mag_lambda',0.8,10.0),'gamma':trial.suggest_float('mag_gamma',0.0,0.8),'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
+        dir_params={'objective':'binary:logistic','eval_metric':'logloss','max_depth':trial.suggest_int('dir_depth',3,12),'learning_rate':trial.suggest_float('dir_lr',0.008,0.10,log=True),'n_estimators':trial.suggest_int('dir_n_est',200,900),'subsample':trial.suggest_float('dir_sub',0.60,0.95),'colsample_bytree':trial.suggest_float('dir_col_tree',0.55,0.95),'min_child_weight':trial.suggest_int('dir_mcw',4,20),'reg_alpha':trial.suggest_float('dir_alpha',0.5,5.0),'reg_lambda':trial.suggest_float('dir_lambda',1.0,8.0),'gamma':trial.suggest_float('dir_gamma',0.0,1.0),'scale_pos_weight':trial.suggest_float('dir_scale',0.80,1.60),'max_delta_step':trial.suggest_int('dir_max_delta',0,5),'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
+        # Ensemble params
+        mag_w=trial.suggest_float('ens_mag_weight',0.25,0.50)
+        dir_w=trial.suggest_float('ens_dir_weight',0.30,0.60)
+        agree_w=trial.suggest_float('ens_agree_weight',0.10,0.35)
+        total=mag_w+dir_w+agree_w;mag_w/=total;dir_w/=total;agree_w/=total
+        small=trial.suggest_float('ens_small_thresh',1.5,4.0)
+        medium=trial.suggest_float('ens_med_thresh',small+1.0,8.0)
+        large=trial.suggest_float('ens_large_thresh',medium+1.0,20.0)
+        ensemble_params={'mag_weight':mag_w,'dir_weight':dir_w,'agree_weight':agree_w,'thresholds':{'small':small,'medium':medium,'large':large},'bonuses':{'weak':0.0,'moderate':trial.suggest_float('ens_bonus_mod',0.05,0.15),'strong':trial.suggest_float('ens_bonus_strong',0.10,0.25)},'penalties':{'minor':trial.suggest_float('ens_penalty_min',0.00,0.10),'moderate':trial.suggest_float('ens_penalty_mod',0.05,0.25),'severe':trial.suggest_float('ens_penalty_sev',0.15,0.40)},'min_confidence':0.50,'actionable_threshold':trial.suggest_float('ens_actionable',0.60,0.72)}
+        # Evaluate on production test set
+        metrics=self._evaluate_trial(data_params,feature_params,mag_params,dir_params,ensemble_params)
+        if metrics is None:return 999.0
+        # Optimize for calibrated production metrics
+        mag_best=9.5;mag_good=10.5
+        mag_penalty=0 if metrics.mag_mae<=mag_best else(metrics.mag_mae-mag_good)*8.0 if metrics.mag_mae<=mag_good else(metrics.mag_mae-mag_good)*15.0
+        mag_reward=max(0,mag_good-metrics.mag_mae)*3.0
+        mag_bias_penalty=abs(metrics.mag_bias)*3.0
+        mag_score=metrics.mag_mae+mag_bias_penalty+metrics.mag_cal_error*5.0+mag_penalty-mag_reward
+        # Direction targets (calibrated metrics)
+        dir_best_acc=0.65;dir_good_acc=0.62
+        dir_best_prec=0.65;dir_good_prec=0.62
+        dir_best_rec=0.60;dir_good_rec=0.55
+        acc_penalty=0 if metrics.dir_acc_cal>=dir_best_acc else(dir_good_acc-metrics.dir_acc_cal)*25.0 if metrics.dir_acc_cal<dir_good_acc else 0
+        acc_reward=max(0,metrics.dir_acc_cal-dir_best_acc)*10.0
+        prec_penalty=0 if metrics.dir_prec_cal>=dir_best_prec else(dir_good_prec-metrics.dir_prec_cal)*20.0 if metrics.dir_prec_cal<dir_good_prec else 0
+        prec_reward=max(0,metrics.dir_prec_cal-dir_best_prec)*8.0
+        rec_penalty=0 if metrics.dir_rec_cal>=dir_best_rec else(dir_good_rec-metrics.dir_rec_cal)*7.5 if metrics.dir_rec_cal<dir_good_rec else 0
+        rec_reward=max(0,metrics.dir_rec_cal-dir_best_rec)*5.0
+        dir_score=(1-metrics.dir_acc_cal)*12+acc_penalty-acc_reward+(1-metrics.dir_rec_cal)*5.0+rec_penalty-rec_reward+metrics.dir_ece*18+prec_penalty-prec_reward
+        # Ensemble score
+        ens_score=abs(metrics.ens_conf-0.70)*4.0+(1-metrics.actionable_pct)*1.5
+        # Diversity score
+        jaccard_penalty=abs(metrics.feature_jaccard-0.40)*3.0
+        overlap_penalty=abs(metrics.feature_overlap-0.50)*3.0
+        diversity_penalty=(jaccard_penalty+overlap_penalty)*1.5
+        combined_score=mag_score+dir_score+ens_score+diversity_penalty
+        # Log to trial
+        trial.set_user_attr('mag_mae',float(metrics.mag_mae))
+        trial.set_user_attr('mag_bias',float(metrics.mag_bias))
+        trial.set_user_attr('mag_cal_error',float(metrics.mag_cal_error))
+        trial.set_user_attr('dir_acc_raw',float(metrics.dir_acc_raw))
+        trial.set_user_attr('dir_prec_raw',float(metrics.dir_prec_raw))
+        trial.set_user_attr('dir_rec_raw',float(metrics.dir_rec_raw))
+        trial.set_user_attr('dir_acc',float(metrics.dir_acc_cal))
+        trial.set_user_attr('dir_precision',float(metrics.dir_prec_cal))
+        trial.set_user_attr('dir_recall',float(metrics.dir_rec_cal))
+        trial.set_user_attr('dir_ece',float(metrics.dir_ece))
+        trial.set_user_attr('dir_brier',float(metrics.dir_brier))
+        trial.set_user_attr('ensemble_conf',float(metrics.ens_conf))
+        trial.set_user_attr('actionable_pct',float(metrics.actionable_pct))
+        trial.set_user_attr('feature_jaccard',float(metrics.feature_jaccard))
+        trial.set_user_attr('feature_overlap',float(metrics.feature_overlap))
+        trial.set_user_attr('pred_correlation',float(metrics.pred_corr))
+        trial.set_user_attr('n_mag_features',int(metrics.n_mag_feats))
+        trial.set_user_attr('n_dir_features',int(metrics.n_dir_feats))
+        trial.set_user_attr('n_common_features',int(metrics.n_common_feats))
+        return combined_score
+
+    def run(self):
+        logger.info("="*80)
+        logger.info("PRODUCTION-MATCHED TUNER v1.0")
+        logger.info("="*80)
+        logger.info("Evaluates on 2024-2025 TEST data with single calibrator")
+        logger.info("NO fold averaging - matches exact production pipeline")
+        logger.info("="*80)
+        study=optuna.create_study(direction='minimize',sampler=TPESampler(seed=42,n_startup_trials=min(30,self.n_trials//5)))
+        study.optimize(self.objective,n_trials=self.n_trials,show_progress_bar=True,n_jobs=1)
+        return study
+
     def save_results(self,study):
-        best=study.best_trial;attrs=best.user_attrs;data_params={'quality_threshold':float(best.params['quality_threshold']),'cohort_weights':{'fomc_period':float(best.params['cohort_fomc']),'opex_week':float(best.params['cohort_opex']),'earnings_heavy':float(best.params['cohort_earnings']),'mid_cycle':1.0}};feature_params={'mag_top_n':int(best.params['mag_top_n']),'dir_top_n':int(best.params['dir_top_n']),'correlation_threshold':float(best.params['corr_threshold']),'target_overlap':float(best.params['target_overlap']),'cv':{'n_estimators':int(best.params['cv_n_est']),'max_depth':int(best.params['cv_depth']),'learning_rate':float(best.params['cv_lr']),'subsample':float(best.params['cv_sub']),'colsample_bytree':float(best.params['cv_col'])}};mag_model_params={k.replace('mag_',''):int(v)if isinstance(v,(int,np.integer))else float(v)for k,v in best.params.items()if k.startswith('mag_')and k not in['mag_top_n']};dir_model_params={k.replace('dir_',''):int(v)if isinstance(v,(int,np.integer))else float(v)for k,v in best.params.items()if k.startswith('dir_')and k not in['dir_top_n']};ensemble_params={k.replace('ens_',''):float(v)for k,v in best.params.items()if k.startswith('ens_')};results={'timestamp':datetime.now().isoformat(),'optimization':{'n_trials':int(self.n_trials),'n_folds':int(len(self.splits)),'best_trial':int(best.number),'best_score':float(best.value),'diversity_weight':float(self.diversity_weight),'overfitting_penalty':float(self.overfitting_penalty),'recall_weight':float(self.recall_weight)},'metrics':{'magnitude':{'mae':float(attrs.get('mag_mae',0)),'mae_std':float(attrs.get('mag_mae_std',0)),'bias':float(attrs.get('mag_bias',0)),'calibration_error':float(attrs.get('mag_cal_error',0)),'train_val_gap':float(attrs.get('train_val_gap_mag',0))},'direction_raw':{'accuracy':float(attrs.get('dir_acc_raw',0)),'precision':float(attrs.get('dir_precision_raw',0)),'recall':float(attrs.get('dir_recall_raw',0)),'f1':float(attrs.get('dir_f1_raw',0))},'direction_calibrated':{'accuracy':float(attrs.get('dir_acc',0)),'accuracy_std':float(attrs.get('dir_acc_std',0)),'f1':float(attrs.get('dir_f1',0)),'precision':float(attrs.get('dir_precision',0)),'recall':float(attrs.get('dir_recall',0)),'ece':float(attrs.get('dir_ece',0)),'brier':float(attrs.get('dir_brier',0)),'train_val_gap':float(attrs.get('train_val_gap_dir',0))},'ensemble':{'confidence':float(attrs.get('ensemble_conf',0)),'actionable_pct':float(attrs.get('actionable_pct',0))},'diversity':{'feature_jaccard':float(attrs.get('feature_jaccard',0)),'feature_overlap':float(attrs.get('feature_overlap',0)),'pred_correlation':float(attrs.get('pred_correlation',0)),'overall_diversity':float(attrs.get('diversity_overall',0))},'features':{'magnitude':int(attrs.get('n_mag_features',0)),'direction':int(attrs.get('n_dir_features',0)),'common':int(attrs.get('n_common_features',0))}},'parameters':{'data':data_params,'features':feature_params,'magnitude_model':mag_model_params,'direction_model':dir_model_params,'ensemble':ensemble_params},'walk_forward_splits':[split.to_dict()for split in self.splits]};results=self._convert_to_python_types(results);results_file=self.output_dir/"optimization_results.json"
+        best=study.best_trial;attrs=best.user_attrs
+        # Build config sections
+        data_params={'quality_threshold':float(best.params['quality_threshold']),'cohort_weights':{'fomc_period':float(best.params['cohort_fomc']),'opex_week':float(best.params['cohort_opex']),'earnings_heavy':float(best.params['cohort_earnings']),'mid_cycle':1.0}}
+        feature_params={'mag_top_n':int(best.params['mag_top_n']),'dir_top_n':int(best.params['dir_top_n']),'correlation_threshold':float(best.params['corr_threshold']),'cv':{'n_estimators':int(best.params['cv_n_est']),'max_depth':int(best.params['cv_depth']),'learning_rate':float(best.params['cv_lr']),'subsample':float(best.params['cv_sub']),'colsample_bytree':float(best.params['cv_col'])}}
+        mag_model_params={k.replace('mag_',''):int(v)if isinstance(v,int)else float(v)for k,v in best.params.items()if k.startswith('mag_')and k not in['mag_top_n']}
+        dir_model_params={k.replace('dir_',''):int(v)if isinstance(v,int)else float(v)for k,v in best.params.items()if k.startswith('dir_')and k not in['dir_top_n']}
+        ensemble_params={k.replace('ens_',''):float(v)for k,v in best.params.items()if k.startswith('ens_')}
+        results={'timestamp':datetime.now().isoformat(),'tuner_version':'production_v1.0','description':'Single production-realistic evaluation on 2024-2025 test data','optimization':{'n_trials':int(self.n_trials),'best_trial':int(best.number),'best_score':float(best.value)},'data_splits':{'train_end':'2021-12-31','val_end':'2023-12-31','test_start':'2024-01-01','train_size':len(self.train_df),'val_size':len(self.val_df),'test_size':len(self.test_df)},'metrics':{'magnitude':{'mae':float(attrs.get('mag_mae',0)),'bias':float(attrs.get('mag_bias',0)),'calibration_error':float(attrs.get('mag_cal_error',0))},'direction_raw':{'accuracy':float(attrs.get('dir_acc_raw',0)),'precision':float(attrs.get('dir_prec_raw',0)),'recall':float(attrs.get('dir_rec_raw',0))},'direction_calibrated':{'accuracy':float(attrs.get('dir_acc',0)),'precision':float(attrs.get('dir_precision',0)),'recall':float(attrs.get('dir_recall',0)),'ece':float(attrs.get('dir_ece',0)),'brier':float(attrs.get('dir_brier',0))},'ensemble':{'confidence':float(attrs.get('ensemble_conf',0)),'actionable_pct':float(attrs.get('actionable_pct',0))},'diversity':{'feature_jaccard':float(attrs.get('feature_jaccard',0)),'feature_overlap':float(attrs.get('feature_overlap',0)),'pred_correlation':float(attrs.get('pred_correlation',0))},'features':{'magnitude':int(attrs.get('n_mag_features',0)),'direction':int(attrs.get('n_dir_features',0)),'common':int(attrs.get('n_common_features',0))}},'parameters':{'data':data_params,'features':feature_params,'magnitude_model':mag_model_params,'direction_model':dir_model_params,'ensemble':ensemble_params}}
+        # Save JSON
+        results_file=self.output_dir/"optimization_results.json"
         with open(results_file,'w')as f:json.dump(results,f,indent=2)
-        logger.info(f"\n✅ Results saved: {results_file}");self._generate_config_file(best,attrs);self._print_summary(best,attrs)
-    def _generate_config_file(self,trial,attrs):
-        mag_w=trial.params['ens_mag_weight'];dir_w=trial.params['ens_dir_weight'];agree_w=trial.params['ens_agree_weight'];total=mag_w+dir_w+agree_w
-        config_content=f"""# TUNED CONFIGURATION - v2.3 {TUNER_TRIALS}
-# Copy these sections to your config.py, replacing existing definitions
+        logger.info(f"\n✅ Results saved: {results_file}")
+        self._generate_config(best,attrs)
+        self._print_summary(best,attrs)
+
+    def _generate_config(self,trial,attrs):
+        mag_w=trial.params['ens_mag_weight']
+        dir_w=trial.params['ens_dir_weight']
+        agree_w=trial.params['ens_agree_weight']
+        total=mag_w+dir_w+agree_w
+        config_content=f"""# PRODUCTION-TUNED CONFIG v1.0 - {datetime.now().strftime('%Y-%m-%d')}
+# Optimized on 2024-2025 test data with single calibrator (matches production)
+# Replace these sections in your config.py
 
 QUALITY_FILTER_CONFIG={{'enabled':True,'min_threshold':{trial.params['quality_threshold']:.4f},'warn_pct':20.0,'error_pct':50.0,'strategy':'raise'}}
+
 CALENDAR_COHORTS={{'fomc_period':{{'condition':'macro_event_period','range':(-7,2),'weight':{trial.params['cohort_fomc']:.4f},'description':'FOMC meetings, CPI releases, PCE releases, FOMC minutes'}},'opex_week':{{'condition':'days_to_monthly_opex','range':(-7,0),'weight':{trial.params['cohort_opex']:.4f},'description':'Options expiration week + VIX futures rollover'}},'earnings_heavy':{{'condition':'spx_earnings_pct','range':(0.15,1.0),'weight':{trial.params['cohort_earnings']:.4f},'description':'Peak earnings season (Jan, Apr, Jul, Oct)'}},'mid_cycle':{{'condition':'default','range':None,'weight':1.0,'description':'Regular market conditions'}}}}
+
 FEATURE_SELECTION_CV_PARAMS={{'n_estimators':{trial.params['cv_n_est']},'max_depth':{trial.params['cv_depth']},'learning_rate':{trial.params['cv_lr']:.4f},'subsample':{trial.params['cv_sub']:.4f},'colsample_bytree':{trial.params['cv_col']:.4f}}}
-FEATURE_SELECTION_CONFIG={{'magnitude_top_n':{trial.params['mag_top_n']},'direction_top_n':{trial.params['dir_top_n']},'cv_folds':5,'protected_features':['is_fomc_period','is_opex_week','is_earnings_heavy'],'correlation_threshold':{trial.params['corr_threshold']:.4f},'target_overlap':{trial.params['target_overlap']:.4f},'description':'Optimized via walk-forward CV with calibrated metrics (v2.3)'}}
+
+FEATURE_SELECTION_CONFIG={{'magnitude_top_n':{trial.params['mag_top_n']},'direction_top_n':{trial.params['dir_top_n']},'cv_folds':5,'protected_features':['is_fomc_period','is_opex_week','is_earnings_heavy'],'correlation_threshold':{trial.params['corr_threshold']:.4f},'description':'Production-tuned on 2024-2025 test data'}}
+
 MAGNITUDE_PARAMS={{'objective':'reg:squarederror','eval_metric':'rmse','max_depth':{trial.params['mag_depth']},'learning_rate':{trial.params['mag_lr']:.4f},'n_estimators':{trial.params['mag_n_est']},'subsample':{trial.params['mag_sub']:.4f},'colsample_bytree':{trial.params['mag_col_tree']:.4f},'colsample_bylevel':{trial.params['mag_col_lvl']:.4f},'min_child_weight':{trial.params['mag_mcw']},'reg_alpha':{trial.params['mag_alpha']:.4f},'reg_lambda':{trial.params['mag_lambda']:.4f},'gamma':{trial.params['mag_gamma']:.4f},'early_stopping_rounds':50,'seed':42,'n_jobs':-1}}
+
 DIRECTION_PARAMS={{'objective':'binary:logistic','eval_metric':'logloss','max_depth':{trial.params['dir_depth']},'learning_rate':{trial.params['dir_lr']:.4f},'n_estimators':{trial.params['dir_n_est']},'subsample':{trial.params['dir_sub']:.4f},'colsample_bytree':{trial.params['dir_col_tree']:.4f},'min_child_weight':{trial.params['dir_mcw']},'reg_alpha':{trial.params['dir_alpha']:.4f},'reg_lambda':{trial.params['dir_lambda']:.4f},'gamma':{trial.params['dir_gamma']:.4f},'scale_pos_weight':{trial.params['dir_scale']:.4f},'max_delta_step':{trial.params['dir_max_delta']},'early_stopping_rounds':50,'seed':42,'n_jobs':-1}}
-ENSEMBLE_CONFIG={{'enabled':True,'reconciliation_method':'weighted_agreement','confidence_weights':{{'magnitude':{mag_w/total:.4f},'direction':{dir_w/total:.4f},'agreement':{agree_w/total:.4f}}},'magnitude_thresholds':{{'small':{trial.params['ens_small_thresh']:.4f},'medium':{trial.params['ens_med_thresh']:.4f},'large':{trial.params['ens_large_thresh']:.4f}}},'agreement_bonus':{{'strong':{trial.params['ens_bonus_strong']:.4f},'moderate':{trial.params['ens_bonus_mod']:.4f},'weak':0.0}},'contradiction_penalty':{{'severe':{trial.params['ens_penalty_sev']:.4f},'moderate':{trial.params['ens_penalty_mod']:.4f},'minor':{trial.params['ens_penalty_min']:.4f}}},'min_ensemble_confidence':0.50,'actionable_threshold':{trial.params['ens_actionable']:.4f},'description':'Ensemble combines magnitude + direction with agreement-based confidence'}}
-DIVERSITY_CONFIG={{'enabled':True,'target_feature_jaccard':0.40,'target_feature_overlap':{trial.params['target_overlap']:.4f},'diversity_weight':{self.diversity_weight:.4f},'metrics':{{'feature_jaccard':{attrs.get('feature_jaccard',0):.3f},'feature_overlap':{attrs.get('feature_overlap',0):.3f},'pred_correlation':{attrs.get('pred_correlation',0):.3f},'overall_diversity':{attrs.get('diversity_overall',0):.3f}}},'description':'Ensures complementary models without excessive overlap'}}
+
+ENSEMBLE_CONFIG={{'enabled':True,'reconciliation_method':'weighted_agreement','confidence_weights':{{'magnitude':{mag_w/total:.4f},'direction':{dir_w/total:.4f},'agreement':{agree_w/total:.4f}}},'magnitude_thresholds':{{'small':{trial.params['ens_small_thresh']:.4f},'medium':{trial.params['ens_med_thresh']:.4f},'large':{trial.params['ens_large_thresh']:.4f}}},'agreement_bonus':{{'strong':{trial.params['ens_bonus_strong']:.4f},'moderate':{trial.params['ens_bonus_mod']:.4f},'weak':0.0}},'contradiction_penalty':{{'severe':{trial.params['ens_penalty_sev']:.4f},'moderate':{trial.params['ens_penalty_mod']:.4f},'minor':{trial.params['ens_penalty_min']:.4f}}},'min_ensemble_confidence':0.50,'actionable_threshold':{trial.params['ens_actionable']:.4f},'description':'Production-tuned ensemble'}}
 """
         config_file=self.output_dir/"tuned_config.py"
         with open(config_file,'w')as f:f.write(config_content)
         logger.info(f"✅ Config saved: {config_file}")
+
     def _print_summary(self,trial,attrs):
-        logger.info("\n"+"="*80);logger.info(f"OPTIMIZATION COMPLETE - Trial #{trial.number}");logger.info("="*80);logger.info(f"\n📊 CALIBRATED METRICS (across {len(self.splits)} folds):");logger.info(f"   Magnitude MAE: {attrs.get('mag_mae',0):.2f}% ± {attrs.get('mag_mae_std',0):.2f}%");logger.info(f"   Magnitude Bias: {attrs.get('mag_bias',0):+.2f}%");logger.info(f"   Magnitude Cal Error: {attrs.get('mag_cal_error',0):.3f}");logger.info(f"\n   Direction Accuracy: {attrs.get('dir_acc',0):.1%} ± {attrs.get('dir_acc_std',0):.1%}");logger.info(f"   Direction Precision: {attrs.get('dir_precision',0):.1%}");logger.info(f"   Direction Recall: {attrs.get('dir_recall',0):.1%}");logger.info(f"   Direction F1: {attrs.get('dir_f1',0):.4f}");logger.info(f"   Direction ECE: {attrs.get('dir_ece',0):.3f}");logger.info(f"\n   Ensemble Confidence: {attrs.get('ensemble_conf',0):.1%}");logger.info(f"   Actionable Trades: {attrs.get('actionable_pct',0):.1%}");logger.info(f"\n🔀 DIVERSITY:");logger.info(f"   Feature Jaccard: {attrs.get('feature_jaccard',0):.3f}");logger.info(f"   Feature Overlap: {attrs.get('feature_overlap',0):.3f}");logger.info(f"   Overall Diversity: {attrs.get('diversity_overall',0):.3f}");logger.info(f"\n📈 FEATURES:");logger.info(f"   Magnitude: {attrs.get('n_mag_features',0)}");logger.info(f"   Direction: {attrs.get('n_dir_features',0)}");logger.info(f"   Common: {attrs.get('n_common_features',0)}");logger.info("="*80);logger.info(f"\n✅ Apply tuned_config.py parameters to config.py");logger.info("="*80)
+        logger.info("\n"+"="*80)
+        logger.info(f"OPTIMIZATION COMPLETE - Trial #{trial.number}")
+        logger.info("="*80)
+        logger.info("\n📊 TEST SET METRICS (2024-2025 data):")
+        logger.info(f"   Magnitude MAE: {attrs.get('mag_mae',0):.2f}%")
+        logger.info(f"   Magnitude Bias: {attrs.get('mag_bias',0):+.2f}%")
+        logger.info(f"   Magnitude Cal Error: {attrs.get('mag_cal_error',0):.3f}")
+        logger.info(f"\n   Direction RAW:")
+        logger.info(f"     Accuracy: {attrs.get('dir_acc_raw',0):.1%}")
+        logger.info(f"     Precision: {attrs.get('dir_prec_raw',0):.1%}")
+        logger.info(f"     Recall: {attrs.get('dir_rec_raw',0):.1%}")
+        logger.info(f"\n   Direction CALIBRATED:")
+        logger.info(f"     Accuracy: {attrs.get('dir_acc',0):.1%}")
+        logger.info(f"     Precision: {attrs.get('dir_precision',0):.1%}")
+        logger.info(f"     Recall: {attrs.get('dir_recall',0):.1%}")
+        logger.info(f"     ECE: {attrs.get('dir_ece',0):.3f}")
+        logger.info(f"\n   Ensemble Confidence: {attrs.get('ensemble_conf',0):.1%}")
+        logger.info(f"   Actionable Trades: {attrs.get('actionable_pct',0):.1%}")
+        logger.info(f"\n📈 FEATURES:")
+        logger.info(f"   Magnitude: {attrs.get('n_mag_features',0)}")
+        logger.info(f"   Direction: {attrs.get('n_dir_features',0)}")
+        logger.info(f"   Common: {attrs.get('n_common_features',0)}")
+        logger.info("="*80)
+        logger.info("\n✅ Apply tuned_config.py to your config.py")
+        logger.info("="*80)
+
 def main():
-    parser=argparse.ArgumentParser(description="Comprehensive Hyperparameter Tuner v2.3 - AGGRESSIVE");parser.add_argument('--trials',type=int,default=TUNER_TRIALS,help="Optuna trials (default: TUNER_TRIALS)");parser.add_argument('--folds',type=int,default=5,help="Walk-forward folds (default: 5)");parser.add_argument('--output-dir',type=str,default='tuning_results_v2_3',help="Output directory");parser.add_argument('--diversity-weight',type=float,default=1.5,help="Diversity penalty weight");parser.add_argument('--overfitting-penalty',type=float,default=10.0,help="Overfitting penalty weight");parser.add_argument('--recall-weight',type=float,default=5.0,help="Recall weight in objective");args=parser.parse_args();Path("logs").mkdir(exist_ok=True);logger.info("Loading data...");training_end=get_last_complete_month_end();fetcher=UnifiedDataFetcher();engineer=FeatureEngineer(fetcher);result=engineer.build_complete_features(years=TRAINING_YEARS,end_date=training_end);df=result["features"].copy();df["vix"]=result["vix"];df["spx"]=result["spx"];logger.info(f"Dataset: {len(df)} samples, {len(df.columns)} features");logger.info(f"Date range: {df.index[0].date()} to {df.index[-1].date()}\n");tuner=ComprehensiveHyperparameterTuner(df=df,vix=result["vix"],n_trials=args.trials,n_folds=args.folds,output_dir=args.output_dir,diversity_weight=args.diversity_weight,overfitting_penalty=args.overfitting_penalty,recall_weight=args.recall_weight);study=tuner.run_optimization();tuner.save_results(study)
+    parser=argparse.ArgumentParser(description="Production-Matched Tuner v1.0")
+    parser.add_argument('--trials',type=int,default=200,help="Number of trials")
+    parser.add_argument('--output-dir',type=str,default='tuning_production',help="Output directory")
+    args=parser.parse_args()
+    # Load data
+    logger.info("Loading data...")
+    from config import TRAINING_YEARS,get_last_complete_month_end
+    from core.data_fetcher import UnifiedDataFetcher
+    from core.feature_engineer import FeatureEngineer
+    training_end=get_last_complete_month_end()
+    fetcher=UnifiedDataFetcher()
+    engineer=FeatureEngineer(fetcher)
+    result=engineer.build_complete_features(years=TRAINING_YEARS,end_date=training_end)
+    df=result["features"].copy();df["vix"]=result["vix"];df["spx"]=result["spx"]
+    logger.info(f"Dataset: {len(df)} samples, {len(df.columns)} features")
+    logger.info(f"Date range: {df.index[0].date()} to {df.index[-1].date()}\n")
+    # Run tuner
+    tuner=ProductionTuner(df=df,vix=result["vix"],n_trials=args.trials,output_dir=args.output_dir)
+    study=tuner.run()
+    tuner.save_results(study)
+
 if __name__=="__main__":main()

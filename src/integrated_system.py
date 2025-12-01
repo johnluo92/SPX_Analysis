@@ -57,7 +57,7 @@ class VIXForecaster:
         return True
     def bootstrap_calibration(self):
         logger.info("🚀 BOOTSTRAPPING CALIBRATION DATA")
-        cal_end=get_last_complete_month_end();cal_end_ts=pd.Timestamp(cal_end);cal_start_ts=cal_end_ts-pd.DateOffset(years=1);cal_start=cal_start_ts.strftime("%Y-%m-%d")
+        cal_end=get_last_complete_month_end();cal_end_ts=pd.Timestamp(cal_end);cal_start_ts=cal_end_ts-pd.DateOffset(CALIBRATION_WINDOW_DAYS);cal_start=cal_start_ts.strftime("%Y-%m-%d")
         logger.info(f"Calibration period: {cal_start} → {cal_end}")
         yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d");feature_data=self.get_features(yesterday,force_historical=False);df=feature_data["features"];df=df[(df.index>=cal_start_ts)&(df.index<=cal_end_ts)]
         logger.info(f"Generating predictions for {len(df)} trading days...")
