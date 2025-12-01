@@ -1,0 +1,112 @@
+{
+  "training_date": "2025-12-01T17:02:56.552968",
+  "test_mode": false,
+  "spike_gate_enabled": false,
+  "feature_stats": {
+    "total_features": 378,
+    "spike_features": 25,
+    "date_range": {
+      "start": "2004-09-13T00:00:00",
+      "end": "2025-12-01T00:00:00",
+      "n_days": 5340
+    }
+  },
+  "anomaly_detector": {
+    "n_samples": 5340,
+    "n_features": 165,
+    "thresholds": {
+      "moderate": -0.38842720464762476,
+      "high": -0.37915352911426026,
+      "critical": -0.3743966445635812
+    }
+  },
+  "spike_gate_stats": {
+    "total_checks": 8,
+    "overrides_executed": 0,
+    "overrides_potential": 8,
+    "by_action": {},
+    "recent_log": [
+      {
+        "timestamp": "2025-12-01T17:02:56.539667",
+        "anomaly_score": 0.9265917602996254,
+        "regime": "Normal",
+        "original_direction": "DOWN",
+        "original_magnitude": -5.0,
+        "would_trigger_action": "OVERRIDE_TO_NEUTRAL",
+        "executed": false
+      },
+      {
+        "timestamp": "2025-12-01T17:02:56.540148",
+        "anomaly_score": 0.9219101123595506,
+        "regime": "Normal",
+        "original_direction": "DOWN",
+        "original_magnitude": -5.0,
+        "would_trigger_action": "OVERRIDE_TO_NEUTRAL",
+        "executed": false
+      },
+      {
+        "timestamp": "2025-12-01T17:02:56.540400",
+        "anomaly_score": 0.9177902621722847,
+        "regime": "Normal",
+        "original_direction": "DOWN",
+        "original_magnitude": -5.0,
+        "would_trigger_action": "OVERRIDE_TO_NEUTRAL",
+        "executed": false
+      },
+      {
+        "timestamp": "2025-12-01T17:02:56.540672",
+        "anomaly_score": 0.95,
+        "regime": "Normal",
+        "original_direction": "DOWN",
+        "original_magnitude": -5.0,
+        "would_trigger_action": "OVERRIDE_TO_UP",
+        "executed": false
+      },
+      {
+        "timestamp": "2025-12-01T17:02:56.540831",
+        "anomaly_score": 0.9483146067415731,
+        "regime": "Normal",
+        "original_direction": "DOWN",
+        "original_magnitude": -5.0,
+        "would_trigger_action": "OVERRIDE_TO_NEUTRAL",
+        "executed": false
+      },
+      {
+        "timestamp": "2025-12-01T17:02:56.540973",
+        "anomaly_score": 0.95,
+        "regime": "Normal",
+        "original_direction": "DOWN",
+        "original_magnitude": -5.0,
+        "would_trigger_action": "OVERRIDE_TO_UP",
+        "executed": false
+      },
+      {
+        "timestamp": "2025-12-01T17:02:56.541108",
+        "anomaly_score": 0.95,
+        "regime": "Normal",
+        "original_direction": "DOWN",
+        "original_magnitude": -5.0,
+        "would_trigger_action": "OVERRIDE_TO_UP",
+        "executed": false
+      },
+      {
+        "timestamp": "2025-12-01T17:02:56.541232",
+        "anomaly_score": 0.95,
+        "regime": "Normal",
+        "original_direction": "DOWN",
+        "original_magnitude": -5.0,
+        "would_trigger_action": "OVERRIDE_TO_UP",
+        "executed": false
+      }
+    ]
+  },
+  "database_stats": {
+    "total_forecasts": 0,
+    "triggered_count": 0,
+    "override_to_up": 0,
+    "override_to_neutral": 0,
+    "boost_confirm": 0,
+    "trigger_rate": 0,
+    "avg_trigger_score": 0
+  }
+}

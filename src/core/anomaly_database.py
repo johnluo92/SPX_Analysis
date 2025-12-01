@@ -11,6 +11,17 @@ class AnomalyDatabaseExtension:
 
     def extend_schema(self):
         logger.info("🔧 Extending schema...")
+
+        # Ensure forecasts table exists first
+        cursor=self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='forecasts'")
+        table_exists=cursor.fetchone()is not None
+
+        if not table_exists:
+            # Create the forecasts table if it doesn't exist
+            create_sql="""CREATE TABLE forecasts (prediction_id TEXT PRIMARY KEY,timestamp DATETIME NOT NULL,observation_date DATE NOT NULL,forecast_date DATE NOT NULL,horizon INTEGER NOT NULL,calendar_cohort TEXT,cohort_weight REAL,prob_up REAL,prob_down REAL,magnitude_forecast REAL,expected_vix REAL,feature_quality REAL,num_features_used INTEGER,current_vix REAL,actual_vix_change REAL,actual_direction INTEGER,direction_correct INTEGER,magnitude_error REAL,correction_type TEXT,features_used TEXT,model_version TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP,direction_probability REAL,direction_prediction TEXT,UNIQUE(forecast_date,horizon))"""
+            self.conn.execute(create_sql);self.conn.commit()
+            logger.info("✅ Created forecasts table")
+
         cursor=self.conn.execute("PRAGMA table_info(forecasts)")
         existing_cols={row[1]for row in cursor.fetchall()}
         new_columns=[('anomaly_score_prior_day','REAL'),('anomaly_alerts_prior_day','INTEGER'),('spike_gate_triggered','BOOLEAN'),('spike_gate_action','TEXT'),('spike_gate_original_direction','TEXT'),('spike_gate_original_magnitude','REAL'),('spike_gate_confidence_boost','REAL')]
