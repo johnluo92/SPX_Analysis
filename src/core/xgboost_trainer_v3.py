@@ -125,7 +125,10 @@ class SimplifiedVIXForecaster:
         from core.spike_gate import SpikeGate
         anomaly_score=None
         if'anomaly_score_prior_day'in X.columns:anomaly_score=float(X['anomaly_score_prior_day'].iloc[0])
-        if not hasattr(self,'spike_gate'):self.spike_gate=SpikeGate()
+        from config import SPIKE_GATE_CONFIG
+        if not hasattr(self,'spike_gate'):
+            mode=SPIKE_GATE_CONFIG['current_mode']
+            self.spike_gate=SpikeGate(mode=mode)
         forecast=self.spike_gate.check_and_override(forecast=forecast,anomaly_score=anomaly_score,current_vix=current_vix,regime=current_regime)
         return forecast
     def _save_models(self,save_dir):
