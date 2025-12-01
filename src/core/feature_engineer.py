@@ -367,7 +367,12 @@ class FeatureEngineer:
         transform_feats={"vix_vol_21d":bf.get("vix_vol_21d"),"spx_realized_vol_21d":bf.get("spx_realized_vol_21d"),"crude_oil_vol_21d":ff.get("crude_oil_vol_21d")if not ff.empty else None,"dxy_vol_21d":ff.get("dxy_vol_21d")if not ff.empty else None,"vix_velocity_5d":bf.get("vix_velocity_5d"),"vix_accel_5d":bf.get("vix_accel_5d"),"spx_gap":bf.get("spx_gap"),"spx_gap_magnitude":bf.get("spx_gap_magnitude")}
         log_transf=self.transformation_engine.add_log_transforms(transform_feats)
         binary_transf=self.transformation_engine.add_binary_extremes(transform_feats)
-        af=pd.concat([bf,cbf,ff,mf,ef,tf,vvf,mtf,intf,vol_cluster_f,credit_vol_f,regime_cond_f,regime_adj_mom,log_transf,binary_transf,calf],axis=1);af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)
+
+        af=pd.concat([bf,cbf,ff,mf,ef,tf,vvf,mtf,intf,vol_cluster_f,credit_vol_f,regime_cond_f,regime_adj_mom,log_transf,binary_transf,calf],axis=1)
+        spike_features=self.add_spike_detection_features(af)
+        af=pd.concat([af,spike_features],axis=1)
+
+        af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)
         self._load_calendar_data();cohd=[{"calendar_cohort":self.get_calendar_cohort(dt)[0],"cohort_weight":self.get_calendar_cohort(dt)[1]} for dt in af.index];cohdf=pd.DataFrame(cohd,index=af.index);cohdf["is_fomc_period"]=(cohdf["calendar_cohort"]=="fomc_period").astype(int);cohdf["is_opex_week"]=(cohdf["calendar_cohort"]=="opex_week").astype(int);cohdf["is_earnings_heavy"]=(cohdf["calendar_cohort"]=="earnings_heavy").astype(int);af=pd.concat([af,cohdf],axis=1)
         af["feature_quality"]=self.validator.compute_feature_quality_batch(af);af=self.apply_quality_control(af)
         if ENABLE_TEMPORAL_SAFETY and not cb.empty:self._validate_term_structure_timing(vix,cb)
@@ -531,6 +536,62 @@ class FeatureEngineer:
         return pd.concat([yahoo_feats,fred_feats],axis=1) if not yahoo_feats.empty or not fred_feats.empty else pd.DataFrame(index=idx)
     def _build_meta_features(self,cmb:pd.DataFrame,spx:pd.Series,vix:pd.Series,md:pd.DataFrame)->pd.DataFrame:
         return pd.concat([self.meta_engine.extract_regime_indicators(cmb,vix,spx),self.meta_engine.extract_cross_asset_relationships(cmb,md),self.meta_engine.extract_rate_of_change_features(cmb),self.meta_engine.extract_percentile_rankings(cmb)],axis=1)
+    def add_spike_detection_features(self,df):
+        f=pd.DataFrame(index=df.index)
+        # VIX acceleration
+        if'vix_velocity_5d'in df.columns:
+            f['vix_accel_5d']=df['vix_velocity_5d'].diff(5)
+            f['vix_accel_21d']=df['vix_velocity_5d'].diff(21)if'vix_velocity_21d'in df.columns else df['vix_velocity_5d'].diff(21)
+            f['vix_jerk_5d']=f['vix_accel_5d'].diff(5)
+            if'vix_velocity_21d'in df.columns:f['vix_velocity_ratio_5d_21d']=df['vix_velocity_5d']/df['vix_velocity_21d'].replace(0,np.nan)
+        # VVIX velocity
+        if'vvix'in df.columns and not df['vvix'].isna().all():
+            vvix=df['vvix']
+            f['vvix_velocity_5d']=vvix.diff(5);f['vvix_velocity_21d']=vvix.diff(21);f['vvix_accel_5d']=f['vvix_velocity_5d'].diff(5)
+            if'vvix_percentile_63d'in df.columns:f['vvix_percentile_velocity']=df['vvix_percentile_63d'].diff(5)
+        # Term structure velocity
+        if'VX1-VX2'in df.columns:
+            vx_spread=df['VX1-VX2']
+            f['vx_contango_velocity']=vx_spread.diff(5);f['vx_contango_accel']=f['vx_contango_velocity'].diff(5)
+            f['vx_term_velocity_pct']=vx_spread.pct_change(5)*100
+        if'vix1m_vix3m_ratio'in df.columns:f['vix_term_slope_velocity']=df['vix1m_vix3m_ratio'].diff(5)
+        # Credit stress velocity
+        if'hy_spread'in df.columns:
+            hy=df['hy_spread']
+            f['hy_oas_velocity_5d']=hy.diff(5);f['hy_oas_velocity_21d']=hy.diff(21)
+            f['hy_oas_accel_5d']=f['hy_oas_velocity_5d'].diff(5);f['hy_oas_vol_21d']=hy.diff().rolling(21).std()*np.sqrt(252)
+        # Cross-asset velocity
+        if all(c in df.columns for c in['vix','spx_realized_vol_21d']):
+            rp=df['vix']-df['spx_realized_vol_21d']
+            f['rv_iv_spread_velocity']=rp.diff(5);f['rv_iv_spread_accel']=f['rv_iv_spread_velocity'].diff(5)
+        if'SKEW'in df.columns:
+            f['skew_velocity_5d']=df['SKEW'].diff(5);f['skew_velocity_21d']=df['SKEW'].diff(21);f['skew_accel_5d']=f['skew_velocity_5d'].diff(5)
+        if'VXTLT'in df.columns:f['vxtlt_velocity_5d']=df['VXTLT'].diff(5);f['vxtlt_accel_5d']=f['vxtlt_velocity_5d'].diff(5)
+        # Regime transitions
+        if'vix_regime'in df.columns:
+            regime_changes=(df['vix_regime'].diff().fillna(0)!=0).astype(int)
+            f['regime_transitions_21d']=regime_changes.rolling(21).sum()
+        if'days_in_regime'in df.columns:f['days_in_regime_inverse']=1.0/(df['days_in_regime']+1)
+        if'regime_expected_return_5d'in df.columns and'vix'in df.columns:
+            vix_change_5d=df['vix'].pct_change(5)*100
+            f['regime_expected_return_deviation']=vix_change_5d-df['regime_expected_return_5d']
+        # Composite indicators
+        velocity_cols=[c for c in f.columns if'velocity'in c and'_5d'in c]
+        if velocity_cols:
+            velocity_z=pd.DataFrame()
+            for col in velocity_cols:velocity_z[col]=(f[col]-f[col].rolling(63).mean())/f[col].rolling(63).std().replace(0,np.nan)
+            f['velocity_stress_composite']=velocity_z.abs().mean(axis=1)
+        accel_cols=[c for c in f.columns if'accel'in c and'_5d'in c]
+        if accel_cols:
+            accel_z=pd.DataFrame()
+            for col in accel_cols:accel_z[col]=(f[col]-f[col].rolling(63).mean())/f[col].rolling(63).std().replace(0,np.nan)
+            f['acceleration_stress_composite']=accel_z.abs().mean(axis=1)
+        if'vx_contango_velocity'in f.columns and'vix_term_slope_velocity'in f.columns:
+            ts_stress=[]
+            if'vx_contango_velocity'in f.columns:ts_stress.append((f['vx_contango_velocity']<0).astype(int))
+            if'vix_term_slope_velocity'in f.columns:ts_stress.append((f['vix_term_slope_velocity']<0).astype(int))
+            if ts_stress:f['term_structure_stress']=pd.DataFrame(ts_stress).T.sum(axis=1)
+        return f
     def _build_calendar_features(self,idx:pd.DatetimeIndex)->pd.DataFrame:
         return pd.DataFrame({"month":idx.month,"day_of_week":idx.dayofweek,"day_of_month":idx.day},index=idx)
     def _ensure_numeric_dtypes(self,df:pd.DataFrame)->pd.DataFrame:
