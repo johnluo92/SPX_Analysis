@@ -1,5 +1,5 @@
 {
-  "training_date": "2025-12-01T18:45:29.666133",
+  "training_date": "2025-12-01T17:02:56.552968",
   "test_mode": false,
   "spike_gate_enabled": false,
   "feature_stats": {
@@ -27,7 +27,7 @@
     "by_action": {},
     "recent_log": [
       {
-        "timestamp": "2025-12-01T18:45:29.651668",
+        "timestamp": "2025-12-01T17:02:56.539667",
         "anomaly_score": 0.9265917602996254,
         "regime": "Normal",
         "original_direction": "DOWN",
@@ -36,7 +36,7 @@
         "executed": false
       },
       {
-        "timestamp": "2025-12-01T18:45:29.652243",
+        "timestamp": "2025-12-01T17:02:56.540148",
         "anomaly_score": 0.9219101123595506,
         "regime": "Normal",
         "original_direction": "DOWN",
@@ -45,7 +45,7 @@
         "executed": false
       },
       {
-        "timestamp": "2025-12-01T18:45:29.652404",
+        "timestamp": "2025-12-01T17:02:56.540400",
         "anomaly_score": 0.9177902621722847,
         "regime": "Normal",
         "original_direction": "DOWN",
@@ -54,7 +54,7 @@
         "executed": false
       },
       {
-        "timestamp": "2025-12-01T18:45:29.652646",
+        "timestamp": "2025-12-01T17:02:56.540672",
         "anomaly_score": 0.95,
         "regime": "Normal",
         "original_direction": "DOWN",
@@ -63,7 +63,7 @@
         "executed": false
       },
       {
-        "timestamp": "2025-12-01T18:45:29.652792",
+        "timestamp": "2025-12-01T17:02:56.540831",
         "anomaly_score": 0.9483146067415731,
         "regime": "Normal",
         "original_direction": "DOWN",
@@ -72,7 +72,7 @@
         "executed": false
       },
       {
-        "timestamp": "2025-12-01T18:45:29.652936",
+        "timestamp": "2025-12-01T17:02:56.540973",
         "anomaly_score": 0.95,
         "regime": "Normal",
         "original_direction": "DOWN",
@@ -81,7 +81,7 @@
         "executed": false
       },
       {
-        "timestamp": "2025-12-01T18:45:29.653068",
+        "timestamp": "2025-12-01T17:02:56.541108",
         "anomaly_score": 0.95,
         "regime": "Normal",
         "original_direction": "DOWN",
@@ -90,7 +90,7 @@
         "executed": false
       },
       {
-        "timestamp": "2025-12-01T18:45:29.653199",
+        "timestamp": "2025-12-01T17:02:56.541232",
         "anomaly_score": 0.95,
         "regime": "Normal",
         "original_direction": "DOWN",
