@@ -1,9 +1,0 @@
-{
-  "threshold": 0.9269,
-  "total_features_before": 111,
-  "features_removed": 1,
-  "features_kept": 110,
-  "removed_features": [
-    "risk_premium_percentile_126d"
-  ]
-}

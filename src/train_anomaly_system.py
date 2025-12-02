@@ -13,23 +13,6 @@ Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(level=logging.INFO,format='%(asctime)s - %(message)s',handlers=[logging.StreamHandler(sys.stdout),logging.FileHandler('logs/anomaly_training.log')])
 logger=logging.getLogger(__name__)
 
-def convert_to_json_serializable(obj):
-    """Recursively convert non-serializable objects to JSON-compatible format"""
-    if isinstance(obj,dict):
-        return {k:convert_to_json_serializable(v)for k,v in obj.items()}
-    elif isinstance(obj,list):
-        return [convert_to_json_serializable(item)for item in obj]
-    elif isinstance(obj,(pd.Timestamp,datetime)):
-        return obj.isoformat()
-    elif isinstance(obj,(np.integer,np.int64)):
-        return int(obj)
-    elif isinstance(obj,(np.floating,np.float64)):
-        return float(obj)
-    elif pd.isna(obj):
-        return None
-    else:
-        return obj
-
 def main():
     parser=argparse.ArgumentParser(description="Train anomaly detection system")
     parser.add_argument('--test-only',action='store_true',help="Test on 2yr data")
@@ -40,10 +23,10 @@ def main():
     logger.info(f"Started: {datetime.now():%Y-%m-%d %H:%M:%S}")
     logger.info(f"Test Mode: {args.test_only} | Spike Gate: {'ENABLED'if args.enable_spike_gate else'SAFE'}")
     Path("models").mkdir(exist_ok=True);Path("data_cache").mkdir(exist_ok=True)
-
+    
     logger.info("\n"+"="*80);logger.info("STEP 1: EXTENDING DATABASE");logger.info("="*80)
     db_ext=AnomalyDatabaseExtension();db_ext.extend_schema()
-
+    
     logger.info("\n"+"="*80);logger.info("STEP 2: BUILDING FEATURES");logger.info("="*80)
     data_fetcher=UnifiedDataFetcher();feature_engine=FeatureEngineer(data_fetcher=data_fetcher)
     if args.test_only:
@@ -58,7 +41,7 @@ def main():
     spike_features=feature_engine.add_spike_detection_features(df)
     df=pd.concat([df,spike_features],axis=1)
     logger.info(f"Added {len(spike_features.columns)} spike features → Total: {len(df.columns)}")
-
+    
     logger.info("\n"+"="*80);logger.info("STEP 3: TRAINING DETECTOR");logger.info("="*80)
     anomaly_scorer=EODAnomalyScorer()
     keywords=['velocity','accel','jerk','_ratio','stress','divergence','transition','regime','percentile_velocity']
@@ -66,7 +49,7 @@ def main():
     logger.info(f"Selected {len(selected_features)} velocity features")
     training_stats=anomaly_scorer.train(df,feature_subset=selected_features)
     anomaly_scorer.save("models");logger.info("✅ Saved detector")
-
+    
     logger.info("\n"+"="*80);logger.info("STEP 4: CALCULATING SCORES");logger.info("="*80)
     if not args.skip_backfill:
         anomaly_results=anomaly_scorer.calculate_scores_batch(df)
@@ -78,7 +61,7 @@ def main():
         logger.info(f"  Max: {anomaly_results['anomaly_score'].max():.4f}")
         logger.info(f"  High/Critical: {len(high_anomaly)} days ({len(high_anomaly)/len(anomaly_results)*100:.1f}%)")
     else:logger.info("⚠️  Skipped backfill")
-
+    
     logger.info("\n"+"="*80);logger.info("STEP 5: TESTING SPIKE GATE");logger.info("="*80)
     mode='moderate'if args.enable_spike_gate else'safe'
     spike_gate=SpikeGate(mode=mode)
@@ -93,7 +76,7 @@ def main():
             logger.info(f"  {date.date()}: {result['spike_gate_action']} (score={score:.3f}, {mock['direction']}→{result['direction']})")
     stats=spike_gate.get_override_stats()
     logger.info(f"\n📊 Spike Gate: {stats['total_checks']} checks, {stats['overrides_executed']} executed, {stats['overrides_potential']} potential")
-
+    
     logger.info("\n"+"="*80);logger.info("STEP 6: VALIDATION (2024-2025)");logger.info("="*80)
     test_data=df[df.index>='2024-01-01']
     if len(test_data)==0:logger.warning("⚠️  No 2024-2025 data")
@@ -108,13 +91,9 @@ def main():
             high_before_spike=(spike_anomalies>0.85).sum()
             logger.info(f"  High anomaly before spike: {high_before_spike} ({high_before_spike/len(spikes)*100:.1f}%)")
             logger.info(f"\n🎯 Improvement: Baseline 3.4% → With anomaly {high_before_spike/len(spikes)*100:.1f}%")
-
+    
     logger.info("\n"+"="*80);logger.info("STEP 7: GENERATING REPORT");logger.info("="*80)
     report={'training_date':datetime.now().isoformat(),'test_mode':args.test_only,'spike_gate_enabled':args.enable_spike_gate,'feature_stats':{'total_features':len(df.columns),'spike_features':len(spike_features.columns),'date_range':{'start':df.index[0].isoformat(),'end':df.index[-1].isoformat(),'n_days':len(df)}},'anomaly_detector':training_stats,'spike_gate_stats':spike_gate.get_override_stats(),'database_stats':db_ext.get_spike_gate_stats()if not args.skip_backfill else{}}
-
-    # Convert all non-serializable objects
-    report=convert_to_json_serializable(report)
-
     with open('models/anomaly_integration_report.json','w')as f:json.dump(report,f,indent=2)
     logger.info("✅ Saved report")
     db_ext.close()

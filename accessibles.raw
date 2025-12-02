@@ -35,30 +35,6 @@ Root src Files
 18.) https://raw.githubusercontent.com/johnluo92/SPX_Analysis/6fac3da/src/core/anomaly_detector.py
 
 
-
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/anomaly_database.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/anomaly_eod.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/calculations.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/data_fetcher.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/feature_correlation_analyzer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/feature_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/forecast_calibrator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/prediction_database.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/regime_classifier.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/spike_gate.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/target_calculator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/temporal_validator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/vx_continuous_contract_builder.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/vx_futures_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/xgboost_feature_selector_v2.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/xgboost_trainer_v3.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/comprehensive_hyperparameter_tuner.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/config.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/integrated_system.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/train_anomaly_system.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/train_probabilistic_models.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/50a23fa/src/core/anomaly_detector.py
-
 are these two files functionally/logically the same? i compressed/minified the larger file and want to double check. I intentionally removed almost all white spaces/comments/ and compressed everything without molesting the logic. please confirm.
 ---------------------------------------------------------------------------------
 
