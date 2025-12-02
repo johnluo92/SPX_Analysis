@@ -4,22 +4,22 @@
   "features_removed": 17,
   "features_kept": 93,
   "removed_features": [
-    "days_in_regime",
     "hy_ccc_spread",
-    "credit_quality_spread",
-    "risk_premium_percentile_126d",
-    "hy_b_spread",
-    "vvix_ret_10d",
-    "risk_premium_percentile_63d",
     "10y_vol_63d",
-    "yield_5y2y",
+    "credit_quality_spread",
+    "vx_momentum_5d",
+    "hy_ccc_velocity_21d",
+    "hy_b_velocity_21d",
+    "risk_premium_percentile_126d",
+    "hy_bb_spread",
     "hy_bb_velocity_21d",
     "macd_signal",
-    "vx_momentum_5d",
+    "yield_5y2y",
     "yield_curve_vol_avg",
-    "hy_ccc_velocity_21d",
-    "hy_bb_spread",
     "yield_10y2y",
-    "hy_b_velocity_21d"
+    "days_in_regime",
+    "risk_premium_percentile_63d",
+    "hy_b_spread",
+    "vvix_ret_10d"
   ]
 }

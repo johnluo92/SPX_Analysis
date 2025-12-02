@@ -59,17 +59,12 @@ FEATURE_SELECTION_CV_PARAMS={'n_estimators':207,'max_depth':3,'learning_rate':0.
 
 FEATURE_SELECTION_CONFIG={'expansion_top_n':110,'compression_top_n':105,'up_top_n':115,'down_top_n':120,'cv_folds':5,'protected_features':['is_fomc_period','is_opex_week','is_earnings_heavy'],'correlation_threshold':0.9269,'description':'Asymmetric 4-model feature selection'}
 
-# Expansion regressor - trained on UP samples only
 EXPANSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.0629,'n_estimators':603,'subsample':0.8751,'colsample_bytree':0.9252,'colsample_bylevel':0.9207,'min_child_weight':6,'reg_alpha':5.5318,'reg_lambda':5.8986,'gamma':0.1283,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
 
-# Compression regressor - trained on DOWN samples only
 COMPRESSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.0580,'n_estimators':620,'subsample':0.8900,'colsample_bytree':0.9100,'colsample_bylevel':0.9000,'min_child_weight':5,'reg_alpha':4.8000,'reg_lambda':6.2000,'gamma':0.1500,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
 
-# UP classifier - optimized for UP recall (catching spikes)
 UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':8,'learning_rate':0.0677,'n_estimators':478,'subsample':0.9493,'colsample_bytree':0.8408,'min_child_weight':11,'reg_alpha':2.6824,'reg_lambda':6.2968,'gamma':0.4012,'scale_pos_weight':1.0,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
 
-# DOWN classifier - optimized for DOWN recall (mean reversion)
 DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':7,'learning_rate':0.0650,'n_estimators':490,'subsample':0.9300,'colsample_bytree':0.8500,'min_child_weight':10,'reg_alpha':2.5000,'reg_lambda':6.0000,'gamma':0.3800,'scale_pos_weight':1.0,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
 
-# Asymmetric ensemble - winner-takes-all with lowered dynamic thresholds
-ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','confidence_weights':{'classifier':0.65,'magnitude':0.35},'magnitude_scaling':{'small':3.5,'medium':6.0,'large':12.0},'dynamic_thresholds':{'up':{'high_magnitude':0.50,'medium_magnitude':0.52,'low_magnitude':0.55},'down':{'high_magnitude':0.55,'medium_magnitude':0.58,'low_magnitude':0.60}},'min_ensemble_confidence':0.50,'description':'Winner-takes-all ensemble with lowered thresholds (was 0.55-0.67, now 0.50-0.60)'}
+ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','confidence_weights':{'classifier':0.65,'magnitude':0.35},'magnitude_scaling':{'small':3.5,'medium':6.0,'large':12.0},'dynamic_thresholds':{'up':{'high_magnitude':0.50,'medium_magnitude':0.52,'low_magnitude':0.55},'down':{'high_magnitude':0.55,'medium_magnitude':0.58,'low_magnitude':0.60}},'min_ensemble_confidence':0.50,'confidence_boost_threshold':15.0,'confidence_boost_amount':0.05,'description':'Winner-takes-all ensemble with confidence boost for strong signals (>15%)'}

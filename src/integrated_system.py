@@ -118,24 +118,17 @@ class VIXForecaster:
     def _generate_forecast_from_df(self,date,df,calibrated=False):
         if date not in df.index: return None
         obs=df.loc[date]
-
-        # Check all 4 feature sets
         all_features=set(self.forecaster.expansion_features+self.forecaster.compression_features+self.forecaster.up_features+self.forecaster.down_features)
         missing=[f for f in all_features if f not in df.columns]
         if missing: logger.warning(f"Missing features: {len(missing)}"); return None
-
-        # Prepare feature matrices
         exp_vals=obs[self.forecaster.expansion_features]
         comp_vals=obs[self.forecaster.compression_features]
         up_vals=obs[self.forecaster.up_features]
         down_vals=obs[self.forecaster.down_features]
-
         X_exp=pd.DataFrame(pd.to_numeric(exp_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.expansion_features,dtype=np.float64).fillna(0.0)
         X_comp=pd.DataFrame(pd.to_numeric(comp_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.compression_features,dtype=np.float64).fillna(0.0)
         X_up=pd.DataFrame(pd.to_numeric(up_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.up_features,dtype=np.float64).fillna(0.0)
         X_down=pd.DataFrame(pd.to_numeric(down_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.down_features,dtype=np.float64).fillna(0.0)
-
-        # Combine all features into single dataframe
         X=pd.DataFrame(index=[0])
         for col in self.forecaster.expansion_features: X[col]=X_exp[col].values
         for col in self.forecaster.compression_features:
@@ -144,18 +137,14 @@ class VIXForecaster:
             if col not in X.columns: X[col]=X_up[col].values
         for col in self.forecaster.down_features:
             if col not in X.columns: X[col]=X_down[col].values
-
         current_vix=float(obs["vix"]); cohort=obs.get("calendar_cohort","mid_cycle")
         forecast=self.forecaster.predict(X,current_vix)
-
-        # Apply calibration if available
         if calibrated and self.calibrator.fitted:
             cal_result=self.calibrator.calibrate(forecast["magnitude_pct"],current_vix,cohort)
             forecast["magnitude_pct"]=cal_result["calibrated_forecast"]
             forecast["expected_vix"]=current_vix*(1+forecast["magnitude_pct"]/100)
             forecast["calibration"]=cal_result
         else: forecast["calibration"]={"correction_type":"not_fitted","adjustment":0.0}
-
         self._store_forecast(forecast,obs,date,calibrated=calibrated)
         return forecast
 
@@ -168,18 +157,14 @@ class VIXForecaster:
         usable,msg=self.validator.check_quality_threshold(quality)
         if not usable: logger.error(f"❌ Quality insufficient: {quality:.2f}"); return None
         cohort=obs.get("calendar_cohort","mid_cycle"); cohort_weight=obs.get("cohort_weight",1.0)
-
-        # Prepare all 4 feature sets
         exp_vals=obs[self.forecaster.expansion_features]
         comp_vals=obs[self.forecaster.compression_features]
         up_vals=obs[self.forecaster.up_features]
         down_vals=obs[self.forecaster.down_features]
-
         X_exp=pd.DataFrame(pd.to_numeric(exp_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.expansion_features,dtype=np.float64).fillna(0.0)
         X_comp=pd.DataFrame(pd.to_numeric(comp_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.compression_features,dtype=np.float64).fillna(0.0)
         X_up=pd.DataFrame(pd.to_numeric(up_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.up_features,dtype=np.float64).fillna(0.0)
         X_down=pd.DataFrame(pd.to_numeric(down_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.down_features,dtype=np.float64).fillna(0.0)
-
         X=pd.DataFrame(index=[0])
         for col in self.forecaster.expansion_features: X[col]=X_exp[col].values
         for col in self.forecaster.compression_features:
@@ -188,19 +173,15 @@ class VIXForecaster:
             if col not in X.columns: X[col]=X_up[col].values
         for col in self.forecaster.down_features:
             if col not in X.columns: X[col]=X_down[col].values
-
         current_vix=float(obs["vix"]); forecast=self.forecaster.predict(X,current_vix)
-
         if self.calibrator.fitted:
             cal_result=self.calibrator.calibrate(forecast["magnitude_pct"],current_vix,cohort)
             forecast["magnitude_pct"]=cal_result["calibrated_forecast"]
             forecast["expected_vix"]=current_vix*(1+forecast["magnitude_pct"]/100)
             forecast["calibration"]=cal_result
         else: forecast["calibration"]={"correction_type":"not_fitted","adjustment":0.0}
-
         forecast_date=target_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
         forecast["metadata"]={**{"observation_date":target_date.strftime("%Y-%m-%d"),"forecast_date":forecast_date.strftime("%Y-%m-%d"),"horizon_days":TARGET_CONFIG["horizon_days"],"feature_quality":float(quality),"cohort_weight":float(cohort_weight),"calendar_cohort":cohort,"features_used":len(set(self.forecaster.expansion_features+self.forecaster.compression_features+self.forecaster.up_features+self.forecaster.down_features))}}
-
         self._store_forecast(forecast,obs,target_date,calibrated=self.calibrator.fitted)
         return forecast
 
@@ -208,54 +189,58 @@ class VIXForecaster:
         forecast_date=obs_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
         pred_id=f"pred_{forecast_date.strftime('%Y%m%d')}_h{TARGET_CONFIG['horizon_days']}"
         correction_type="calibrated"if calibrated else"not_fitted"
-
         pred={"prediction_id":pred_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":obs_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(obs["vix"]),"calendar_cohort":obs.get("calendar_cohort","mid_cycle"),"cohort_weight":float(obs.get("cohort_weight",1.0)),"prob_up":float(forecast["p_up"]),"prob_down":float(forecast["p_down"]),"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast.get("metadata",{}).get("feature_quality",1.0)),"num_features_used":forecast.get("metadata",{}).get("features_used",0),"correction_type":correction_type,"features_used":"","model_version":"v6.0_asymmetric","direction_probability":forecast.get("direction_probability",0.5),"direction_prediction":forecast.get("direction","UNKNOWN"),"direction_correct":None}
-
         self.db.store_prediction(pred); self.db.commit()
 
     def print_enhanced_forecast(self,forecast,cohort):
         logger.info("\n"+"="*80)
         logger.info("📊 ASYMMETRIC 4-MODEL FORECAST")
-
         logger.info(f"\n🎯 CURRENT STATE:")
         logger.info(f"   VIX Level: {forecast['current_vix']:.2f}")
         logger.info(f"   Regime: {forecast['current_regime']}")
         logger.info(f"   Market Cohort: {cohort}")
         logger.info(f"   Cohort Weight: {forecast.get('metadata',{}).get('cohort_weight',1.0):.2f}x")
         logger.info(f"   Feature Quality: {forecast.get('metadata',{}).get('feature_quality',1.0):.1%}")
-
         logger.info(f"\n🔺 EXPANSION MODEL (UP domain):")
-        logger.info(f"   Forecast: {forecast['expansion_magnitude']:+.2f}%")
+        logger.info(f"   Raw Prediction: {forecast['expansion_magnitude']:+.2f}%")
         logger.info(f"   Expected VIX: {forecast['current_vix']*(1+forecast['expansion_magnitude']/100):.2f}")
-
         logger.info(f"\n🔻 COMPRESSION MODEL (DOWN domain):")
-        logger.info(f"   Forecast: {forecast['compression_magnitude']:+.2f}%")
+        logger.info(f"   Raw Prediction: {forecast['compression_magnitude']:+.2f}%")
         logger.info(f"   Expected VIX: {forecast['current_vix']*(1+forecast['compression_magnitude']/100):.2f}")
-
         logger.info(f"\n🎲 DIRECTION CLASSIFIERS:")
         logger.info(f"   P(UP): {forecast['p_up']:.1%}")
         logger.info(f"   P(DOWN): {forecast['p_down']:.1%}")
-        logger.info(f"   Primary: {forecast['direction']}")
+        winner="UP"if forecast['p_up']>forecast['p_down']else"DOWN"
+        winner_prob=max(forecast['p_up'],forecast['p_down'])
+        logger.info(f"   Winner: {winner} ({winner_prob:.1%} probability)")
         if self.forecaster.calibration_enabled:
-            logger.info(f"   Calibration: {'✓ ENABLED'if self.forecaster.up_calibrator is not None else'✗ NOT FITTED'}")
-
-        logger.info(f"\n🎯 ENSEMBLE:")
+            cal_status="✓ DOWN ONLY"if self.forecaster.skip_up_calibration else"✓ ENABLED"
+            logger.info(f"   Calibration: {cal_status}")
+        logger.info(f"\n🎯 ENSEMBLE (Winner-Takes-All):")
+        raw_winner_mag=forecast['expansion_magnitude']if winner=="UP"else forecast['compression_magnitude']
+        logger.info(f"   Raw Winner Magnitude: {raw_winner_mag:+.2f}%")
+        if forecast.get('calibration',{}).get('correction_type')!='not_fitted':
+            logger.info(f"   Calibration Adjustment: {forecast['calibration']['adjustment']:+.3f}%")
         logger.info(f"   Final Magnitude: {forecast['magnitude_pct']:+.2f}%")
         logger.info(f"   Expected VIX: {forecast['expected_vix']:.2f}")
-        logger.info(f"   Confidence: {forecast['direction_confidence']:.1%}")
-        logger.info(f"   Actionable: {'✓ YES'if forecast['actionable']else'✗ NO'} (threshold: {forecast['actionable_threshold']:.0%})")
-        if forecast.get('calibration',{}).get('correction_type')!='not_fitted':
-            logger.info(f"   Calibration Adj: {forecast['calibration']['adjustment']:+.3f}% ({forecast['calibration']['correction_type']})")
-
+        logger.info(f"   Ensemble Confidence: {forecast['direction_confidence']:.1%}")
+        logger.info(f"   Dynamic Threshold: {forecast['actionable_threshold']:.1%}")
+        if forecast['actionable']: logger.info(f"   ✓ ACTIONABLE")
+        else: logger.info(f"   ✗ NOT ACTIONABLE")
         logger.info(f"\n🏛️  REGIME FORECAST:")
         logger.info(f"   Current: {forecast['current_regime']}")
         logger.info(f"   Expected: {forecast['expected_regime']}")
         if forecast['regime_change']: logger.info(f"   ⚠️  REGIME CHANGE EXPECTED")
         else: logger.info(f"   ✓ Staying in current regime")
-
         logger.info(f"\n{'='*80}")
         summary_color="🟢"if forecast['actionable']else"🟡"
-        logger.info(f"{summary_color} SUMMARY: {forecast['direction']} {abs(forecast['magnitude_pct']):.1f}% | Confidence: {forecast['direction_confidence']:.0%} | {'Actionable'if forecast['actionable']else'Not Actionable'}")
+        if forecast['magnitude_pct']>0: summary_dir="UP"
+        else: summary_dir="DOWN"
+        abs_mag=abs(forecast['magnitude_pct'])
+        summary_text=f"{summary_color} SUMMARY: {summary_dir} {abs_mag:.1f}% | "
+        summary_text+=f"Confidence: {forecast['direction_confidence']:.0%} | "
+        summary_text+=f"{'Actionable'if forecast['actionable']else'Not Actionable'}"
+        logger.info(summary_text)
         logger.info("="*80+"\n")
 
 def main():
@@ -264,16 +249,12 @@ def main():
     parser.add_argument("--force-bootstrap",action="store_true")
     parser.add_argument("--rebuild-calibration",action="store_true")
     args=parser.parse_args()
-
     Path("logs").mkdir(exist_ok=True); Path("models").mkdir(exist_ok=True)
     logger.info(f"VIX FORECASTING SYSTEM v6.0 (Asymmetric) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
     stale,reason=check_model_stale(); logger.info(f"Model: {reason}")
     if stale or args.force_retrain:
         if not retrain_model(): sys.exit(1)
-
     forecaster=VIXForecaster()
-
     if forecaster.needs_calibration_bootstrap()or args.force_bootstrap:
         logger.info("⚠️  Calibration data missing - bootstrapping...")
         forecaster.bootstrap_calibration()
@@ -292,12 +273,10 @@ def main():
         cal=ForecastCalibrator(); result=cal.fit_from_database(forecaster.db)
         if result: cal.save("models"); forecaster.calibrator=cal; logger.info("✅ Calibrator refitted")
         else: logger.warning("⚠️  Calibrator fitting failed")
-
     yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     feature_data=forecaster.get_features(yesterday,force_historical=False)
     df=feature_data["features"]; latest_available=df.index[-1].strftime("%Y-%m-%d")
     forecast=forecaster.generate_forecast(latest_available,df=df)
-
     if forecast:
         cohort=forecast.get('metadata',{}).get('calendar_cohort','unknown')
         forecaster.print_enhanced_forecast(forecast,cohort)

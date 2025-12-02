@@ -4,15 +4,15 @@
   "features_removed": 10,
   "features_kept": 105,
   "removed_features": [
-    "days_in_regime",
-    "risk_premium_percentile_126d",
-    "hy_b_spread",
-    "yield_curve_vol_avg_fred",
-    "vix_ret_5d",
+    "vix_z_spx_rv_product",
     "30y_vol_63d",
     "vvix_velocity_21d",
     "vix_zscore_21d",
+    "yield_curve_vol_avg_fred",
+    "risk_premium_percentile_126d",
+    "days_in_regime",
     "risk_premium_percentile_63d",
-    "vix_z_spx_rv_product"
+    "vix_ret_5d",
+    "hy_b_spread"
   ]
 }
