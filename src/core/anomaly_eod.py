@@ -12,7 +12,7 @@ class EODAnomalyScorer:
         self.contamination=contamination;self.n_estimators=n_estimators;self.random_state=random_state
         self.detector=None;self.scaler=None;self.feature_names=None
         self.training_distribution=None;self.statistical_thresholds=None;self.feature_importance=None;self.trained=False
-
+    
     def train(self,features,feature_subset=None):
         logger.info("🎯 TRAINING EOD ANOMALY DETECTOR")
         if feature_subset is None:feature_subset=self._auto_select_spike_features(features)
@@ -33,14 +33,14 @@ class EODAnomalyScorer:
         self.feature_importance=self._calculate_feature_importance(X_scaled,training_scores)
         self.trained=True
         return {'n_samples':len(X),'n_features':len(valid_features),'thresholds':self.statistical_thresholds}
-
+    
     def calculate_score(self,features):
         if not self.trained:raise ValueError("Not trained")
         X=features[self.feature_names].fillna(0);X_scaled=self.scaler.transform(X)
         raw_score=self.detector.score_samples(X_scaled)[0]
         percentile_score=self._raw_to_percentile(raw_score);level=self._classify_level(percentile_score)
         return {'anomaly_score':float(percentile_score),'raw_score':float(raw_score),'level':level,'percentile':float(percentile_score*100)}
-
+    
     def calculate_scores_batch(self,features):
         if not self.trained:raise ValueError("Not trained")
         logger.info(f"Calculating scores for {len(features)} observations...")
@@ -51,7 +51,7 @@ class EODAnomalyScorer:
         result=pd.DataFrame({'anomaly_score':percentile_scores,'anomaly_level':levels},index=features.index)
         logger.info(f"Mean={percentile_scores.mean():.4f} Max={percentile_scores.max():.4f}")
         return result
-
+    
     def _auto_select_spike_features(self,features):
         keywords=['velocity','accel','jerk','ratio','stress','divergence','transition','regime','percentile_velocity']
         selected=[col for col in features.columns if any(kw in col.lower()for kw in keywords)]
@@ -59,38 +59,31 @@ class EODAnomalyScorer:
         for f in core:
             if f in features.columns and f not in selected:selected.append(f)
         return selected
-
+    
     def _validate_features(self,features,feature_list):
         valid=[]
         for feat in feature_list:
             if feat not in features.columns:continue
             series=features[feat]
-            # Handle potential DataFrame return (duplicate columns)
-            if isinstance(series,pd.DataFrame):
-                series=series.iloc[:,0]
-            # Use explicit float conversion for pandas safety
-            na_ratio=float(series.isna().sum())/float(len(series))
-            if na_ratio>0.80:continue
-            std_val=float(series.std())
-            if std_val<1e-6:continue
-            zero_ratio=float((series==0).sum())/float(len(series))
-            if zero_ratio>0.95:continue
+            if series.isna().sum()/len(series)>0.80:continue
+            if series.std()<1e-6:continue
+            if(series==0).sum()/len(series)>0.95:continue
             valid.append(feat)
         return valid
-
+    
     def _calculate_thresholds(self,scores):
         return {'moderate':float(np.percentile(scores,75)),'high':float(np.percentile(scores,90)),'critical':float(np.percentile(scores,95))}
-
+    
     def _raw_to_percentile(self,raw_score):
         percentile=(self.training_distribution<=raw_score).sum()/len(self.training_distribution)
         return float(np.clip(1.0-percentile,0.0,0.95))
-
+    
     def _classify_level(self,score):
         if score>=self.statistical_thresholds['critical']:return 'CRITICAL'
         elif score>=self.statistical_thresholds['high']:return 'HIGH'
         elif score>=self.statistical_thresholds['moderate']:return 'MODERATE'
         else:return 'NORMAL'
-
+    
     def _calculate_feature_importance(self,X_scaled,baseline_scores):
         logger.info("Calculating feature importance...")
         importances={};baseline_mean=np.mean(baseline_scores)
@@ -110,7 +103,7 @@ class EODAnomalyScorer:
         for i,(feat,imp)in enumerate(list(sorted_importance.items())[:10],1):
             logger.info(f"  {i:2d}. {feat:40s} {imp:.4f}")
         return sorted_importance
-
+    
     def save(self,save_dir="models"):
         save_path=Path(save_dir);save_path.mkdir(parents=True,exist_ok=True)
         with open(save_path/"anomaly_detector_eod.pkl",'wb')as f:pickle.dump(self.detector,f)
@@ -118,7 +111,7 @@ class EODAnomalyScorer:
         metadata={'feature_names':self.feature_names,'thresholds':self.statistical_thresholds,'contamination':self.contamination,'n_estimators':self.n_estimators,'trained_on':datetime.now().isoformat(),'feature_importance':{k:float(v)for k,v in self.feature_importance.items()}}
         with open(save_path/"anomaly_metadata_eod.json",'w')as f:json.dump(metadata,f,indent=2)
         logger.info(f"✅ Saved to {save_dir}/")
-
+    
     def load(self,load_dir="models"):
         load_path=Path(load_dir)
         with open(load_path/"anomaly_detector_eod.pkl",'rb')as f:self.detector=pickle.load(f)
