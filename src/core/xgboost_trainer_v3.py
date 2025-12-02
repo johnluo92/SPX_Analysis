@@ -121,13 +121,7 @@ class SimplifiedVIXForecaster:
         direction="UP"if dir_proba>0.5 else"DOWN"
         ensemble_confidence=self._compute_ensemble_confidence(magnitude_pct,dir_proba,current_vix);actionable=ensemble_confidence>ENSEMBLE_CONFIG["actionable_threshold"]
         expected_vix=current_vix*(1+magnitude_pct/100);current_regime=self._get_regime(current_vix);expected_regime=self._get_regime(expected_vix);regime_change=current_regime!=expected_regime
-        forecast={'magnitude_pct':float(magnitude_pct),'magnitude_log':float(magnitude_log),'expected_vix':float(expected_vix),'current_vix':float(current_vix),'direction':direction,'direction_probability':dir_proba,'direction_confidence':ensemble_confidence,'current_regime':current_regime,'expected_regime':expected_regime,'regime_change':regime_change,'actionable':actionable,'ensemble_enabled':self.ensemble_enabled,'calibration_enabled':self.calibration_enabled}
-        from core.spike_gate import SpikeGate
-        anomaly_score=None
-        if'anomaly_score_prior_day'in X.columns:anomaly_score=float(X['anomaly_score_prior_day'].iloc[0])
-        if not hasattr(self,'spike_gate'):self.spike_gate=SpikeGate()
-        forecast=self.spike_gate.check_and_override(forecast=forecast,anomaly_score=anomaly_score,current_vix=current_vix,regime=current_regime)
-        return forecast
+        return {"magnitude_pct":float(magnitude_pct),"magnitude_log":float(magnitude_log),"expected_vix":float(expected_vix),"current_vix":float(current_vix),"direction":direction,"direction_probability":dir_proba,"direction_confidence":ensemble_confidence,"current_regime":current_regime,"expected_regime":expected_regime,"regime_change":regime_change,"actionable":actionable,"ensemble_enabled":self.ensemble_enabled,"calibration_enabled":self.calibration_enabled}
     def _save_models(self,save_dir):
         save_path=Path(save_dir);save_path.mkdir(parents=True,exist_ok=True);magnitude_file=save_path/"magnitude_5d_model.pkl"
         with open(magnitude_file,"wb")as f:pickle.dump(self.magnitude_model,f)

@@ -95,17 +95,7 @@ class VIXForecaster:
         X_mag=pd.DataFrame(pd.to_numeric(mag_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.magnitude_feature_names,dtype=np.float64).fillna(0.0)
         X_dir=pd.DataFrame(pd.to_numeric(dir_vals,errors="coerce").values.reshape(1,-1),columns=self.forecaster.direction_feature_names,dtype=np.float64).fillna(0.0)
         X=pd.DataFrame(index=[0]);[X.insert(len(X.columns),col,X_mag[col].values)for col in self.forecaster.magnitude_feature_names];[X.insert(len(X.columns),col,X_dir[col].values)for col in self.forecaster.direction_feature_names if col not in X.columns]
-        current_vix=float(obs["vix"]);cohort=obs.get("calendar_cohort","mid_cycle");
-        from core.anomaly_database import AnomalyDatabaseExtension
-        try:
-            db_ext=AnomalyDatabaseExtension()
-            date_str=date.strftime('%Y-%m-%d')
-            anomaly_scores=db_ext.get_anomaly_scores(start_date=date_str,end_date=date_str)
-            if len(anomaly_scores)>0:X['anomaly_score_prior_day']=anomaly_scores.iloc[0]['anomaly_score']
-            else:X['anomaly_score_prior_day']=0.0
-            db_ext.close()
-        except:X['anomaly_score_prior_day']=0.0
-        forecast=self.forecaster.predict(X,current_vix)
+        current_vix=float(obs["vix"]);cohort=obs.get("calendar_cohort","mid_cycle");forecast=self.forecaster.predict(X,current_vix)
         if calibrated and self.calibrator.fitted:cal_result=self.calibrator.calibrate(forecast["magnitude_pct"],current_vix,cohort);forecast["magnitude_pct"]=cal_result["calibrated_forecast"];forecast["expected_vix"]=current_vix*(1+forecast["magnitude_pct"]/100);forecast["calibration"]=cal_result
         else:forecast["calibration"]={"correction_type":"not_fitted","adjustment":0.0}
         self._store_forecast(forecast,obs,date,calibrated=calibrated)
