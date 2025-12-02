@@ -62,13 +62,6 @@
       "avg_confidence": 0.5925198793411255
     }
   },
-  "up_classifier_calibrated": {
-    "test_accuracy": 0.6070686070686071,
-    "test_precision": 0.803030303030303,
-    "test_recall": 0.2314410480349345,
-    "test_f1": 0.3593220338983051,
-    "avg_confidence": 0.6278687119483948
-  },
   "down_classifier": {
     "train": {
       "accuracy": 0.6013373299515794,

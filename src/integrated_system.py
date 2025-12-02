@@ -216,7 +216,6 @@ class VIXForecaster:
     def print_enhanced_forecast(self,forecast,cohort):
         logger.info("\n"+"="*80)
         logger.info("📊 ASYMMETRIC 4-MODEL FORECAST")
-        logger.info("="*80)
 
         logger.info(f"\n🎯 CURRENT STATE:")
         logger.info(f"   VIX Level: {forecast['current_vix']:.2f}")

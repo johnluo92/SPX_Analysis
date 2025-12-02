@@ -62,14 +62,11 @@ def save_training_report(forecaster,exp_features,comp_features,up_features,down_
 def main():
     logger.info("ASYMMETRIC 4-MODEL VIX FORECASTER")
     logger.info(f"Version: 6.0 (Expansion/Compression + UP/DOWN) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info("\n"+"="*80)
     logger.info("DATA SPLIT CONFIGURATION")
-    logger.info("="*80)
     logger.info(f"Train End:     {DATA_SPLIT_CONFIG['train_end_date']}")
     logger.info(f"Val End:       {DATA_SPLIT_CONFIG['val_end_date']}")
     logger.info(f"Test Start:    {pd.Timestamp(DATA_SPLIT_CONFIG['val_end_date'])+pd.Timedelta(days=1)}")
     logger.info(f"Feature Split: {DATA_SPLIT_CONFIG['feature_selection_split_date']}")
-    logger.info("="*80+"\n")
 
     try:
         complete_df,vix,training_end=prepare_training_data()
@@ -77,7 +74,6 @@ def main():
         # Run 4 separate feature selections
         logger.info("\n"+"="*80)
         logger.info("DOMAIN-SPECIFIC FEATURE SELECTION")
-        logger.info("="*80)
 
         exp_features=run_feature_selection(complete_df,vix,target_type='expansion')
         with open("data_cache/feature_importance_expansion.json")as f: exp_importance=json.load(f)
@@ -107,7 +103,6 @@ def main():
         down_analyzer.generate_report(output_dir="diagnostics",suffix="_down")
         logger.info(f"DOWN: Removed {len(down_removed)} correlated features, kept {len(down_kept)}")
 
-        logger.info("="*80+"\n")
         logger.info("🚀 ASYMMETRIC 4-MODEL TRAINING")
 
         forecaster=train_asymmetric_forecaster(df=complete_df,expansion_features=exp_kept,compression_features=comp_kept,up_features=up_kept,down_features=down_kept,save_dir="models")

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-12-02T13:41:23.320069",
+  "timestamp": "2025-12-02T15:09:55.605558",
   "system_version": "v6.0_asymmetric_4model",
   "training_end": "2025-11-30",
   "data_splits": {
@@ -532,13 +532,6 @@
         "f1": 0.570694087403599,
         "avg_confidence": 0.5925198793411255
       }
-    },
-    "up_classifier_calibrated": {
-      "test_accuracy": 0.6070686070686071,
-      "test_precision": 0.803030303030303,
-      "test_recall": 0.2314410480349345,
-      "test_f1": 0.3593220338983051,
-      "avg_confidence": 0.6278687119483948
     },
     "down_classifier": {
       "train": {

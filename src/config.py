@@ -28,7 +28,7 @@ COHORT_PRIORITY=["fomc_period","opex_week","earnings_heavy","mid_cycle"]
 
 MACRO_EVENT_CONFIG={"cpi_release":{"day_of_month_target":12,"window_days":2},"pce_release":{"day_of_month_target":28,"window_days":3},"fomc_minutes":{"days_after_meeting":21,"window_days":2},"fomc_meeting":{"pre_meeting_days":7,"post_meeting_days":2}}
 
-DIRECTION_CALIBRATION_CONFIG={"enabled":True,"method":"isotonic","min_samples":100,"out_of_bounds":"clip","description":"Calibrate direction probabilities to match true accuracy rates"}
+DIRECTION_CALIBRATION_CONFIG={"enabled":True,"skip_up_calibration":True,"method":"isotonic","min_samples":100,"out_of_bounds":"clip","description":"Calibrate direction probabilities - UP calibration SKIPPED to preserve recall"}
 
 XGBOOST_CONFIG={"strategy":"asymmetric_4model","cohort_aware":False,"cv_config":{"method":"time_series_split","n_splits":5,"gap":5}}
 
@@ -71,5 +71,5 @@ UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_d
 # DOWN classifier - optimized for DOWN recall (mean reversion)
 DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':7,'learning_rate':0.0650,'n_estimators':490,'subsample':0.9300,'colsample_bytree':0.8500,'min_child_weight':10,'reg_alpha':2.5000,'reg_lambda':6.0000,'gamma':0.3800,'scale_pos_weight':1.0,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
 
-# Asymmetric ensemble - no contradiction penalties, dynamic thresholds
-ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'asymmetric_probabilistic','confidence_weights':{'classifier':0.65,'magnitude':0.35},'magnitude_scaling':{'small':3.5,'medium':6.0,'large':12.0},'dynamic_thresholds':{'up':{'high_magnitude':0.55,'medium_magnitude':0.58,'low_magnitude':0.62},'down':{'high_magnitude':0.63,'medium_magnitude':0.65,'low_magnitude':0.67}},'min_ensemble_confidence':0.50,'description':'Asymmetric 4-model ensemble with dynamic thresholds'}
+# Asymmetric ensemble - winner-takes-all with lowered dynamic thresholds
+ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','confidence_weights':{'classifier':0.65,'magnitude':0.35},'magnitude_scaling':{'small':3.5,'medium':6.0,'large':12.0},'dynamic_thresholds':{'up':{'high_magnitude':0.50,'medium_magnitude':0.52,'low_magnitude':0.55},'down':{'high_magnitude':0.55,'medium_magnitude':0.58,'low_magnitude':0.60}},'min_ensemble_confidence':0.50,'description':'Winner-takes-all ensemble with lowered thresholds (was 0.55-0.67, now 0.50-0.60)'}

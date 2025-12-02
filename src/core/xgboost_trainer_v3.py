@@ -20,6 +20,7 @@ class AsymmetricVIXForecaster:
         self.up_features=None; self.down_features=None
         self.metrics={}
         self.calibration_enabled=DIRECTION_CALIBRATION_CONFIG["enabled"]
+        self.skip_up_calibration=DIRECTION_CALIBRATION_CONFIG.get("skip_up_calibration",False)
         self.ensemble_enabled=ENSEMBLE_CONFIG["enabled"]
         from core.target_calculator import TargetCalculator
         self.target_calculator=TargetCalculator()
@@ -45,9 +46,10 @@ class AsymmetricVIXForecaster:
         return filtered_df
 
     def _calibrate_classifier_probabilities(self,y_val,y_val_proba,y_test_proba,name):
-        if not self.calibration_enabled: logger.info(f"{name} calibration disabled"); return y_test_proba
+        if not self.calibration_enabled: logger.info(f"{name} calibration disabled"); return y_test_proba,None
+        if self.skip_up_calibration and name=="UP": logger.info(f"{name} calibration skipped to preserve recall"); return y_test_proba,None
         cfg=DIRECTION_CALIBRATION_CONFIG; min_samples=cfg["min_samples"]
-        if len(y_val)<min_samples: logger.warning(f"⚠️  {name}: Insufficient samples ({len(y_val)}<{min_samples}) - skipping"); return y_test_proba
+        if len(y_val)<min_samples: logger.warning(f"⚠️  {name}: Insufficient samples ({len(y_val)}<{min_samples}) - skipping"); return y_test_proba,None
         logger.info(f"Calibrating {name} probabilities ({cfg['method']})...")
         calibrator=IsotonicRegression(out_of_bounds=cfg["out_of_bounds"])
         calibrator.fit(y_val_proba,y_val); y_test_calibrated=calibrator.transform(y_test_proba)
@@ -122,7 +124,6 @@ class AsymmetricVIXForecaster:
 
         logger.info(f"\n{'='*80}")
         logger.info("🎯 ASYMMETRIC 4-MODEL TRAINING")
-        logger.info(f"{'='*80}")
         logger.info(f"Train UP: {train_up_mask.sum()} | DOWN: {train_down_mask.sum()}")
         logger.info(f"Val UP: {val_up_mask.sum()} | DOWN: {val_down_mask.sum()}")
         logger.info(f"Test UP: {test_up_mask.sum()} | DOWN: {test_down_mask.sum()}")
@@ -130,7 +131,6 @@ class AsymmetricVIXForecaster:
         # Train expansion regressor (UP samples only)
         logger.info(f"\n{'='*60}")
         logger.info("📈 EXPANSION REGRESSOR (UP samples)")
-        logger.info(f"{'='*60}")
         X_exp_train=train_df[train_up_mask][self.expansion_features]
         y_exp_train=train_df[train_up_mask]['target_log_vix_change']
         X_exp_val=val_df[val_up_mask][self.expansion_features]
@@ -144,7 +144,6 @@ class AsymmetricVIXForecaster:
         # Train compression regressor (DOWN samples only)
         logger.info(f"\n{'='*60}")
         logger.info("📉 COMPRESSION REGRESSOR (DOWN samples)")
-        logger.info(f"{'='*60}")
         X_comp_train=train_df[train_down_mask][self.compression_features]
         y_comp_train=train_df[train_down_mask]['target_log_vix_change']
         X_comp_val=val_df[val_down_mask][self.compression_features]
@@ -158,7 +157,6 @@ class AsymmetricVIXForecaster:
         # Train UP classifier (optimized for UP F1)
         logger.info(f"\n{'='*60}")
         logger.info("🔺 UP CLASSIFIER (F1-optimized)")
-        logger.info(f"{'='*60}")
         X_up_train=train_df[self.up_features]; y_up_train=train_df['target_direction']
         X_up_val=val_df[self.up_features]; y_up_val=val_df['target_direction']
         X_up_test=test_df[self.up_features]; y_up_test=test_df['target_direction']
@@ -168,19 +166,19 @@ class AsymmetricVIXForecaster:
 
         if self.calibration_enabled:
             up_test_proba_cal,self.up_calibrator=self._calibrate_classifier_probabilities(y_up_val.values,up_val_proba,up_test_proba,"UP")
-            up_test_pred_cal=(up_test_proba_cal>0.5).astype(int)
-            test_acc_cal=accuracy_score(y_up_test,up_test_pred_cal)
-            test_prec_cal=precision_score(y_up_test,up_test_pred_cal,zero_division=0)
-            test_rec_cal=recall_score(y_up_test,up_test_pred_cal,zero_division=0)
-            test_f1_cal=f1_score(y_up_test,up_test_pred_cal,zero_division=0)
-            avg_conf_cal=float(np.mean(np.maximum(up_test_proba_cal,1-up_test_proba_cal)))
-            self.metrics["up_classifier_calibrated"]={"test_accuracy":float(test_acc_cal),"test_precision":float(test_prec_cal),"test_recall":float(test_rec_cal),"test_f1":float(test_f1_cal),"avg_confidence":avg_conf_cal}
-            logger.info(f"UP (Calibrated): Test Acc={test_acc_cal:.1%} | Prec={test_prec_cal:.1%} | Rec={test_rec_cal:.1%} | F1={test_f1_cal:.1%} | Conf={avg_conf_cal:.1%}")
+            if self.up_calibrator is not None:
+                up_test_pred_cal=(up_test_proba_cal>0.5).astype(int)
+                test_acc_cal=accuracy_score(y_up_test,up_test_pred_cal)
+                test_prec_cal=precision_score(y_up_test,up_test_pred_cal,zero_division=0)
+                test_rec_cal=recall_score(y_up_test,up_test_pred_cal,zero_division=0)
+                test_f1_cal=f1_score(y_up_test,up_test_pred_cal,zero_division=0)
+                avg_conf_cal=float(np.mean(np.maximum(up_test_proba_cal,1-up_test_proba_cal)))
+                self.metrics["up_classifier_calibrated"]={"test_accuracy":float(test_acc_cal),"test_precision":float(test_prec_cal),"test_recall":float(test_rec_cal),"test_f1":float(test_f1_cal),"avg_confidence":avg_conf_cal}
+                logger.info(f"UP (Calibrated): Test Acc={test_acc_cal:.1%} | Prec={test_prec_cal:.1%} | Rec={test_rec_cal:.1%} | F1={test_f1_cal:.1%} | Conf={avg_conf_cal:.1%}")
 
         # Train DOWN classifier (optimized for DOWN F1)
         logger.info(f"\n{'='*60}")
         logger.info("🔻 DOWN CLASSIFIER (F1-optimized)")
-        logger.info(f"{'='*60}")
         X_down_train=train_df[self.down_features]; y_down_train=1-train_df['target_direction']
         X_down_val=val_df[self.down_features]; y_down_val=1-val_df['target_direction']
         X_down_test=test_df[self.down_features]; y_down_test=1-test_df['target_direction']
@@ -190,14 +188,15 @@ class AsymmetricVIXForecaster:
 
         if self.calibration_enabled:
             down_test_proba_cal,self.down_calibrator=self._calibrate_classifier_probabilities(y_down_val.values,down_val_proba,down_test_proba,"DOWN")
-            down_test_pred_cal=(down_test_proba_cal>0.5).astype(int)
-            test_acc_cal=accuracy_score(y_down_test,down_test_pred_cal)
-            test_prec_cal=precision_score(y_down_test,down_test_pred_cal,zero_division=0)
-            test_rec_cal=recall_score(y_down_test,down_test_pred_cal,zero_division=0)
-            test_f1_cal=f1_score(y_down_test,down_test_pred_cal,zero_division=0)
-            avg_conf_cal=float(np.mean(np.maximum(down_test_proba_cal,1-down_test_proba_cal)))
-            self.metrics["down_classifier_calibrated"]={"test_accuracy":float(test_acc_cal),"test_precision":float(test_prec_cal),"test_recall":float(test_rec_cal),"test_f1":float(test_f1_cal),"avg_confidence":avg_conf_cal}
-            logger.info(f"DOWN (Calibrated): Test Acc={test_acc_cal:.1%} | Prec={test_prec_cal:.1%} | Rec={test_rec_cal:.1%} | F1={test_f1_cal:.1%} | Conf={avg_conf_cal:.1%}")
+            if self.down_calibrator is not None:
+                down_test_pred_cal=(down_test_proba_cal>0.5).astype(int)
+                test_acc_cal=accuracy_score(y_down_test,down_test_pred_cal)
+                test_prec_cal=precision_score(y_down_test,down_test_pred_cal,zero_division=0)
+                test_rec_cal=recall_score(y_down_test,down_test_pred_cal,zero_division=0)
+                test_f1_cal=f1_score(y_down_test,down_test_pred_cal,zero_division=0)
+                avg_conf_cal=float(np.mean(np.maximum(down_test_proba_cal,1-down_test_proba_cal)))
+                self.metrics["down_classifier_calibrated"]={"test_accuracy":float(test_acc_cal),"test_precision":float(test_prec_cal),"test_recall":float(test_rec_cal),"test_f1":float(test_f1_cal),"avg_confidence":avg_conf_cal}
+                logger.info(f"DOWN (Calibrated): Test Acc={test_acc_cal:.1%} | Prec={test_prec_cal:.1%} | Rec={test_rec_cal:.1%} | F1={test_f1_cal:.1%} | Conf={avg_conf_cal:.1%}")
 
         self._save_models(save_dir)
         self._generate_diagnostics(test_df,save_dir)
@@ -286,16 +285,19 @@ class AsymmetricVIXForecaster:
         expansion_pct=(np.exp(expansion_log)-1)*100; compression_pct=(np.exp(compression_log)-1)*100
         expansion_pct=np.clip(expansion_pct,-50,100); compression_pct=np.clip(compression_pct,-50,100)
 
-        # Ensemble magnitude using normalized probabilities
-        magnitude_pct=p_up_norm*expansion_pct+p_down_norm*compression_pct
-
-        # Direction decision
+        # WINNER-TAKES-ALL: Use winning classifier's magnitude prediction only
         if p_up>p_down:
-            direction="UP"; primary_prob=p_up_norm; primary_magnitude=expansion_pct
+            direction="UP"
+            magnitude_pct=expansion_pct
+            magnitude_log=expansion_log
+            classifier_prob=p_up_norm
             ensemble_confidence=self._compute_ensemble_confidence(p_up_norm,expansion_pct,"UP")
             actionable_threshold=self._get_dynamic_threshold(expansion_pct,"UP")
         else:
-            direction="DOWN"; primary_prob=p_down_norm; primary_magnitude=compression_pct
+            direction="DOWN"
+            magnitude_pct=compression_pct
+            magnitude_log=compression_log
+            classifier_prob=p_down_norm
             ensemble_confidence=self._compute_ensemble_confidence(p_down_norm,compression_pct,"DOWN")
             actionable_threshold=self._get_dynamic_threshold(compression_pct,"DOWN")
 
@@ -304,7 +306,7 @@ class AsymmetricVIXForecaster:
         current_regime=self._get_regime(current_vix); expected_regime=self._get_regime(expected_vix)
         regime_change=current_regime!=expected_regime
 
-        return {"magnitude_pct":float(magnitude_pct),"magnitude_log":float(expansion_log if direction=="UP"else compression_log),"expected_vix":float(expected_vix),"current_vix":float(current_vix),"direction":direction,"p_up":float(p_up_norm),"p_down":float(p_down_norm),"expansion_magnitude":float(expansion_pct),"compression_magnitude":float(compression_pct),"direction_probability":primary_prob,"direction_confidence":ensemble_confidence,"current_regime":current_regime,"expected_regime":expected_regime,"regime_change":regime_change,"actionable":actionable,"actionable_threshold":actionable_threshold,"ensemble_enabled":self.ensemble_enabled,"calibration_enabled":self.calibration_enabled}
+        return {"magnitude_pct":float(magnitude_pct),"magnitude_log":float(magnitude_log),"expected_vix":float(expected_vix),"current_vix":float(current_vix),"direction":direction,"p_up":float(p_up_norm),"p_down":float(p_down_norm),"expansion_magnitude":float(expansion_pct),"compression_magnitude":float(compression_pct),"direction_probability":classifier_prob,"direction_confidence":ensemble_confidence,"current_regime":current_regime,"expected_regime":expected_regime,"regime_change":regime_change,"actionable":actionable,"actionable_threshold":actionable_threshold,"ensemble_enabled":self.ensemble_enabled,"calibration_enabled":self.calibration_enabled}
 
     def _save_models(self,save_dir):
         save_path=Path(save_dir); save_path.mkdir(parents=True,exist_ok=True)
@@ -404,7 +406,8 @@ class AsymmetricVIXForecaster:
         print("\nASYMMETRIC 4-MODEL TRAINING SUMMARY")
         print(f"Models: Expansion + Compression Regressors | UP + DOWN Classifiers | Training through: {TRAINING_END_DATE}")
         if self.calibration_enabled: print("✓ Classifier probability calibration: ENABLED")
-        if self.ensemble_enabled: print("✓ Asymmetric ensemble: ENABLED")
+        if self.skip_up_calibration: print("✓ UP calibration: SKIPPED (preserving recall)")
+        if self.ensemble_enabled: print("✓ Asymmetric ensemble: WINNER-TAKES-ALL")
         print(f"Expansion: Train={self.metrics['expansion']['train']['mae_pct']:.2f}% | Val={self.metrics['expansion']['val']['mae_pct']:.2f}% | Test={self.metrics['expansion']['test']['mae_pct']:.2f}% | Bias={self.metrics['expansion']['test']['bias_pct']:+.2f}%")
         print(f"Compression: Train={self.metrics['compression']['train']['mae_pct']:.2f}% | Val={self.metrics['compression']['val']['mae_pct']:.2f}% | Test={self.metrics['compression']['test']['mae_pct']:.2f}% | Bias={self.metrics['compression']['test']['bias_pct']:+.2f}%")
         print(f"UP: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['up_classifier']['test']['precision']:.1%} | Rec={self.metrics['up_classifier']['test']['recall']:.1%} | F1={self.metrics['up_classifier']['test']['f1']:.1%}")
