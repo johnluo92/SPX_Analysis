@@ -111,6 +111,15 @@ class AsymmetricVIXForecaster:
         val_up_mask=val_df['target_direction']==1; val_down_mask=val_df['target_direction']==0
         test_up_mask=test_df['target_direction']==1; test_down_mask=test_df['target_direction']==0
 
+        # Filter out NaN targets after domain split
+        train_valid_target=train_df['target_log_vix_change'].notna()
+        val_valid_target=val_df['target_log_vix_change'].notna()
+        test_valid_target=test_df['target_log_vix_change'].notna()
+
+        train_up_mask=train_up_mask&train_valid_target; train_down_mask=train_down_mask&train_valid_target
+        val_up_mask=val_up_mask&val_valid_target; val_down_mask=val_down_mask&val_valid_target
+        test_up_mask=test_up_mask&test_valid_target; test_down_mask=test_down_mask&test_valid_target
+
         logger.info(f"\n{'='*80}")
         logger.info("🎯 ASYMMETRIC 4-MODEL TRAINING")
         logger.info(f"{'='*80}")
@@ -240,15 +249,7 @@ class AsymmetricVIXForecaster:
             val_weights=val_df['cohort_weight'].values
             logger.info(f"Using cohort weights: mean={train_weights.mean():.3f}")
 
-        # Custom F1 eval metric
-        def f1_eval(y_pred,dtrain):
-            y_true=dtrain.get_label(); y_pred_binary=(y_pred>0.5).astype(int)
-            tp=((y_true==1)&(y_pred_binary==1)).sum(); fp=((y_true==0)&(y_pred_binary==1)).sum(); fn=((y_true==1)&(y_pred_binary==0)).sum()
-            precision=tp/(tp+fp)if(tp+fp)>0 else 0; recall=tp/(tp+fn)if(tp+fn)>0 else 0
-            f1=2*precision*recall/(precision+recall)if(precision+recall)>0 else 0
-            return f'{name.lower()}_f1',1-f1
-
-        model.fit(X_train,y_train,sample_weight=train_weights,eval_set=[(X_val,y_val)],sample_weight_eval_set=[val_weights]if val_weights is not None else None,eval_metric=f1_eval,verbose=False)
+        model.fit(X_train,y_train,sample_weight=train_weights,eval_set=[(X_val,y_val)],sample_weight_eval_set=[val_weights]if val_weights is not None else None,verbose=False)
 
         y_train_pred=model.predict(X_train); y_val_pred=model.predict(X_val); y_test_pred=model.predict(X_test)
         y_train_proba=model.predict_proba(X_train)[:,1]; y_val_proba=model.predict_proba(X_val)[:,1]; y_test_proba=model.predict_proba(X_test)[:,1]

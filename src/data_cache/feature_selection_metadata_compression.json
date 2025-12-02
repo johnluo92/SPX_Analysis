@@ -1,0 +1,30 @@
+{
+  "target_type": "compression",
+  "top_n": 105,
+  "n_selected": 105,
+  "n_samples": 2613,
+  "top_10_features": [
+    "vix_vs_ma63",
+    "vix_velocity_5d_regime_adj",
+    "vix_percentile_126d",
+    "vix_vs_ma21",
+    "vvix",
+    "bb_position_20d",
+    "vix_vel_spx_rv_ratio",
+    "vix_regime",
+    "liquidity_stress_composite",
+    "VXTLT_vs_ma63"
+  ],
+  "top_10_importance": [
+    0.05781086459755898,
+    0.02692057900130749,
+    0.021672186627984046,
+    0.01972445333376527,
+    0.015095233172178268,
+    0.014681356772780419,
+    0.013230655854567886,
+    0.013158240914344787,
+    0.010391850082669407,
+    0.009454932063817978
+  ]
+}

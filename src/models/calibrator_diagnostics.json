@@ -1,0 +1,23 @@
+{
+  "fitted": true,
+  "calibration_date": "2025-11-24T00:00:00",
+  "window_days": 500,
+  "decay_lambda": 0.125,
+  "min_samples": 50,
+  "corrections": {
+    "regime_cohort": {
+      "normal_fomc_period": 7.168899743719117,
+      "normal_mid_cycle": 8.702606687434457
+    },
+    "regime": {
+      "normal": 5.187396216011579,
+      "low_vol": 7.498639889162744
+    },
+    "cohort": {
+      "opex_week": -8.113668785694385,
+      "fomc_period": 4.517482862668117,
+      "mid_cycle": 5.416255624446457
+    },
+    "global": 2.8563110041276603
+  }
+}

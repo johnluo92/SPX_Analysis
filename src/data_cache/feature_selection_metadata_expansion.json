@@ -1,0 +1,30 @@
+{
+  "target_type": "expansion",
+  "top_n": 110,
+  "n_selected": 110,
+  "n_samples": 2246,
+  "top_10_features": [
+    "time_in_regime_pct",
+    "fin_stress_index",
+    "days_in_regime",
+    "vix_percentile_126d",
+    "credit_stress_composite",
+    "hy_spread",
+    "hy_velocity_21d",
+    "vx_oi_surge",
+    "spx_vol_ratio_10_63",
+    "hy_ccc_velocity_21d"
+  ],
+  "top_10_importance": [
+    0.019492696831002833,
+    0.018335893284529448,
+    0.01640200726687908,
+    0.01594668049365282,
+    0.013681384362280368,
+    0.012828909093514085,
+    0.012527112290263176,
+    0.011397694237530231,
+    0.009705587662756443,
+    0.009636805462650954
+  ]
+}

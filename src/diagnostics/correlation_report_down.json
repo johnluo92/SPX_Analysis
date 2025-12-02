@@ -1,0 +1,18 @@
+{
+  "threshold": 0.9269,
+  "total_features_before": 120,
+  "features_removed": 10,
+  "features_kept": 110,
+  "removed_features": [
+    "yield_curve_vol_avg_fred",
+    "risk_premium_percentile_63d",
+    "vix_ret_5d",
+    "hy_b_spread",
+    "vix_z_spx_rv_product",
+    "vix_zscore_21d",
+    "days_in_regime",
+    "30y_vol_63d",
+    "risk_premium_percentile_126d",
+    "vvix_velocity_21d"
+  ]
+}

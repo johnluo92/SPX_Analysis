@@ -1,0 +1,25 @@
+{
+  "threshold": 0.9269,
+  "total_features_before": 110,
+  "features_removed": 17,
+  "features_kept": 93,
+  "removed_features": [
+    "yield_curve_vol_avg",
+    "credit_quality_spread",
+    "risk_premium_percentile_63d",
+    "yield_10y2y",
+    "hy_bb_velocity_21d",
+    "hy_b_spread",
+    "10y_vol_63d",
+    "hy_bb_spread",
+    "vx_momentum_5d",
+    "days_in_regime",
+    "vvix_ret_10d",
+    "risk_premium_percentile_126d",
+    "yield_5y2y",
+    "hy_ccc_velocity_21d",
+    "macd_signal",
+    "hy_b_velocity_21d",
+    "hy_ccc_spread"
+  ]
+}
