@@ -2,10 +2,9 @@ import json,logging,pickle
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np,pandas as pd
-from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import accuracy_score,mean_absolute_error,mean_squared_error,precision_score,recall_score,f1_score
 from xgboost import XGBRegressor,XGBClassifier
-from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE,REGIME_BOUNDARIES,REGIME_NAMES,QUALITY_FILTER_CONFIG,DIRECTION_CALIBRATION_CONFIG,ENSEMBLE_CONFIG,EXPANSION_PARAMS,COMPRESSION_PARAMS,UP_CLASSIFIER_PARAMS,DOWN_CLASSIFIER_PARAMS,TRAIN_END_DATE,VAL_END_DATE
+from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE,REGIME_BOUNDARIES,REGIME_NAMES,QUALITY_FILTER_CONFIG,ENSEMBLE_CONFIG,EXPANSION_PARAMS,COMPRESSION_PARAMS,UP_CLASSIFIER_PARAMS,DOWN_CLASSIFIER_PARAMS,TRAIN_END_DATE,VAL_END_DATE
 
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
@@ -15,14 +14,11 @@ class AsymmetricVIXForecaster:
         self.horizon=TARGET_CONFIG["horizon_days"]
         self.expansion_model=None; self.compression_model=None
         self.up_classifier=None; self.down_classifier=None
-        self.up_calibrator=None; self.down_calibrator=None
         self.expansion_features=None; self.compression_features=None
         self.up_features=None; self.down_features=None
         self.metrics={}
-        self.calibration_enabled=DIRECTION_CALIBRATION_CONFIG["enabled"]
-        self.skip_up_calibration=DIRECTION_CALIBRATION_CONFIG.get("skip_up_calibration",False)
         self.ensemble_enabled=ENSEMBLE_CONFIG["enabled"]
-        self.up_advantage=ENSEMBLE_CONFIG.get("up_advantage",0.05)  # Asymmetric advantage: DOWN must beat UP by this margin
+        self.up_advantage=ENSEMBLE_CONFIG.get("up_advantage",0.07)
         self.confidence_boost_threshold=ENSEMBLE_CONFIG.get("confidence_boost_threshold",15.0)
         self.confidence_boost_amount=ENSEMBLE_CONFIG.get("confidence_boost_amount",0.05)
         from core.target_calculator import TargetCalculator
@@ -47,19 +43,6 @@ class AsymmetricVIXForecaster:
         elif filtered_pct>cfg["warn_pct"]: logger.warning(f"⚠️  Filtered {filtered_pct:.1f}% low-quality data")
         logger.info(f"Quality: {len(filtered_df)}/{initial_len} rows retained (threshold={threshold:.2f})")
         return filtered_df
-
-    def _calibrate_classifier_probabilities(self,y_val,y_val_proba,y_test_proba,name):
-        if not self.calibration_enabled: logger.info(f"{name} calibration disabled"); return y_test_proba,None
-        if self.skip_up_calibration and name=="UP": logger.info(f"{name} calibration skipped to preserve recall"); return y_test_proba,None
-        cfg=DIRECTION_CALIBRATION_CONFIG; min_samples=cfg["min_samples"]
-        if len(y_val)<min_samples: logger.warning(f"⚠️  {name}: Insufficient samples ({len(y_val)}<{min_samples}) - skipping"); return y_test_proba,None
-        logger.info(f"Calibrating {name} probabilities ({cfg['method']})...")
-        calibrator=IsotonicRegression(out_of_bounds=cfg["out_of_bounds"])
-        calibrator.fit(y_val_proba,y_val); y_test_calibrated=calibrator.transform(y_test_proba)
-        before_conf=np.mean(np.maximum(y_test_proba,1-y_test_proba))
-        after_conf=np.mean(np.maximum(y_test_calibrated,1-y_test_calibrated))
-        logger.info(f"  {name}: confidence {before_conf:.1%} → {after_conf:.1%}")
-        return y_test_calibrated,calibrator
 
     def _compute_ensemble_confidence(self,classifier_prob,magnitude_pct,direction):
         if not self.ensemble_enabled: return float(classifier_prob)
@@ -145,17 +128,6 @@ class AsymmetricVIXForecaster:
         X_up_test=test_df[self.up_features]; y_up_test=test_df['target_direction']
         self.up_classifier,up_metrics,up_val_proba,up_test_proba=self._train_classifier_model(X_up_train,y_up_train,X_up_val,y_up_val,X_up_test,y_up_test,UP_CLASSIFIER_PARAMS,"UP",train_df,val_df,invert=False)
         self.metrics["up_classifier"]=up_metrics
-        if self.calibration_enabled:
-            up_test_proba_cal,self.up_calibrator=self._calibrate_classifier_probabilities(y_up_val.values,up_val_proba,up_test_proba,"UP")
-            if self.up_calibrator is not None:
-                up_test_pred_cal=(up_test_proba_cal>0.5).astype(int)
-                test_acc_cal=accuracy_score(y_up_test,up_test_pred_cal)
-                test_prec_cal=precision_score(y_up_test,up_test_pred_cal,zero_division=0)
-                test_rec_cal=recall_score(y_up_test,up_test_pred_cal,zero_division=0)
-                test_f1_cal=f1_score(y_up_test,up_test_pred_cal,zero_division=0)
-                avg_conf_cal=float(np.mean(np.maximum(up_test_proba_cal,1-up_test_proba_cal)))
-                self.metrics["up_classifier_calibrated"]={"test_accuracy":float(test_acc_cal),"test_precision":float(test_prec_cal),"test_recall":float(test_rec_cal),"test_f1":float(test_f1_cal),"avg_confidence":avg_conf_cal}
-                logger.info(f"UP (Calibrated): Test Acc={test_acc_cal:.1%} | Prec={test_prec_cal:.1%} | Rec={test_rec_cal:.1%} | F1={test_f1_cal:.1%} | Conf={avg_conf_cal:.1%}")
         logger.info(f"\n{'='*60}")
         logger.info("🔻 DOWN CLASSIFIER (F1-optimized)")
         X_down_train=train_df[self.down_features]; y_down_train=1-train_df['target_direction']
@@ -163,17 +135,6 @@ class AsymmetricVIXForecaster:
         X_down_test=test_df[self.down_features]; y_down_test=1-test_df['target_direction']
         self.down_classifier,down_metrics,down_val_proba,down_test_proba=self._train_classifier_model(X_down_train,y_down_train,X_down_val,y_down_val,X_down_test,y_down_test,DOWN_CLASSIFIER_PARAMS,"DOWN",train_df,val_df,invert=True)
         self.metrics["down_classifier"]=down_metrics
-        if self.calibration_enabled:
-            down_test_proba_cal,self.down_calibrator=self._calibrate_classifier_probabilities(y_down_val.values,down_val_proba,down_test_proba,"DOWN")
-            if self.down_calibrator is not None:
-                down_test_pred_cal=(down_test_proba_cal>0.5).astype(int)
-                test_acc_cal=accuracy_score(y_down_test,down_test_pred_cal)
-                test_prec_cal=precision_score(y_down_test,down_test_pred_cal,zero_division=0)
-                test_rec_cal=recall_score(y_down_test,down_test_pred_cal,zero_division=0)
-                test_f1_cal=f1_score(y_down_test,down_test_pred_cal,zero_division=0)
-                avg_conf_cal=float(np.mean(np.maximum(down_test_proba_cal,1-down_test_proba_cal)))
-                self.metrics["down_classifier_calibrated"]={"test_accuracy":float(test_acc_cal),"test_precision":float(test_prec_cal),"test_recall":float(test_rec_cal),"test_f1":float(test_f1_cal),"avg_confidence":avg_conf_cal}
-                logger.info(f"DOWN (Calibrated): Test Acc={test_acc_cal:.1%} | Prec={test_prec_cal:.1%} | Rec={test_rec_cal:.1%} | F1={test_f1_cal:.1%} | Conf={avg_conf_cal:.1%}")
         self._save_models(save_dir)
         self._generate_diagnostics(test_df,save_dir)
         logger.info("✅ Training complete")
@@ -229,12 +190,8 @@ class AsymmetricVIXForecaster:
 
     def predict(self,X,current_vix):
         X_up=X[self.up_features]; X_down=X[self.down_features]
-        p_up_raw=float(self.up_classifier.predict_proba(X_up)[0][1])
-        p_down_raw=float(self.down_classifier.predict_proba(X_down)[0][1])
-        if self.up_calibrator is not None: p_up=float(self.up_calibrator.transform([p_up_raw])[0])
-        else: p_up=p_up_raw
-        if self.down_calibrator is not None: p_down=float(self.down_calibrator.transform([p_down_raw])[0])
-        else: p_down=p_down_raw
+        p_up=float(self.up_classifier.predict_proba(X_up)[0][1])
+        p_down=float(self.down_classifier.predict_proba(X_down)[0][1])
         total=p_up+p_down; p_up_norm=p_up/total; p_down_norm=p_down/total
         X_exp=X[self.expansion_features]; X_comp=X[self.compression_features]
         expansion_log=float(self.expansion_model.predict(X_exp)[0])
@@ -263,7 +220,7 @@ class AsymmetricVIXForecaster:
         expected_vix=current_vix*(1+magnitude_pct/100)
         current_regime=self._get_regime(current_vix); expected_regime=self._get_regime(expected_vix)
         regime_change=current_regime!=expected_regime
-        return {"magnitude_pct":float(magnitude_pct),"magnitude_log":float(magnitude_log),"expected_vix":float(expected_vix),"current_vix":float(current_vix),"direction":direction,"p_up":float(p_up_norm),"p_down":float(p_down_norm),"expansion_magnitude":float(expansion_pct),"compression_magnitude":float(compression_pct),"direction_probability":classifier_prob,"direction_confidence":ensemble_confidence,"current_regime":current_regime,"expected_regime":expected_regime,"regime_change":regime_change,"actionable":actionable,"actionable_threshold":actionable_threshold,"ensemble_enabled":self.ensemble_enabled,"calibration_enabled":self.calibration_enabled}
+        return {"magnitude_pct":float(magnitude_pct),"magnitude_log":float(magnitude_log),"expected_vix":float(expected_vix),"current_vix":float(current_vix),"direction":direction,"p_up":float(p_up_norm),"p_down":float(p_down_norm),"expansion_magnitude":float(expansion_pct),"compression_magnitude":float(compression_pct),"direction_probability":classifier_prob,"direction_confidence":ensemble_confidence,"current_regime":current_regime,"expected_regime":expected_regime,"regime_change":regime_change,"actionable":actionable,"actionable_threshold":actionable_threshold,"ensemble_enabled":self.ensemble_enabled}
 
     def _save_models(self,save_dir):
         save_path=Path(save_dir); save_path.mkdir(parents=True,exist_ok=True)
@@ -271,10 +228,6 @@ class AsymmetricVIXForecaster:
         with open(save_path/"compression_model.pkl","wb")as f: pickle.dump(self.compression_model,f)
         with open(save_path/"up_classifier.pkl","wb")as f: pickle.dump(self.up_classifier,f)
         with open(save_path/"down_classifier.pkl","wb")as f: pickle.dump(self.down_classifier,f)
-        if self.up_calibrator is not None:
-            with open(save_path/"up_calibrator.pkl","wb")as f: pickle.dump(self.up_calibrator,f)
-        if self.down_calibrator is not None:
-            with open(save_path/"down_calibrator.pkl","wb")as f: pickle.dump(self.down_calibrator,f)
         with open(save_path/"feature_names_expansion.json","w")as f: json.dump(self.expansion_features,f,indent=2)
         with open(save_path/"feature_names_compression.json","w")as f: json.dump(self.compression_features,f,indent=2)
         with open(save_path/"feature_names_up.json","w")as f: json.dump(self.up_features,f,indent=2)
@@ -287,14 +240,6 @@ class AsymmetricVIXForecaster:
         with open(models_path/"compression_model.pkl","rb")as f: self.compression_model=pickle.load(f)
         with open(models_path/"up_classifier.pkl","rb")as f: self.up_classifier=pickle.load(f)
         with open(models_path/"down_classifier.pkl","rb")as f: self.down_classifier=pickle.load(f)
-        up_cal_file=models_path/"up_calibrator.pkl"
-        if up_cal_file.exists():
-            with open(up_cal_file,"rb")as f: self.up_calibrator=pickle.load(f)
-            logger.info("✅ Loaded UP calibrator")
-        down_cal_file=models_path/"down_calibrator.pkl"
-        if down_cal_file.exists():
-            with open(down_cal_file,"rb")as f: self.down_calibrator=pickle.load(f)
-            logger.info("✅ Loaded DOWN calibrator")
         with open(models_path/"feature_names_expansion.json","r")as f: self.expansion_features=json.load(f)
         with open(models_path/"feature_names_compression.json","r")as f: self.compression_features=json.load(f)
         with open(models_path/"feature_names_up.json","r")as f: self.up_features=json.load(f)
@@ -347,20 +292,11 @@ class AsymmetricVIXForecaster:
     def _print_summary(self):
         print("\nASYMMETRIC 4-MODEL TRAINING SUMMARY")
         print(f"Models: Expansion + Compression Regressors | UP + DOWN Classifiers | Training through: {TRAINING_END_DATE}")
-        if self.calibration_enabled: print("✓ Classifier probability calibration: ENABLED")
-        else: print("✓ Calibration: DISABLED")
-        if self.skip_up_calibration: print("✓ UP calibration: SKIPPED (preserving recall)")
         if self.ensemble_enabled: print(f"✓ Asymmetric ensemble: DOWN must beat UP by {self.up_advantage*100:.0f}% to win")
         print(f"Expansion: Train={self.metrics['expansion']['train']['mae_pct']:.2f}% | Val={self.metrics['expansion']['val']['mae_pct']:.2f}% | Test={self.metrics['expansion']['test']['mae_pct']:.2f}% | Bias={self.metrics['expansion']['test']['bias_pct']:+.2f}%")
         print(f"Compression: Train={self.metrics['compression']['train']['mae_pct']:.2f}% | Val={self.metrics['compression']['val']['mae_pct']:.2f}% | Test={self.metrics['compression']['test']['mae_pct']:.2f}% | Bias={self.metrics['compression']['test']['bias_pct']:+.2f}%")
         print(f"UP: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['up_classifier']['test']['precision']:.1%} | Rec={self.metrics['up_classifier']['test']['recall']:.1%} | F1={self.metrics['up_classifier']['test']['f1']:.1%}")
-        if "up_classifier_calibrated"in self.metrics:
-            ucal=self.metrics["up_classifier_calibrated"]
-            print(f"UP (Cal): Test={ucal['test_accuracy']:.1%} | Prec={ucal['test_precision']:.1%} | Rec={ucal['test_recall']:.1%} | F1={ucal['test_f1']:.1%} | Conf={ucal['avg_confidence']:.1%}")
         print(f"DOWN: Train={self.metrics['down_classifier']['train']['accuracy']:.1%} | Val={self.metrics['down_classifier']['val']['accuracy']:.1%} | Test={self.metrics['down_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['down_classifier']['test']['precision']:.1%} | Rec={self.metrics['down_classifier']['test']['recall']:.1%} | F1={self.metrics['down_classifier']['test']['f1']:.1%}")
-        if "down_classifier_calibrated"in self.metrics:
-            dcal=self.metrics["down_classifier_calibrated"]
-            print(f"DOWN (Cal): Test={dcal['test_accuracy']:.1%} | Prec={dcal['test_precision']:.1%} | Rec={dcal['test_recall']:.1%} | F1={dcal['test_f1']:.1%}")
         print()
 
 def train_asymmetric_forecaster(df,expansion_features=None,compression_features=None,up_features=None,down_features=None,save_dir="models"):

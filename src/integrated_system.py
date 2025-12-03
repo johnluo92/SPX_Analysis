@@ -193,54 +193,47 @@ class VIXForecaster:
         self.db.store_prediction(pred); self.db.commit()
 
     def print_enhanced_forecast(self,forecast,cohort):
+        # PRODUCTION-GRADE FORECAST DISPLAY
         logger.info("\n"+"="*80)
-        logger.info("📊 ASYMMETRIC 4-MODEL FORECAST")
-        logger.info(f"\n🎯 CURRENT STATE:")
-        logger.info(f"   VIX Level: {forecast['current_vix']:.2f}")
-        logger.info(f"   Regime: {forecast['current_regime']}")
-        logger.info(f"   Market Cohort: {cohort}")
-        logger.info(f"   Cohort Weight: {forecast.get('metadata',{}).get('cohort_weight',1.0):.2f}x")
-        logger.info(f"   Feature Quality: {forecast.get('metadata',{}).get('feature_quality',1.0):.1%}")
-        logger.info(f"\n🔺 EXPANSION MODEL (UP domain):")
-        logger.info(f"   Raw Prediction: {forecast['expansion_magnitude']:+.2f}%")
-        logger.info(f"   Expected VIX: {forecast['current_vix']*(1+forecast['expansion_magnitude']/100):.2f}")
-        logger.info(f"\n🔻 COMPRESSION MODEL (DOWN domain):")
-        logger.info(f"   Raw Prediction: {forecast['compression_magnitude']:+.2f}%")
-        logger.info(f"   Expected VIX: {forecast['current_vix']*(1+forecast['compression_magnitude']/100):.2f}")
-        logger.info(f"\n🎲 DIRECTION CLASSIFIERS:")
-        logger.info(f"   P(UP): {forecast['p_up']:.1%}")
-        logger.info(f"   P(DOWN): {forecast['p_down']:.1%}")
-        winner="UP"if forecast['p_up']>forecast['p_down']else"DOWN"
-        winner_prob=max(forecast['p_up'],forecast['p_down'])
-        logger.info(f"   Winner: {winner} ({winner_prob:.1%} probability)")
-        if self.forecaster.calibration_enabled:
-            cal_status="✓ DOWN ONLY"if self.forecaster.skip_up_calibration else"✓ ENABLED"
-            logger.info(f"   Calibration: {cal_status}")
-        logger.info(f"\n🎯 ENSEMBLE (Winner-Takes-All):")
-        raw_winner_mag=forecast['expansion_magnitude']if winner=="UP"else forecast['compression_magnitude']
-        logger.info(f"   Raw Winner Magnitude: {raw_winner_mag:+.2f}%")
-        if forecast.get('calibration',{}).get('correction_type')!='not_fitted':
-            logger.info(f"   Calibration Adjustment: {forecast['calibration']['adjustment']:+.3f}%")
-        logger.info(f"   Final Magnitude: {forecast['magnitude_pct']:+.2f}%")
-        logger.info(f"   Expected VIX: {forecast['expected_vix']:.2f}")
-        logger.info(f"   Ensemble Confidence: {forecast['direction_confidence']:.1%}")
-        logger.info(f"   Dynamic Threshold: {forecast['actionable_threshold']:.1%}")
-        if forecast['actionable']: logger.info(f"   ✓ ACTIONABLE")
-        else: logger.info(f"   ✗ NOT ACTIONABLE")
-        logger.info(f"\n🏛️  REGIME FORECAST:")
-        logger.info(f"   Current: {forecast['current_regime']}")
-        logger.info(f"   Expected: {forecast['expected_regime']}")
-        if forecast['regime_change']: logger.info(f"   ⚠️  REGIME CHANGE EXPECTED")
-        else: logger.info(f"   ✓ Staying in current regime")
-        logger.info(f"\n{'='*80}")
-        summary_color="🟢"if forecast['actionable']else"🟡"
-        if forecast['magnitude_pct']>0: summary_dir="UP"
-        else: summary_dir="DOWN"
+        logger.info("📊 VIX FORECAST | {horizon}d Horizon".format(horizon=TARGET_CONFIG["horizon_days"]))
+        logger.info("="*80)
+
+        # CURRENT MARKET STATE
+        logger.info(f"\n📍 MARKET STATE")
+        logger.info(f"   VIX: {forecast['current_vix']:.2f} | Regime: {forecast['current_regime']} | Cohort: {cohort}")
+        logger.info(f"   Quality: {forecast.get('metadata',{}).get('feature_quality',1.0):.1%} | Weight: {forecast.get('metadata',{}).get('cohort_weight',1.0):.2f}x")
+
+        # FORECAST DECISION
+        direction_symbol="▲" if forecast['magnitude_pct']>0 else"▼"
         abs_mag=abs(forecast['magnitude_pct'])
-        summary_text=f"{summary_color} SUMMARY: {summary_dir} {abs_mag:.1f}% | "
-        summary_text+=f"Confidence: {forecast['direction_confidence']:.0%} | "
-        summary_text+=f"{'Actionable'if forecast['actionable']else'Not Actionable'}"
-        logger.info(summary_text)
+        logger.info(f"\n{direction_symbol} FORECAST")
+        logger.info(f"   Direction: {'UP' if forecast['magnitude_pct']>0 else 'DOWN'} {abs_mag:.2f}%")
+        logger.info(f"   Expected VIX: {forecast['current_vix']:.2f} → {forecast['expected_vix']:.2f}")
+        logger.info(f"   Confidence: {forecast['direction_confidence']:.1%} (threshold: {forecast['actionable_threshold']:.1%})")
+
+        # CLASSIFIER PROBABILITIES (concise)
+        logger.info(f"\n🎲 PROBABILITIES")
+        logger.info(f"   P(UP): {forecast['p_up']:.1%} | P(DOWN): {forecast['p_down']:.1%}")
+        logger.info(f"   Ensemble: {forecast['direction'].upper()} by {self.forecaster.up_advantage*100:.0f}% margin")
+
+        # CALIBRATION (if applied)
+        if forecast.get('calibration',{}).get('correction_type')!='not_fitted':
+            raw_mag=forecast['expansion_magnitude']if forecast['magnitude_pct']>0 else forecast['compression_magnitude']
+            adj=forecast['calibration']['adjustment']
+            logger.info(f"\n🔧 CALIBRATION")
+            logger.info(f"   Raw: {raw_mag:+.2f}% → Adjusted: {forecast['magnitude_pct']:+.2f}% (Δ{adj:+.2f}%)")
+            logger.info(f"   Type: {forecast['calibration']['correction_type']}")
+
+        # REGIME FORECAST
+        if forecast['regime_change']:
+            logger.info(f"\n⚠️  REGIME CHANGE: {forecast['current_regime']} → {forecast['expected_regime']}")
+
+        # ACTIONABILITY (PROMINENT)
+        logger.info(f"\n{'='*80}")
+        if forecast['actionable']:
+            logger.info("✅ ACTIONABLE SIGNAL")
+        else:
+            logger.info("⛔ NOT ACTIONABLE (below confidence threshold)")
         logger.info("="*80+"\n")
 
 def main():
