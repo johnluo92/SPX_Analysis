@@ -5,10 +5,10 @@
   "features_kept": 99,
   "removed_features": [
     "risk_premium_percentile_126d",
-    "vix_zscore_21d",
-    "yield_10y2y",
     "vix_vs_ma252",
+    "vix_zscore_21d",
     "6m_vol_63d_fred",
-    "vvix_ret_10d"
+    "vvix_ret_10d",
+    "yield_10y2y"
   ]
 }

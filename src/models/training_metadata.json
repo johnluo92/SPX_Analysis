@@ -1,6 +1,6 @@
 {
   "training_end": "2025-11-30",
-  "timestamp": "2025-12-02T17:06:06.263210",
+  "timestamp": "2025-12-02T21:30:59.504941",
   "data_splits": {
     "train_end_date": "2021-12-31",
     "val_end_date": "2023-12-31",
@@ -19,5 +19,5 @@
   "test_expansion_mae": 11.185899983886696,
   "test_compression_mae": 5.841413101556994,
   "test_up_f1": 0,
-  "test_down_f1": 0.7076923076923077
+  "test_down_f1": 0
 }

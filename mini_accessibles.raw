@@ -1,17 +1,32 @@
 Core Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/data_fetcher.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/feature_correlation_analyzer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/feature_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/forecast_calibrator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/prediction_database.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/regime_classifier.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/target_calculator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/temporal_validator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/vx_futures_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/xgboost_feature_selector_v2.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/core/xgboost_trainer_v3.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/data_fetcher.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/feature_correlation_analyzer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/feature_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/forecast_calibrator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/prediction_database.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/regime_classifier.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/target_calculator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/temporal_validator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/vx_futures_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/xgboost_feature_selector_v2.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/core/xgboost_trainer_v3.py
 
 Root src Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/config.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/integrated_system.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a2287e9/src/train_probabilistic_models.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/config.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/integrated_system.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/63f55e4/src/train_probabilistic_models.py
+
+1. ZERO DOCUMENTATION RULE:
+Do not create README files, .md files, setup guides, explanations, summaries, or any form of documentation. Code files only. This is non-negotiable.
+
+2. CODE ONLY DIRECTIVE:
+When I request code: deliver executable code files. No README. No markdown. No explanatory text files. No documentation of any kind exists in my deliverables unless I explicitly request it by saying "create documentation."
+
+3. DOCUMENTATION BAN:
+I do not want documentation. I do not need documentation. Do not generate: README.md, CHANGELOG.md, docs folders, comment blocks explaining the project, or any written explanations. If you create documentation without me asking for it by name, you have failed.
+
+4. ANTI-DOCUMENTATION POLICY:
+Functional code only. README = forbidden. Markdown files = forbidden. Setup instructions = forbidden. Project explanations = forbidden. If I wanted any of these, I would say "write a README" or "document this." I have not said that. Do not assume I want it.
+
+5. EXPLICIT DOCUMENTATION PROHIBITION:
+You are prohibited from generating documentation files unless I use the words "documentation," "README," or "write docs." Code deliverables should contain zero .md files, zero explanation files, zero summary documents. Only working code.

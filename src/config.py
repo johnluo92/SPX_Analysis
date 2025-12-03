@@ -28,7 +28,8 @@ COHORT_PRIORITY=["fomc_period","opex_week","earnings_heavy","mid_cycle"]
 
 MACRO_EVENT_CONFIG={"cpi_release":{"day_of_month_target":12,"window_days":2},"pce_release":{"day_of_month_target":28,"window_days":3},"fomc_minutes":{"days_after_meeting":21,"window_days":2},"fomc_meeting":{"pre_meeting_days":7,"post_meeting_days":2}}
 
-DIRECTION_CALIBRATION_CONFIG={"enabled":True,"skip_up_calibration":True,"method":"isotonic","min_samples":100,"out_of_bounds":"clip","description":"Calibrate direction probabilities - UP calibration SKIPPED to preserve recall"}
+# BALANCED: Keep DOWN calibration enabled to filter false positives, skip UP to preserve recall
+DIRECTION_CALIBRATION_CONFIG={"enabled":False,"skip_up_calibration":True,"method":"isotonic","min_samples":100,"out_of_bounds":"clip","description":"DOWN calibration enabled (filters false positives), UP skipped (preserves recall)"}
 
 XGBOOST_CONFIG={"strategy":"asymmetric_4model","cohort_aware":False,"cv_config":{"method":"time_series_split","n_splits":5,"gap":5}}
 
@@ -67,4 +68,6 @@ UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_d
 
 DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':7,'learning_rate':0.0650,'n_estimators':490,'subsample':0.9300,'colsample_bytree':0.8500,'min_child_weight':10,'reg_alpha':2.5000,'reg_lambda':6.0000,'gamma':0.3800,'scale_pos_weight':1.0,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
 
-ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','confidence_weights':{'classifier':0.65,'magnitude':0.35},'magnitude_scaling':{'small':3.5,'medium':6.0,'large':12.0},'dynamic_thresholds':{'up':{'high_magnitude':0.50,'medium_magnitude':0.52,'low_magnitude':0.55},'down':{'high_magnitude':0.55,'medium_magnitude':0.58,'low_magnitude':0.60}},'min_ensemble_confidence':0.50,'confidence_boost_threshold':15.0,'confidence_boost_amount':0.05,'description':'Winner-takes-all ensemble with confidence boost for strong signals (>15%)'}
+# BALANCED: Moderate up_advantage (5%), slightly adjusted thresholds
+# Target: 30-40% UP signals, 75-80% UP accuracy, 60-70% DOWN signals, 65-70% DOWN accuracy
+ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','up_advantage':0.05,'confidence_weights':{'classifier':0.65,'magnitude':0.35},'magnitude_scaling':{'small':3.5,'medium':6.0,'large':12.0},'dynamic_thresholds':{'up':{'high_magnitude':0.47,'medium_magnitude':0.50,'low_magnitude':0.53},'down':{'high_magnitude':0.56,'medium_magnitude':0.59,'low_magnitude':0.62}},'min_ensemble_confidence':0.50,'confidence_boost_threshold':15.0,'confidence_boost_amount':0.05,'description':'Balanced asymmetric: DOWN must beat UP by 5%, calibrated thresholds for 30-40% UP signals'}

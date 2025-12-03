@@ -22,6 +22,7 @@ class AsymmetricVIXForecaster:
         self.calibration_enabled=DIRECTION_CALIBRATION_CONFIG["enabled"]
         self.skip_up_calibration=DIRECTION_CALIBRATION_CONFIG.get("skip_up_calibration",False)
         self.ensemble_enabled=ENSEMBLE_CONFIG["enabled"]
+        self.up_advantage=ENSEMBLE_CONFIG.get("up_advantage",0.05)  # Asymmetric advantage: DOWN must beat UP by this margin
         self.confidence_boost_threshold=ENSEMBLE_CONFIG.get("confidence_boost_threshold",15.0)
         self.confidence_boost_amount=ENSEMBLE_CONFIG.get("confidence_boost_amount",0.05)
         from core.target_calculator import TargetCalculator
@@ -241,16 +242,21 @@ class AsymmetricVIXForecaster:
         expansion_log=np.clip(expansion_log,-2,2); compression_log=np.clip(compression_log,-2,2)
         expansion_pct=(np.exp(expansion_log)-1)*100; compression_pct=(np.exp(compression_log)-1)*100
         expansion_pct=np.clip(expansion_pct,-50,100); compression_pct=np.clip(compression_pct,-50,100)
-        if p_up>p_down:
-            direction="UP"
-            magnitude_pct=expansion_pct
-            magnitude_log=expansion_log
-            classifier_prob=p_up_norm
-        else:
+
+        # MODIFIED: Asymmetric ensemble logic - DOWN must beat UP by advantage margin
+        if p_down > (p_up + self.up_advantage):
+            # DOWN only wins if clearly stronger
             direction="DOWN"
             magnitude_pct=compression_pct
             magnitude_log=compression_log
             classifier_prob=p_down_norm
+        else:
+            # UP wins if close or ahead (gets the advantage)
+            direction="UP"
+            magnitude_pct=expansion_pct
+            magnitude_log=expansion_log
+            classifier_prob=p_up_norm
+
         ensemble_confidence=self._compute_ensemble_confidence(classifier_prob,magnitude_pct,direction)
         actionable_threshold=self._get_dynamic_threshold(magnitude_pct,direction)
         actionable=ensemble_confidence>actionable_threshold
@@ -342,8 +348,9 @@ class AsymmetricVIXForecaster:
         print("\nASYMMETRIC 4-MODEL TRAINING SUMMARY")
         print(f"Models: Expansion + Compression Regressors | UP + DOWN Classifiers | Training through: {TRAINING_END_DATE}")
         if self.calibration_enabled: print("✓ Classifier probability calibration: ENABLED")
+        else: print("✓ Calibration: DISABLED")
         if self.skip_up_calibration: print("✓ UP calibration: SKIPPED (preserving recall)")
-        if self.ensemble_enabled: print("✓ Asymmetric ensemble: WINNER-TAKES-ALL")
+        if self.ensemble_enabled: print(f"✓ Asymmetric ensemble: DOWN must beat UP by {self.up_advantage*100:.0f}% to win")
         print(f"Expansion: Train={self.metrics['expansion']['train']['mae_pct']:.2f}% | Val={self.metrics['expansion']['val']['mae_pct']:.2f}% | Test={self.metrics['expansion']['test']['mae_pct']:.2f}% | Bias={self.metrics['expansion']['test']['bias_pct']:+.2f}%")
         print(f"Compression: Train={self.metrics['compression']['train']['mae_pct']:.2f}% | Val={self.metrics['compression']['val']['mae_pct']:.2f}% | Test={self.metrics['compression']['test']['mae_pct']:.2f}% | Bias={self.metrics['compression']['test']['bias_pct']:+.2f}%")
         print(f"UP: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['up_classifier']['test']['precision']:.1%} | Rec={self.metrics['up_classifier']['test']['recall']:.1%} | F1={self.metrics['up_classifier']['test']['f1']:.1%}")
