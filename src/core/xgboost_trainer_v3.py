@@ -200,15 +200,13 @@ class AsymmetricVIXForecaster:
         expansion_pct=(np.exp(expansion_log)-1)*100; compression_pct=(np.exp(compression_log)-1)*100
         expansion_pct=np.clip(expansion_pct,-50,100); compression_pct=np.clip(compression_pct,-50,100)
 
-        # MODIFIED: Asymmetric ensemble logic - DOWN must beat UP by advantage margin
+        # Asymmetric ensemble logic - DOWN must beat UP by advantage margin
         if p_down > (p_up + self.up_advantage):
-            # DOWN only wins if clearly stronger
             direction="DOWN"
             magnitude_pct=compression_pct
             magnitude_log=compression_log
             classifier_prob=p_down_norm
         else:
-            # UP wins if close or ahead (gets the advantage)
             direction="UP"
             magnitude_pct=expansion_pct
             magnitude_log=expansion_log
@@ -270,17 +268,13 @@ class AsymmetricVIXForecaster:
             ax.plot(lims,lims,"k--",alpha=0.5); ax.set_xlabel("Predicted (%)"); ax.set_ylabel("Actual (%)")
             ax.set_title("Compression Regressor (DOWN samples)"); ax.grid(True,alpha=0.3)
             ax=axes[1,0]; X_up_test=test_df[self.up_features]; y_up_test=test_df['target_direction']
-            up_proba_raw=self.up_classifier.predict_proba(X_up_test)[:,1]
-            if self.up_calibrator is not None: up_proba=self.up_calibrator.transform(up_proba_raw)
-            else: up_proba=up_proba_raw
+            up_proba=self.up_classifier.predict_proba(X_up_test)[:,1]
             correct_mask=(up_proba>0.5)==y_up_test
             ax.hist([up_proba[correct_mask],up_proba[~correct_mask]],bins=20,alpha=0.7,label=['Correct','Wrong'],edgecolor='black')
             ax.set_xlabel("P(UP)"); ax.set_ylabel("Frequency"); ax.set_title("UP Classifier Distribution")
             ax.legend(); ax.grid(True,alpha=0.3); ax.axvline(0.5,color='red',linestyle='--',alpha=0.5)
             ax=axes[1,1]; X_down_test=test_df[self.down_features]; y_down_test=1-test_df['target_direction']
-            down_proba_raw=self.down_classifier.predict_proba(X_down_test)[:,1]
-            if self.down_calibrator is not None: down_proba=self.down_calibrator.transform(down_proba_raw)
-            else: down_proba=down_proba_raw
+            down_proba=self.down_classifier.predict_proba(X_down_test)[:,1]
             correct_mask=(down_proba>0.5)==y_down_test
             ax.hist([down_proba[correct_mask],down_proba[~correct_mask]],bins=20,alpha=0.7,label=['Correct','Wrong'],edgecolor='black')
             ax.set_xlabel("P(DOWN)"); ax.set_ylabel("Frequency"); ax.set_title("DOWN Classifier Distribution")

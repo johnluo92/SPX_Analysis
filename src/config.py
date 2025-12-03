@@ -59,7 +59,7 @@ CALENDAR_COHORTS={'fomc_period':{'condition':'macro_event_period','range':(-7,2)
 
 FEATURE_SELECTION_CV_PARAMS={'n_estimators':207,'max_depth':3,'learning_rate':0.0675,'subsample':0.8714,'colsample_bytree':0.7970}
 
-FEATURE_SELECTION_CONFIG={'expansion_top_n':110,'compression_top_n':105,'up_top_n':115,'down_top_n':120,'cv_folds':5,'protected_features':['is_fomc_period','is_opex_week','is_earnings_heavy'],'correlation_threshold':0.9269,'description':'Asymmetric 4-model feature selection'}
+FEATURE_SELECTION_CONFIG={'expansion_top_n':110,'compression_top_n':105,'up_top_n':115,'down_top_n':120,'cv_folds':5,'protected_features':[],'correlation_threshold':0.9269,'description':'Asymmetric 4-model feature selection - cohort awareness via sample_weight, not forced features'}
 
 EXPANSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.0629,'n_estimators':603,'subsample':0.8751,'colsample_bytree':0.9252,'colsample_bylevel':0.9207,'min_child_weight':6,'reg_alpha':5.5318,'reg_lambda':5.8986,'gamma':0.1283,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
 

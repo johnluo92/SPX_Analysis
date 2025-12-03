@@ -1,0 +1,19 @@
+{
+  "threshold": 0.9269,
+  "total_features_before": 157,
+  "features_removed": 11,
+  "features_kept": 105,
+  "removed_features": [
+    "6m_vol_63d_fred",
+    "yield_10y3m",
+    "vx_roll_yield_annualized",
+    "vix_zscore_21d",
+    "vix_percentile_21d",
+    "vix_z_spx_rv_product",
+    "VXTLT_zscore_63d",
+    "risk_premium_percentile_252d",
+    "yield_10y2y_zscore",
+    "vvix_ret_10d",
+    "risk_premium_percentile_63d"
+  ]
+}

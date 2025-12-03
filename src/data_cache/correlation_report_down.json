@@ -1,0 +1,27 @@
+{
+  "threshold": 0.9269,
+  "total_features_before": 180,
+  "features_removed": 19,
+  "features_kept": 120,
+  "removed_features": [
+    "risk_premium_percentile_126d",
+    "vix_ret_5d",
+    "30y_vol_63d",
+    "10y_vol_63d",
+    "yield_10y3m",
+    "hy_velocity_21d",
+    "hy_bb_spread",
+    "spx_realized_vol_10d",
+    "vix_zscore_21d",
+    "vix_vs_ma252",
+    "hy_ccc_spread",
+    "6m_vol_63d_fred",
+    "vvix_ret_21d",
+    "hy_b_spread",
+    "days_in_regime",
+    "hy_b_velocity_21d",
+    "macd",
+    "vix_vol_21d_log",
+    "risk_premium_percentile_63d"
+  ]
+}
