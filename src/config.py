@@ -19,7 +19,7 @@ TRAINING_END_DATE=get_last_complete_month_end(); TRAINING_START_DATE=get_trainin
 DATA_SPLIT_CONFIG={"train_end_date":"2021-12-31","val_end_date":"2023-12-31","feature_selection_split_date":"2023-12-31","description":{"train":"Training data: up to 2021-12-31","val":"Validation data: 2022-01-01 to 2023-12-31","test":"Test data: 2024-01-01 onwards","feature_selection":"Uses Train+Val (up to 2023-12-31), excludes Test"}}
 
 TRAIN_END_DATE=DATA_SPLIT_CONFIG["train_end_date"]; VAL_END_DATE=DATA_SPLIT_CONFIG["val_end_date"]
-CALIBRATION_WINDOW_DAYS=500; CALIBRATION_DECAY_LAMBDA=0.125; MIN_SAMPLES_FOR_CORRECTION=50
+CALIBRATION_WINDOW_DAYS=700; CALIBRATION_DECAY_LAMBDA=0.125; MIN_SAMPLES_FOR_CORRECTION=50
 MODEL_VALIDATION_MAE_THRESHOLD=0.20
 
 TARGET_CONFIG={"horizon_days":5,"horizon_label":"5d","target_type":"log_vix_change","output_type":"vix_pct_change","log_space":{"enabled":True,"description":"Train on log(future_vix/current_vix), convert to % for output"},"movement_bounds":{"floor":-50.0,"ceiling":100.0,"description":"Percentage change bounds (converted from log-space)"}}
@@ -71,4 +71,4 @@ DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max
 
 # PRODUCTION TUNED: up_advantage=0.07 to match test distribution (52% DOWN, 48% UP)
 # DOWN thresholds raised to filter false positives, target: 55/45 split
-ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','up_advantage':0.07,'confidence_weights':{'classifier':0.65,'magnitude':0.35},'magnitude_scaling':{'small':3.5,'medium':6.0,'large':12.0},'dynamic_thresholds':{'up':{'high_magnitude':0.47,'medium_magnitude':0.50,'low_magnitude':0.53},'down':{'high_magnitude':0.57,'medium_magnitude':0.60,'low_magnitude':0.63}},'min_ensemble_confidence':0.50,'confidence_boost_threshold':15.0,'confidence_boost_amount':0.05,'description':'Production-tuned: DOWN must beat UP by 7%, stricter DOWN thresholds for 55/45 split'}
+ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','up_advantage':0.06,'confidence_weights':{'classifier':0.65,'magnitude':0.35},'magnitude_scaling':{'small':3.5,'medium':6.0,'large':12.0},'dynamic_thresholds':{'up':{'high_magnitude':0.47,'medium_magnitude':0.50,'low_magnitude':0.53},'down':{'high_magnitude':0.57,'medium_magnitude':0.60,'low_magnitude':0.63}},'min_ensemble_confidence':0.50,'confidence_boost_threshold':15.0,'confidence_boost_amount':0.05,'description':'Production-tuned: DOWN must beat UP by 7%, stricter DOWN thresholds for 55/45 split'}

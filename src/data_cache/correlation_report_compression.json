@@ -4,16 +4,16 @@
   "features_removed": 11,
   "features_kept": 105,
   "removed_features": [
-    "6m_vol_63d_fred",
-    "yield_10y3m",
+    "yield_10y2y_zscore",
     "vx_roll_yield_annualized",
-    "vix_zscore_21d",
-    "vix_percentile_21d",
+    "yield_10y3m",
     "vix_z_spx_rv_product",
+    "vvix_ret_10d",
+    "risk_premium_percentile_63d",
+    "vix_zscore_21d",
     "VXTLT_zscore_63d",
     "risk_premium_percentile_252d",
-    "yield_10y2y_zscore",
-    "vvix_ret_10d",
-    "risk_premium_percentile_63d"
+    "6m_vol_63d_fred",
+    "vix_percentile_21d"
   ]
 }
