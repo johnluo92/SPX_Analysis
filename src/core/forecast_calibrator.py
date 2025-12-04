@@ -20,7 +20,7 @@ class ForecastCalibrator:
         latest_date=df["forecast_date"].max();trading_days=pd.bdate_range(end=latest_date,periods=self.window_days)
         if len(trading_days)==0:logger.warning("⚠️  No trading days in window");return False
         window_start=trading_days[0];df=df[df["forecast_date"]>=window_start];self.calibration_date=latest_date
-        logger.info(f"Using {len(df)} predictions from {window_start.date()} → {latest_date.date()}")
+        logger.info(f"Using {len(df)} predictions from {df['forecast_date'].min().date()} → {latest_date.date()}")
         if len(df)<self.min_samples:logger.warning(f"⚠️  Only {len(df)} samples (need {self.min_samples})");return False
 
         df["months_ago"]=((latest_date-df["forecast_date"]).dt.days/30.0)
