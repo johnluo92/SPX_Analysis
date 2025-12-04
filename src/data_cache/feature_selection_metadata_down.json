@@ -1,0 +1,32 @@
+{
+  "target_type": "down",
+  "top_n": 101,
+  "correlation_threshold": 0.8925,
+  "n_selected": 101,
+  "n_removed_correlation": 25,
+  "n_samples": 4859,
+  "top_10_features": [
+    "vix_velocity_5d_x_regime_0",
+    "vix_vs_ma10",
+    "vix_velocity_5d_regime_adj",
+    "vix_zscore_252d_x_regime_2",
+    "spx_realized_vol_21d",
+    "vix_velocity_5d",
+    "hy_b_spread",
+    "rsi_14",
+    "vxtlt_vix_spread",
+    "month"
+  ],
+  "top_10_importance": [
+    0.008332461398094893,
+    0.008276182785630226,
+    0.008194358833134175,
+    0.00700377686880529,
+    0.006654693186283112,
+    0.006650094129145146,
+    0.006353574432432651,
+    0.006184510979801416,
+    0.0060271632857620714,
+    0.005979410279542208
+  ]
+}

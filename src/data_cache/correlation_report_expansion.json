@@ -1,0 +1,33 @@
+{
+  "threshold": 0.8925,
+  "total_features_before": 172,
+  "features_removed": 25,
+  "features_kept": 115,
+  "removed_features": [
+    "hy_ccc_spread",
+    "vvix_zscore_21d",
+    "6m_vol_63d_fred",
+    "yield_10y2y",
+    "spx_realized_vol_21d",
+    "yield_5y2y",
+    "spx_realized_vol_10d",
+    "hy_bb_spread",
+    "risk_premium_percentile_63d",
+    "time_in_regime_pct",
+    "credit_quality_spread",
+    "risk_premium_percentile_126d",
+    "hy_b_velocity_21d",
+    "macd",
+    "hy_b_spread",
+    "risk_premium_zscore",
+    "ig_hy_spread",
+    "vx_oi_5d_change",
+    "hy_zscore_252d",
+    "hy_ccc_velocity_21d",
+    "yield_10y2y_percentile_252d",
+    "claims_percentile_52w",
+    "dxy_vol_21d_log",
+    "vvix_velocity_10d",
+    "hy_bb_velocity_21d"
+  ]
+}

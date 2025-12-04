@@ -1,3 +1,11 @@
+import os
+import random
+os.environ['PYTHONHASHSEED'] = '42'
+random.seed(42)
+
+import numpy as np
+np.random.seed(42)
+
 import argparse,json,logging,sys
 from datetime import datetime
 from pathlib import Path
