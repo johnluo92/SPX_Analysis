@@ -1,20 +1,23 @@
 Core Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/data_fetcher.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/feature_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/forecast_calibrator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/prediction_database.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/regime_classifier.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/target_calculator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/temporal_validator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/vx_futures_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/xgboost_feature_selector_v2.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/core/xgboost_trainer_v3.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/data_fetcher.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/feature_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/forecast_calibrator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/prediction_database.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/regime_classifier.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/target_calculator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/temporal_validator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/vx_futures_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/xgboost_feature_selector_v2.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/core/xgboost_trainer_v3.py
 
 Root src Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/config.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/integrated_system.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/a21743f/src/train_probabilistic_models.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/config.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/integrated_system.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/train_probabilistic_models.py
 
+
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/phase1_model_tuner.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e06bb98/src/phase2_ensemble_tuner.py
 
 1. ZERO DOCUMENTATION RULE:
 Do not create README files, .md files, setup guides, explanations, summaries, or any form of documentation. Code files only. This is non-negotiable.
