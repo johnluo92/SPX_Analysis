@@ -1,33 +1,33 @@
 {
   "correlation_threshold": 0.8925,
-  "n_removed_correlation": 29,
+  "n_removed_correlation": 27,
   "n_samples": 2246,
   "n_selected": 115,
   "random_state": 42,
   "target_type": "expansion",
   "top_10_features": [
-    "vix_percentile_126d",
-    "6m_vol_63d_fred",
-    "time_in_regime_pct",
-    "fin_stress_index",
-    "vvix_percentile_63d",
+    "days_in_regime",
+    "hy_velocity_21d",
     "cross_asset_vol_cluster",
-    "hy_bb_velocity_21d",
-    "hy_ccc_spread",
-    "dxy_ret_63d",
-    "vx_oi_surge"
+    "fin_stress_index",
+    "vx_oi_surge",
+    "vvix_percentile_63d",
+    "dxy_vs_ma200",
+    "vix_percentile_126d",
+    "yield_curve_vol_avg",
+    "vvix_velocity_10d"
   ],
   "top_10_importance": [
-    0.020863983873277904,
-    0.01886498068924993,
-    0.01769248335622251,
-    0.01717009097337723,
-    0.016734044486656784,
-    0.015217202878557146,
-    0.012128405319526792,
-    0.009628063905984164,
-    0.009502412751317024,
-    0.008442298881709576
+    0.01878927806392312,
+    0.015378823783248664,
+    0.015219737484585494,
+    0.014342299848794936,
+    0.011246813833713532,
+    0.011080113681964576,
+    0.010917012486606837,
+    0.010005144961178302,
+    0.009884126181714237,
+    0.009829054912552237
   ],
   "top_n": 115
 }
