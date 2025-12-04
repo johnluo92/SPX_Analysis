@@ -13,10 +13,11 @@ logger=logging.getLogger(__name__)
 class FeatureSelector:
     """Unified feature selection: importance ranking + correlation filtering"""
 
-    def __init__(self,target_type='expansion',top_n=100,correlation_threshold=0.90):
+    def __init__(self,target_type='expansion',top_n=100,correlation_threshold=0.90,random_state=42):
         self.target_type=target_type
         self.top_n=top_n
         self.correlation_threshold=correlation_threshold
+        self.random_state=random_state
         self.feature_importance={}
         self.selected_features=[]
         self.removed_features=[]
@@ -60,18 +61,22 @@ class FeatureSelector:
         else:
             raise ValueError(f"Unknown target_type: {self.target_type}")
 
-        # Step 4: Drop NaN targets
-        train_val_df=train_val_df.dropna(subset=[target_col])
+        # Step 4: Drop NaN targets and sort index for determinism
+        train_val_df=train_val_df.dropna(subset=[target_col]).sort_index()
         logger.info(f"  Training samples: {len(train_val_df)}")
 
         X_train_val=train_val_df[feature_cols]
         y_train_val=train_val_df[target_col]
 
-        # Step 5: Train model for feature importance
+        # Step 5: Train model for feature importance with explicit random_state
+        cv_params = FEATURE_SELECTION_CV_PARAMS.copy()
+        cv_params['random_state'] = self.random_state
+        cv_params['seed'] = self.random_state
+
         if is_classifier:
-            model=XGBClassifier(objective='binary:logistic',eval_metric='aucpr',**FEATURE_SELECTION_CV_PARAMS)
+            model=XGBClassifier(objective='binary:logistic',eval_metric='aucpr',**cv_params)
         else:
-            model=XGBRegressor(objective='reg:squarederror',eval_metric='rmse',**FEATURE_SELECTION_CV_PARAMS)
+            model=XGBRegressor(objective='reg:squarederror',eval_metric='rmse',**cv_params)
 
         # Step 6: Time series CV for robust importance
         tscv=TimeSeriesSplit(n_splits=5)
@@ -88,36 +93,45 @@ class FeatureSelector:
 
         importance_scores/=5
 
-        # Step 7: Create importance dictionary
-        self.feature_importance={feat:float(imp) for feat,imp in zip(feature_cols,importance_scores)}
+        # Step 7: Create importance dictionary (sorted for determinism)
+        self.feature_importance={feat:float(imp) for feat,imp in sorted(zip(feature_cols,importance_scores))}
 
         # Step 8: Select top N*1.5 features (will reduce after correlation filtering)
-        sorted_features=sorted(self.feature_importance.items(),key=lambda x:x[1],reverse=True)
+        sorted_features=sorted(self.feature_importance.items(),key=lambda x:(-x[1],x[0]))
         candidate_features=[f for f,_ in sorted_features[:int(self.top_n*1.5)]]
 
         logger.info(f"  Candidate features: {len(candidate_features)}")
 
-        # Step 9: Correlation filtering
-        candidate_df=features_df[candidate_features]
+        # Step 9: Correlation filtering - process in deterministic order
+        candidate_df=features_df[sorted(candidate_features)]
         self.correlation_matrix=candidate_df.corr().abs()
 
         to_remove=set()
+        # Process correlation pairs in deterministic order
+        corr_items = []
         for i in range(len(self.correlation_matrix)):
             for j in range(i+1,len(self.correlation_matrix)):
                 if self.correlation_matrix.iloc[i,j]>self.correlation_threshold:
                     feat_i=self.correlation_matrix.index[i]
                     feat_j=self.correlation_matrix.columns[j]
-
-                    # Remove lower importance feature
                     imp_i=self.feature_importance[feat_i]
                     imp_j=self.feature_importance[feat_j]
+                    corr_items.append((self.correlation_matrix.iloc[i,j], feat_i, feat_j, imp_i, imp_j))
 
-                    if imp_i<imp_j:
-                        to_remove.add(feat_i)
-                    else:
-                        to_remove.add(feat_j)
+        # Sort by correlation (desc), then by feature names for determinism
+        corr_items.sort(key=lambda x: (-x[0], x[1], x[2]))
 
-        self.removed_features=list(to_remove)
+        for _, feat_i, feat_j, imp_i, imp_j in corr_items:
+            # Skip if either feature already removed
+            if feat_i in to_remove or feat_j in to_remove:
+                continue
+            # Remove lower importance feature (break ties by name for determinism)
+            if imp_i < imp_j or (imp_i == imp_j and feat_i > feat_j):
+                to_remove.add(feat_i)
+            else:
+                to_remove.add(feat_j)
+
+        self.removed_features=sorted(list(to_remove))
         remaining=[f for f in candidate_features if f not in to_remove]
 
         # Step 10: Final selection (top_n after correlation filtering)
@@ -131,6 +145,7 @@ class FeatureSelector:
             "target_type":self.target_type,
             "top_n":self.top_n,
             "correlation_threshold":self.correlation_threshold,
+            "random_state":self.random_state,
             "n_selected":len(self.selected_features),
             "n_removed_correlation":len(self.removed_features),
             "n_samples":len(train_val_df),
@@ -144,10 +159,10 @@ class FeatureSelector:
         output_path=Path(output_dir)
         output_path.mkdir(exist_ok=True)
 
-        # Save importance scores
+        # Save importance scores (sorted for determinism)
         importance_file=output_path/f"feature_importance{suffix}.json"
         with open(importance_file,"w") as f:
-            json.dump(self.feature_importance,f,indent=2)
+            json.dump(dict(sorted(self.feature_importance.items())),f,indent=2,sort_keys=True)
 
         # Save selected features
         selected_file=output_path/f"selected_features{suffix}.json"
@@ -157,21 +172,22 @@ class FeatureSelector:
         # Save metadata
         metadata_file=output_path/f"feature_selection_metadata{suffix}.json"
         with open(metadata_file,"w") as f:
-            json.dump(self.metadata,f,indent=2)
+            json.dump(self.metadata,f,indent=2,sort_keys=True)
 
         # Save correlation report
         if self.correlation_matrix is not None:
             report={
                 "threshold":self.correlation_threshold,
+                "random_state":self.random_state,
                 "total_features_before":len(self.correlation_matrix),
                 "features_removed":len(self.removed_features),
                 "features_kept":len(self.selected_features),
-                "removed_features":self.removed_features
+                "removed_features":sorted(self.removed_features)
             }
 
             report_file=output_path/f"correlation_report{suffix}.json"
             with open(report_file,"w") as f:
-                json.dump(report,f,indent=2)
+                json.dump(report,f,indent=2,sort_keys=True)
 
         logger.info(f"  Saved results to {output_dir}")
 
@@ -183,8 +199,8 @@ class FeatureSelector:
         output_path=Path(output_dir)
         output_path.mkdir(exist_ok=True)
 
-        # Heatmap for top 50 features
-        top_50=self.selected_features[:50] if len(self.selected_features)>50 else self.selected_features
+        # Heatmap for top 50 features (sorted for determinism)
+        top_50=sorted(self.selected_features[:50]) if len(self.selected_features)>50 else sorted(self.selected_features)
 
         plt.figure(figsize=(16,14))
         sns.heatmap(

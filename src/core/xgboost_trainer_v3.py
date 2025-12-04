@@ -63,6 +63,9 @@ class AsymmetricVIXForecaster:
         else: return thresholds["low_magnitude"]
 
     def train(self,df,expansion_features=None,compression_features=None,up_features=None,down_features=None,save_dir="models"):
+        # CRITICAL: Sort dataframe by index for deterministic splits
+        df = df.sort_index()
+
         df=self.target_calculator.calculate_all_targets(df,vix_col="vix")
         df=self._apply_quality_filter(df)
         validation=self.target_calculator.validate_targets(df)
@@ -83,7 +86,9 @@ class AsymmetricVIXForecaster:
         train_end_idx=df.index.get_loc(train_end_idx)
         val_end_idx=df[df.index<=pd.Timestamp(VAL_END_DATE)].index[-1]
         val_end_idx=df.index.get_loc(val_end_idx)
-        train_df=df.iloc[:train_end_idx+1]; val_df=df.iloc[train_end_idx+1:val_end_idx+1]; test_df=df.iloc[val_end_idx+1:]
+        train_df=df.iloc[:train_end_idx+1].sort_index()
+        val_df=df.iloc[train_end_idx+1:val_end_idx+1].sort_index()
+        test_df=df.iloc[val_end_idx+1:].sort_index()
         actual_train_end=train_df.index[-1]; actual_val_end=val_df.index[-1]
         logger.info(f"Data: {df.index[0].date()} → {df.index[-1].date()} | Train through: {actual_train_end.date()} | Val through: {actual_val_end.date()}")
         logger.info(f"Split: Train={len(train_df)} ({len(train_df)/total_samples:.1%}) | Val={len(val_df)} ({len(val_df)/total_samples:.1%}) | Test={len(test_df)} ({len(test_df)/total_samples:.1%})")
@@ -144,14 +149,21 @@ class AsymmetricVIXForecaster:
     def _prepare_features(self,df):
         exclude_cols=["vix","spx","calendar_cohort","cohort_weight","feature_quality","future_vix","target_vix_pct_change","target_log_vix_change","target_direction"]
         cohort_features=["is_fomc_period","is_opex_week","is_earnings_heavy"]
-        all_cols=df.columns.tolist(); feature_cols=[c for c in all_cols if c not in exclude_cols]
-        feature_cols=list(dict.fromkeys(feature_cols))
+        # Sort columns for determinism
+        all_cols=sorted(df.columns.tolist())
+        feature_cols=[c for c in all_cols if c not in exclude_cols]
+        feature_cols=sorted(list(dict.fromkeys(feature_cols)))
         for cf in cohort_features:
             if cf not in df.columns: logger.warning(f"  Missing cohort feature: {cf}, setting to 0"); df[cf]=0
         X=df[feature_cols].copy()
         return X,feature_cols
 
     def _train_regressor_model(self,X_train,y_train,X_val,y_val,X_test,y_test,params,name,train_df,val_df):
+        # Ensure random_state is set for determinism
+        params = params.copy()
+        if 'random_state' not in params:
+            params['random_state'] = params.get('seed', 42)
+
         model=XGBRegressor(**params)
         train_weights=None; val_weights=None
         if 'cohort_weight' in train_df.columns:
@@ -173,6 +185,11 @@ class AsymmetricVIXForecaster:
         return model,metrics
 
     def _train_classifier_model(self,X_train,y_train,X_val,y_val,X_test,y_test,params,name,train_df,val_df,invert=False):
+        # Ensure random_state is set for determinism
+        params = params.copy()
+        if 'random_state' not in params:
+            params['random_state'] = params.get('seed', 42)
+
         model=XGBClassifier(**params)
         train_weights=None; val_weights=None
         if 'cohort_weight' in train_df.columns:
@@ -230,7 +247,7 @@ class AsymmetricVIXForecaster:
         with open(save_path/"feature_names_compression.json","w")as f: json.dump(self.compression_features,f,indent=2)
         with open(save_path/"feature_names_up.json","w")as f: json.dump(self.up_features,f,indent=2)
         with open(save_path/"feature_names_down.json","w")as f: json.dump(self.down_features,f,indent=2)
-        with open(save_path/"training_metrics.json","w")as f: json.dump(self.metrics,f,indent=2)
+        with open(save_path/"training_metrics.json","w")as f: json.dump(self.metrics,f,indent=2,sort_keys=True)
 
     def load(self,models_dir="models"):
         models_path=Path(models_dir)

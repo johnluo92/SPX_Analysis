@@ -50,7 +50,8 @@ class PredictionDatabase:
         try:
             cursor=self.conn.execute("SELECT prediction_id FROM forecasts WHERE forecast_date=? AND horizon=?",(record["forecast_date"],record["horizon"]));existing=cursor.fetchone()
             if existing:logger.debug(f"Prediction exists for {record['forecast_date']}");self._pending_keys.discard(key);return None
-            columns=list(record.keys());placeholders=",".join(["?"for _ in columns]);insert_sql=f"INSERT INTO forecasts ({','.join(columns)}) VALUES ({placeholders})";values=[record[col]for col in columns];self.conn.execute(insert_sql,values);self._commit_tracker.track_write(f"INSERT {record['forecast_date']}");return record["prediction_id"]
+            # Sort columns for deterministic insert
+            columns=sorted(list(record.keys()));placeholders=",".join(["?"for _ in columns]);insert_sql=f"INSERT INTO forecasts ({','.join(columns)}) VALUES ({placeholders})";values=[record[col]for col in columns];self.conn.execute(insert_sql,values);self._commit_tracker.track_write(f"INSERT {record['forecast_date']}");return record["prediction_id"]
         except sqlite3.IntegrityError as e:logger.error(f"❌ Duplicate: {e}");self.conn.rollback();self._pending_keys.discard(key);return None
         except Exception as e:logger.error(f"❌ Store failed: {e}");self.conn.rollback();self._pending_keys.discard(key);raise
     def commit(self):
@@ -62,22 +63,36 @@ class PredictionDatabase:
     def get_commit_status(self):
         return{"pending_writes":self._commit_tracker.pending_writes,"last_commit":self._commit_tracker.last_commit_time.isoformat()if self._commit_tracker.last_commit_time else None,"recent_operations":self._commit_tracker.writes_log[-10:]}
     def get_predictions(self,start_date=None,end_date=None,cohort=None,with_actuals=False):
-        query="SELECT DISTINCT * FROM forecasts WHERE 1=1";params=[]
+        # CRITICAL: Remove DISTINCT and add explicit ORDER BY for determinism
+        query="SELECT * FROM forecasts WHERE 1=1";params=[]
         if start_date:query+=" AND forecast_date>=?";params.append(start_date)
         if end_date:query+=" AND forecast_date<=?";params.append(end_date)
         if cohort:query+=" AND calendar_cohort=?";params.append(cohort)
         if with_actuals:query+=" AND actual_vix_change IS NOT NULL"
-        query+=" ORDER BY forecast_date"
+        # Explicit deterministic ordering: forecast_date, horizon, prediction_id
+        query+=" ORDER BY forecast_date, horizon, prediction_id"
         try:
-            df=pd.read_sql_query(query,self.conn,params=params,parse_dates=["observation_date","forecast_date","timestamp"]);before=len(df);df=df.drop_duplicates(subset=["forecast_date","horizon"],keep="first");after=len(df)
+            df=pd.read_sql_query(query,self.conn,params=params,parse_dates=["observation_date","forecast_date","timestamp"])
+            # Sort again after loading for extra safety
+            df = df.sort_values(['forecast_date', 'horizon', 'prediction_id'])
+            before=len(df)
+            # Use last instead of first to be consistent with database UNIQUE constraint
+            df=df.drop_duplicates(subset=["forecast_date","horizon"],keep="last")
+            after=len(df)
             if before!=after:logger.warning(f"⚠️  Removed {before-after} duplicates")
+            # Final sort to ensure deterministic output
+            df = df.sort_values(['forecast_date', 'horizon']).reset_index(drop=True)
             return df
         except Exception as e:logger.error(f"❌ Query failed: {e}");raise
     def backfill_actuals(self,fetcher=None):
         if fetcher is None:
             from core.data_fetcher import UnifiedDataFetcher
             fetcher=UnifiedDataFetcher()
-        vix_data=fetcher.fetch_yahoo("^VIX",start_date="2009-01-01")["Close"];vix_dates=set(vix_data.index.strftime("%Y-%m-%d"));query="SELECT prediction_id,forecast_date,horizon,current_vix,direction_probability,direction_prediction,magnitude_forecast FROM forecasts WHERE actual_vix_change IS NULL";cursor=self.conn.cursor();cursor.execute(query);rows=cursor.fetchall()
+        vix_data=fetcher.fetch_yahoo("^VIX",start_date="2009-01-01")["Close"]
+        vix_dates=set(vix_data.index.strftime("%Y-%m-%d"))
+        # CRITICAL: Add ORDER BY for deterministic processing
+        query="SELECT prediction_id,forecast_date,horizon,current_vix,direction_probability,direction_prediction,magnitude_forecast FROM forecasts WHERE actual_vix_change IS NULL ORDER BY forecast_date, horizon, prediction_id"
+        cursor=self.conn.cursor();cursor.execute(query);rows=cursor.fetchall()
         if len(rows)==0:logger.debug("No predictions need backfilling");return
         updated=0;skipped=0
         for row in rows:
@@ -104,7 +119,8 @@ class PredictionDatabase:
             else:df["predicted_direction"]=(df["prob_up"]>0.5).astype(int);df["direction_correct"]=(df["predicted_direction"]==df["actual_direction"]).astype(int)
         if "magnitude_error"not in df.columns or df["magnitude_error"].isna().all():df["magnitude_error"]=np.abs(df["actual_vix_change"]-df["magnitude_forecast"])
         summary={"n_predictions":len(df),"date_range":{"start":df["forecast_date"].min().isoformat(),"end":df["forecast_date"].max().isoformat()},"direction":{"accuracy":float(df["direction_correct"].mean()),"precision":float(df[df["actual_direction"]==1]["direction_correct"].mean())if(df["actual_direction"]==1).sum()>0 else 0.0,"recall":float(df[df["actual_direction"]==1]["direction_correct"].mean())if(df["actual_direction"]==1).sum()>0 else 0.0},"magnitude":{"mae":float(df["magnitude_error"].mean()),"rmse":float(np.sqrt((df["magnitude_error"]**2).mean())),"bias":float((df["magnitude_forecast"]-df["actual_vix_change"]).mean()),"median_error":float(df["magnitude_error"].median())}};summary["by_cohort"]={}
-        for cohort in df["calendar_cohort"].unique():
+        # Sort cohorts for deterministic output
+        for cohort in sorted(df["calendar_cohort"].unique()):
             cohort_df=df[df["calendar_cohort"]==cohort];summary["by_cohort"][cohort]={"n":int(len(cohort_df)),"direction_accuracy":float(cohort_df["direction_correct"].mean()),"magnitude_mae":float(cohort_df["magnitude_error"].mean()),"magnitude_bias":float((cohort_df["magnitude_forecast"]-cohort_df["actual_vix_change"]).mean())}
         return summary
     def export_to_csv(self,filename="predictions_export.csv"):
