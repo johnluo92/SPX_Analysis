@@ -1,60 +1,60 @@
-# PHASE 1 OPTIMIZED CONFIG - 2025-12-03 18:43:45
+# PHASE 1 OPTIMIZED CONFIG (RAW PREDICTIONS) - 2025-12-03 22:26:51
 
-QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.5503,
+QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.6286,
     'warn_pct': 20.0, 'error_pct': 50.0, 'strategy': 'raise'}
 
 CALENDAR_COHORTS = {
     'fomc_period': {'condition': 'macro_event_period', 'range': (-7, 2),
-        'weight': 1.3828, 'description': 'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},
+        'weight': 1.2530, 'description': 'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},
     'opex_week': {'condition': 'days_to_monthly_opex', 'range': (-7, 0),
-        'weight': 1.4475, 'description': 'Options expiration week + VIX futures rollover'},
+        'weight': 1.4466, 'description': 'Options expiration week + VIX futures rollover'},
     'earnings_heavy': {'condition': 'spx_earnings_pct', 'range': (0.15, 1.0),
-        'weight': 1.3736, 'description': 'Peak earnings season (Jan, Apr, Jul, Oct)'},
+        'weight': 1.3473, 'description': 'Peak earnings season (Jan, Apr, Jul, Oct)'},
     'mid_cycle': {'condition': 'default', 'range': None, 'weight': 1.0, 'description': 'Regular market conditions'}}
 
-FEATURE_SELECTION_CV_PARAMS = {'n_estimators': 268,
-    'max_depth': 6, 'learning_rate': 0.0377,
-    'subsample': 0.8647, 'colsample_bytree': 0.9171}
+FEATURE_SELECTION_CV_PARAMS = {'n_estimators': 105,
+    'max_depth': 6, 'learning_rate': 0.0639,
+    'subsample': 0.8266, 'colsample_bytree': 0.7005}
 
-FEATURE_SELECTION_CONFIG = {'expansion_top_n': 121,
-    'compression_top_n': 78, 'up_top_n': 124,
-    'down_top_n': 143, 'cv_folds': 5,
-    'protected_features': ['is_fomc_period', 'is_opex_week', 'is_earnings_heavy'],
-    'correlation_threshold': 0.8801,
-    'description': 'Phase 1 optimized on 2024-2025 test data'}
+FEATURE_SELECTION_CONFIG = {'expansion_top_n': 115,
+    'compression_top_n': 116, 'up_top_n': 136,
+    'down_top_n': 101, 'cv_folds': 5,
+    'protected_features': [],
+    'correlation_threshold': 0.8925,
+    'description': 'Phase 1 optimized on RAW predictions (no ensemble filtering)'}
 
 EXPANSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 7, 'learning_rate': 0.0915,
-    'n_estimators': 721, 'subsample': 0.9070,
-    'colsample_bytree': 0.7224, 'colsample_bylevel': 0.7446,
-    'min_child_weight': 15, 'reg_alpha': 7.0416,
-    'reg_lambda': 2.1126, 'gamma': 0.4922,
+    'max_depth': 4, 'learning_rate': 0.0114,
+    'n_estimators': 603, 'subsample': 0.7603,
+    'colsample_bytree': 0.9497, 'colsample_bylevel': 0.8720,
+    'min_child_weight': 13, 'reg_alpha': 3.0552,
+    'reg_lambda': 7.9579, 'gamma': 0.0218,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}
 
 COMPRESSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 3, 'learning_rate': 0.0452,
-    'n_estimators': 344, 'subsample': 0.9373,
-    'colsample_bytree': 0.7107, 'colsample_bylevel': 0.7537,
-    'min_child_weight': 11, 'reg_alpha': 5.2203,
-    'reg_lambda': 2.4856, 'gamma': 0.4325,
+    'max_depth': 3, 'learning_rate': 0.0846,
+    'n_estimators': 541, 'subsample': 0.7664,
+    'colsample_bytree': 0.7703, 'colsample_bylevel': 0.9295,
+    'min_child_weight': 11, 'reg_alpha': 7.0132,
+    'reg_lambda': 3.6590, 'gamma': 0.5431,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}
 
 UP_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'aucpr',
-    'max_depth': 10, 'learning_rate': 0.0397,
-    'n_estimators': 741, 'subsample': 0.7425,
-    'colsample_bytree': 0.8691, 'min_child_weight': 10,
-    'reg_alpha': 5.0048, 'reg_lambda': 6.3301,
-    'gamma': 0.9399, 'scale_pos_weight': 1.0,
+    'max_depth': 6, 'learning_rate': 0.1111,
+    'n_estimators': 776, 'subsample': 0.7562,
+    'colsample_bytree': 0.9223, 'min_child_weight': 13,
+    'reg_alpha': 4.8640, 'reg_lambda': 9.2011,
+    'gamma': 0.5018, 'scale_pos_weight': 1.0,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}
 
 DOWN_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'aucpr',
-    'max_depth': 5, 'learning_rate': 0.0331,
-    'n_estimators': 554, 'subsample': 0.8662,
-    'colsample_bytree': 0.8140, 'min_child_weight': 17,
-    'reg_alpha': 5.3615, 'reg_lambda': 7.0824,
-    'gamma': 1.1184, 'scale_pos_weight': 1.0,
+    'max_depth': 8, 'learning_rate': 0.0883,
+    'n_estimators': 766, 'subsample': 0.7406,
+    'colsample_bytree': 0.8341, 'min_child_weight': 11,
+    'reg_alpha': 2.6657, 'reg_lambda': 7.8673,
+    'gamma': 0.1054, 'scale_pos_weight': 1.0,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}
 
-# TEST PERFORMANCE: Raw 66.6% (UP 65.6%, DOWN 67.4%)
-# Actionable 67.7% (UP 65.6%, DOWN 69.8%) MAE 13.26%
-# Validation: Exp 8.80% Comp 4.83% UP 56.9% DOWN 57.9%
+# TEST PERFORMANCE (RAW): 69.9% (UP 70.4%, DOWN 69.6%)
+# MAE: 12.95% (UP: 11.17%, DOWN: 14.31%)
+# Validation: Exp 8.80% Comp 4.94% UP 57.5% DOWN 59.3%

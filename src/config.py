@@ -53,21 +53,14 @@ REGIME_NAMES={0:"Low Vol",1:"Normal",2:"Elevated",3:"Crisis"}
 
 HYPERPARAMETER_TUNING_CONFIG={"enabled":False,"method":"optuna","n_trials":500,"cv_folds":5,"timeout_hours":24,"magnitude_param_space":{"max_depth":(2,8),"learning_rate":(0.005,0.1),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"colsample_bylevel":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0)},"direction_param_space":{"max_depth":(3,10),"learning_rate":(0.01,0.15),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0),"scale_pos_weight":(0.8,2.0)},"description":"Hyperparameter optimization with Optuna - run after ensemble implementation"}
 
-QUALITY_FILTER_CONFIG={'enabled':True,'min_threshold':0.5830,'warn_pct':20.0,'error_pct':50.0,'strategy':'raise'}
-
-CALENDAR_COHORTS={'fomc_period':{'condition':'macro_event_period','range':(-7,2),'weight':1.4475,'description':'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},'opex_week':{'condition':'days_to_monthly_opex','range':(-7,0),'weight':1.3501,'description':'Options expiration week + VIX futures rollover'},'earnings_heavy':{'condition':'spx_earnings_pct','range':(0.15,1.0),'weight':1.0558,'description':'Peak earnings season (Jan, Apr, Jul, Oct)'},'mid_cycle':{'condition':'default','range':None,'weight':1.0,'description':'Regular market conditions'}}
-
-FEATURE_SELECTION_CV_PARAMS={'n_estimators':207,'max_depth':3,'learning_rate':0.0675,'subsample':0.8714,'colsample_bytree':0.7970}
-
-FEATURE_SELECTION_CONFIG={'expansion_top_n':110,'compression_top_n':105,'up_top_n':115,'down_top_n':120,'cv_folds':5,'protected_features':[],'correlation_threshold':0.9269,'description':'Asymmetric 4-model feature selection - cohort awareness via sample_weight, not forced features'}
-
-EXPANSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.0629,'n_estimators':603,'subsample':0.8751,'colsample_bytree':0.9252,'colsample_bylevel':0.9207,'min_child_weight':6,'reg_alpha':5.5318,'reg_lambda':5.8986,'gamma':0.1283,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
-
-COMPRESSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.0580,'n_estimators':620,'subsample':0.8900,'colsample_bytree':0.9100,'colsample_bylevel':0.9000,'min_child_weight':5,'reg_alpha':4.8000,'reg_lambda':6.2000,'gamma':0.1500,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
-
-UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':8,'learning_rate':0.0677,'n_estimators':478,'subsample':0.9493,'colsample_bytree':0.8408,'min_child_weight':11,'reg_alpha':2.6824,'reg_lambda':6.2968,'gamma':0.4012,'scale_pos_weight':1.0,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
-
-DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':7,'learning_rate':0.0650,'n_estimators':490,'subsample':0.9300,'colsample_bytree':0.8500,'min_child_weight':10,'reg_alpha':2.5000,'reg_lambda':6.0000,'gamma':0.3800,'scale_pos_weight':1.0,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
+QUALITY_FILTER_CONFIG={'enabled':True,'min_threshold':0.6286,'warn_pct':20.0,'error_pct':50.0,'strategy':'raise'}
+CALENDAR_COHORTS={'fomc_period':{'condition':'macro_event_period','range':(-7,2),'weight':1.2530,'description':'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},'opex_week':{'condition':'days_to_monthly_opex','range':(-7,0),'weight':1.4466,'description':'Options expiration week + VIX futures rollover'},'earnings_heavy':{'condition':'spx_earnings_pct','range':(0.15,1.0),'weight':1.3473,'description':'Peak earnings season (Jan, Apr, Jul, Oct)'},'mid_cycle':{'condition':'default','range':None,'weight':1.0,'description':'Regular market conditions'}}
+FEATURE_SELECTION_CV_PARAMS={'n_estimators':105,'max_depth':6,'learning_rate':0.0639,'subsample':0.8266,'colsample_bytree':0.7005}
+FEATURE_SELECTION_CONFIG={'expansion_top_n':115,'compression_top_n':116,'up_top_n':136,'down_top_n':101,'cv_folds':5,'protected_features':[],'correlation_threshold':0.8925,'description':'Phase 1 optimized on RAW predictions (no ensemble filtering)'}
+EXPANSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':4,'learning_rate':0.0114,'n_estimators':603,'subsample':0.7603,'colsample_bytree':0.9497,'colsample_bylevel':0.8720,'min_child_weight':13,'reg_alpha':3.0552,'reg_lambda':7.9579,'gamma':0.0218,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
+COMPRESSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.0846,'n_estimators':541,'subsample':0.7664,'colsample_bytree':0.7703,'colsample_bylevel':0.9295,'min_child_weight':11,'reg_alpha':7.0132,'reg_lambda':3.6590,'gamma':0.5431,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
+UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':6,'learning_rate':0.1111,'n_estimators':776,'subsample':0.7562,'colsample_bytree':0.9223,'min_child_weight':13,'reg_alpha':4.8640,'reg_lambda':9.2011,'gamma':0.5018,'scale_pos_weight':1.0,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
+DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':8,'learning_rate':0.0883,'n_estimators':766,'subsample':0.7406,'colsample_bytree':0.8341,'min_child_weight':11,'reg_alpha':2.6657,'reg_lambda':7.8673,'gamma':0.1054,'scale_pos_weight':1.0,'early_stopping_rounds':50,'seed':42,'n_jobs':-1}
 
 # PRODUCTION TUNED: up_advantage=0.07 to match test distribution (52% DOWN, 48% UP)
 # DOWN thresholds raised to filter false positives, target: 55/45 split

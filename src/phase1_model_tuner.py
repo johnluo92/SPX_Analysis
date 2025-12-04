@@ -2,10 +2,10 @@
 import argparse, json, logging, sys, warnings
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import numpy as np, pandas as pd, optuna
 from optuna.samplers import TPESampler
-from sklearn.metrics import accuracy_score, mean_absolute_error, precision_score, recall_score, f1_score
+from sklearn.metrics import mean_absolute_error
 
 warnings.filterwarnings("ignore")
 
@@ -15,18 +15,26 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 @dataclass
-class TrialMetrics:
-    raw_total: int = 0; raw_up_count: int = 0; raw_down_count: int = 0
-    raw_up_pct: float = 0.0; raw_down_pct: float = 0.0; raw_accuracy: float = 0.0
-    raw_up_accuracy: float = 0.0; raw_down_accuracy: float = 0.0
-    act_total: int = 0; act_up_count: int = 0; act_down_count: int = 0
-    act_up_pct: float = 0.0; act_down_pct: float = 0.0; act_accuracy: float = 0.0
-    act_up_accuracy: float = 0.0; act_down_accuracy: float = 0.0; act_rate: float = 0.0
-    mag_mae: float = 0.0; mag_mae_up: float = 0.0; mag_mae_down: float = 0.0
-    expansion_val_mae: float = 0.0; compression_val_mae: float = 0.0
-    up_val_acc: float = 0.0; down_val_acc: float = 0.0
-    n_expansion_features: int = 0; n_compression_features: int = 0
-    n_up_features: int = 0; n_down_features: int = 0
+class RawMetrics:
+    total: int = 0
+    up_count: int = 0
+    down_count: int = 0
+    up_pct: float = 0.0
+    down_pct: float = 0.0
+    accuracy: float = 0.0
+    up_accuracy: float = 0.0
+    down_accuracy: float = 0.0
+    mae: float = 0.0
+    mae_up: float = 0.0
+    mae_down: float = 0.0
+    expansion_val_mae: float = 0.0
+    compression_val_mae: float = 0.0
+    up_val_acc: float = 0.0
+    down_val_acc: float = 0.0
+    n_expansion_features: int = 0
+    n_compression_features: int = 0
+    n_up_features: int = 0
+    n_down_features: int = 0
 
 class Phase1Tuner:
     def __init__(self, df, vix, n_trials=300, output_dir="tuning_phase1"):
@@ -42,21 +50,20 @@ class Phase1Tuner:
         self.train_df = df[train_mask].copy()
         self.val_df = df[val_mask].copy()
         self.test_df = df[test_mask].copy()
-        from config import ENSEMBLE_CONFIG, TARGET_CONFIG
-        self.current_ensemble = ENSEMBLE_CONFIG.copy()
+        from config import TARGET_CONFIG
         self.horizon = TARGET_CONFIG["horizon_days"]
         self.base_cols = [c for c in df.columns if c not in
             ["vix", "spx", "calendar_cohort", "cohort_weight", "feature_quality",
              "future_vix", "target_vix_pct_change", "target_log_vix_change", "target_direction"]]
         self._calculate_targets()
         logger.info("="*80)
-        logger.info("PHASE 1: MODEL HYPERPARAMETER TUNER")
+        logger.info("PHASE 1: MODEL HYPERPARAMETER TUNER (RAW PREDICTIONS)")
         logger.info("="*80)
         logger.info(f"Train:  {len(self.train_df)} days ({self.train_df.index[0].date()} to {self.train_end.date()})")
         logger.info(f"Val:    {len(self.val_df)} days ({self.val_df.index[0].date()} to {self.val_end.date()})")
         logger.info(f"Test:   {len(self.test_df)} days ({self.test_start.date()} to {self.test_df.index[-1].date()})")
         logger.info(f"Base features: {len(self.base_cols)}")
-        logger.info(f"Using CURRENT ensemble config: up_advantage={self.current_ensemble['up_advantage']:.3f}")
+        logger.info(f"Optimizing on RAW predictions (no ensemble filtering)")
         logger.info("="*80)
 
     def _calculate_targets(self):
@@ -119,19 +126,11 @@ class Phase1Tuner:
             if any(len(f) < 20 for f in [exp_features, comp_features, up_features, down_features]):
                 logger.warning("Insufficient features selected")
                 return None
-            from core.xgboost_trainer_v3 import AsymmetricVIXForecaster
-            forecaster = AsymmetricVIXForecaster()
-            forecaster.expansion_features = exp_features
-            forecaster.compression_features = comp_features
-            forecaster.up_features = up_features
-            forecaster.down_features = down_features
-            complete_train_val = train_val_df.copy()
-            complete_train_val['vix'] = train_val_vix
+            from xgboost import XGBRegressor, XGBClassifier
             expansion_params = self._build_expansion_params(trial_params)
             compression_params = self._build_compression_params(trial_params)
             up_params = self._build_up_params(trial_params)
             down_params = self._build_down_params(trial_params)
-            from xgboost import XGBRegressor, XGBClassifier
             train_up_mask = (train_filt['target_direction'] == 1) & (train_filt['target_log_vix_change'].notna())
             val_up_mask = (val_filt['target_direction'] == 1) & (val_filt['target_log_vix_change'].notna())
             X_exp_train = train_filt[train_up_mask][exp_features].fillna(0)
@@ -163,6 +162,7 @@ class Phase1Tuner:
             up_model = XGBClassifier(**up_params)
             up_model.fit(X_up_train, y_up_train, sample_weight=train_weights,
                 eval_set=[(X_up_val, y_up_val)], verbose=False)
+            from sklearn.metrics import accuracy_score
             up_val_acc = accuracy_score(y_up_val, up_model.predict(X_up_val))
             X_down_train = train_filt[down_features].fillna(0)
             y_down_train = 1 - train_filt['target_direction']
@@ -172,6 +172,8 @@ class Phase1Tuner:
             down_model.fit(X_down_train, y_down_train, sample_weight=train_weights,
                 eval_set=[(X_down_val, y_down_val)], verbose=False)
             down_val_acc = accuracy_score(y_down_val, down_model.predict(X_down_val))
+
+            # RAW PREDICTIONS (no ensemble logic)
             test_predictions = []
             for idx in test_filt.index:
                 if pd.isna(test_filt.loc[idx, 'target_direction']): continue
@@ -185,19 +187,35 @@ class Phase1Tuner:
                 comp_pct = (np.exp(comp_log) - 1) * 100
                 p_up = up_model.predict_proba(X_up)[0, 1]
                 p_down = down_model.predict_proba(X_down)[0, 1]
-                current_vix = float(test_filt.loc[idx, 'vix'])
-                forecast = self._apply_ensemble_logic(p_up, p_down, exp_pct, comp_pct, current_vix)
+
+                # Simple decision: whoever has higher probability wins
+                total = p_up + p_down
+                p_up_norm = p_up / total if total > 0 else 0.5
+                p_down_norm = p_down / total if total > 0 else 0.5
+
+                if p_up_norm > p_down_norm:
+                    pred_direction = 1
+                    magnitude = exp_pct
+                else:
+                    pred_direction = 0
+                    magnitude = comp_pct
+
                 actual_direction = int(test_filt.loc[idx, 'target_direction'])
                 actual_mag_log = test_filt.loc[idx, 'target_log_vix_change']
                 actual_mag_pct = (np.exp(actual_mag_log) - 1) * 100
-                pred_direction = 1 if forecast['direction'] == 'UP' else 0
-                test_predictions.append({'pred_direction': pred_direction, 'actual_direction': actual_direction,
-                    'direction_correct': (pred_direction == actual_direction), 'confidence': forecast['confidence'],
-                    'actionable': forecast['actionable'], 'magnitude': forecast['magnitude_pct'],
-                    'actual_magnitude': actual_mag_pct})
+
+                test_predictions.append({
+                    'pred_direction': pred_direction,
+                    'actual_direction': actual_direction,
+                    'direction_correct': (pred_direction == actual_direction),
+                    'magnitude': magnitude,
+                    'actual_magnitude': actual_mag_pct
+                })
+
             if len(test_predictions) < 100:
                 logger.warning("Insufficient test predictions")
                 return None
+
             metrics = self._calculate_metrics(test_predictions, exp_val_mae, comp_val_mae, up_val_acc, down_val_acc,
                 len(exp_features), len(comp_features), len(up_features), len(down_features))
             return metrics
@@ -207,65 +225,37 @@ class Phase1Tuner:
             traceback.print_exc()
             return None
 
-    def _apply_ensemble_logic(self, p_up, p_down, exp_pct, comp_pct, current_vix):
-        total = p_up + p_down
-        p_up_norm = p_up / total if total > 0 else 0.5
-        p_down_norm = p_down / total if total > 0 else 0.5
-        up_advantage = self.current_ensemble['up_advantage']
-        if p_down > (p_up + up_advantage):
-            direction = "DOWN"; magnitude_pct = comp_pct; classifier_prob = p_down_norm
-        else:
-            direction = "UP"; magnitude_pct = exp_pct; classifier_prob = p_up_norm
-        abs_mag = abs(magnitude_pct)
-        weights = self.current_ensemble['confidence_weights']
-        scaling = self.current_ensemble['magnitude_scaling']
-        mag_strength = min(abs_mag / scaling['large'], 1.0)
-        confidence = weights['classifier'] * classifier_prob + weights['magnitude'] * mag_strength
-        if abs_mag > self.current_ensemble['confidence_boost_threshold']:
-            confidence = min(confidence + self.current_ensemble['confidence_boost_amount'], 1.0)
-        confidence = np.clip(confidence, self.current_ensemble['min_ensemble_confidence'], 1.0)
-        thresholds = self.current_ensemble['dynamic_thresholds'][direction.lower()]
-        if abs_mag > scaling['large']:
-            threshold = thresholds['high_magnitude']
-        elif abs_mag > scaling['medium']:
-            threshold = thresholds['medium_magnitude']
-        else:
-            threshold = thresholds['low_magnitude']
-        actionable = confidence > threshold
-        return {'direction': direction, 'magnitude_pct': magnitude_pct, 'confidence': confidence,
-            'threshold': threshold, 'actionable': actionable}
-
     def _calculate_metrics(self, predictions, exp_val_mae, comp_val_mae, up_val_acc, down_val_acc,
                           n_exp_feats, n_comp_feats, n_up_feats, n_down_feats):
         df = pd.DataFrame(predictions)
-        raw_up = df[df['pred_direction'] == 1]
-        raw_down = df[df['pred_direction'] == 0]
-        act_df = df[df['actionable']]
-        act_up = act_df[act_df['pred_direction'] == 1]
-        act_down = act_df[act_df['pred_direction'] == 0]
-        act_df_clean = act_df.dropna(subset=['actual_magnitude', 'magnitude'])
-        act_up_clean = act_up.dropna(subset=['actual_magnitude', 'magnitude'])
-        act_down_clean = act_down.dropna(subset=['actual_magnitude', 'magnitude'])
-        metrics = TrialMetrics(
-            raw_total=len(df), raw_up_count=len(raw_up), raw_down_count=len(raw_down),
-            raw_up_pct=len(raw_up) / len(df), raw_down_pct=len(raw_down) / len(df),
-            raw_accuracy=df['direction_correct'].mean(),
-            raw_up_accuracy=raw_up['direction_correct'].mean() if len(raw_up) > 0 else 0.0,
-            raw_down_accuracy=raw_down['direction_correct'].mean() if len(raw_down) > 0 else 0.0,
-            act_total=len(act_df), act_up_count=len(act_up), act_down_count=len(act_down),
-            act_up_pct=len(act_up) / len(act_df) if len(act_df) > 0 else 0.0,
-            act_down_pct=len(act_down) / len(act_df) if len(act_df) > 0 else 0.0,
-            act_accuracy=act_df['direction_correct'].mean() if len(act_df) > 0 else 0.0,
-            act_up_accuracy=act_up['direction_correct'].mean() if len(act_up) > 0 else 0.0,
-            act_down_accuracy=act_down['direction_correct'].mean() if len(act_down) > 0 else 0.0,
-            act_rate=len(act_df) / len(df),
-            mag_mae=mean_absolute_error(act_df_clean['actual_magnitude'], act_df_clean['magnitude']) if len(act_df_clean) > 0 else 999.0,
-            mag_mae_up=mean_absolute_error(act_up_clean['actual_magnitude'], act_up_clean['magnitude']) if len(act_up_clean) > 0 else 999.0,
-            mag_mae_down=mean_absolute_error(act_down_clean['actual_magnitude'], act_down_clean['magnitude']) if len(act_down_clean) > 0 else 999.0,
-            expansion_val_mae=exp_val_mae, compression_val_mae=comp_val_mae,
-            up_val_acc=up_val_acc, down_val_acc=down_val_acc,
-            n_expansion_features=n_exp_feats, n_compression_features=n_comp_feats,
-            n_up_features=n_up_feats, n_down_features=n_down_feats)
+        up_preds = df[df['pred_direction'] == 1]
+        down_preds = df[df['pred_direction'] == 0]
+
+        df_clean = df.dropna(subset=['actual_magnitude', 'magnitude'])
+        up_clean = up_preds.dropna(subset=['actual_magnitude', 'magnitude'])
+        down_clean = down_preds.dropna(subset=['actual_magnitude', 'magnitude'])
+
+        metrics = RawMetrics(
+            total=len(df),
+            up_count=len(up_preds),
+            down_count=len(down_preds),
+            up_pct=len(up_preds) / len(df),
+            down_pct=len(down_preds) / len(df),
+            accuracy=df['direction_correct'].mean(),
+            up_accuracy=up_preds['direction_correct'].mean() if len(up_preds) > 0 else 0.0,
+            down_accuracy=down_preds['direction_correct'].mean() if len(down_preds) > 0 else 0.0,
+            mae=mean_absolute_error(df_clean['actual_magnitude'], df_clean['magnitude']) if len(df_clean) > 0 else 999.0,
+            mae_up=mean_absolute_error(up_clean['actual_magnitude'], up_clean['magnitude']) if len(up_clean) > 0 else 999.0,
+            mae_down=mean_absolute_error(down_clean['actual_magnitude'], down_clean['magnitude']) if len(down_clean) > 0 else 999.0,
+            expansion_val_mae=exp_val_mae,
+            compression_val_mae=comp_val_mae,
+            up_val_acc=up_val_acc,
+            down_val_acc=down_val_acc,
+            n_expansion_features=n_exp_feats,
+            n_compression_features=n_comp_feats,
+            n_up_features=n_up_feats,
+            n_down_features=n_down_feats
+        )
         return metrics
 
     def _build_expansion_params(self, trial_params):
@@ -310,17 +300,32 @@ class Phase1Tuner:
         if metrics is None: return 999.0
         for field_name, value in metrics.__dict__.items():
             trial.set_user_attr(field_name, float(value))
-        acc_score = (1 - metrics.act_up_accuracy) + (1 - metrics.act_down_accuracy)
-        balance_penalty = abs(metrics.act_up_pct - 0.50) * 3.0
-        min_viable = 40
-        up_volume_penalty = max(0, min_viable - metrics.act_up_count) * 0.5
-        down_volume_penalty = max(0, min_viable - metrics.act_down_count) * 0.5
-        mag_penalty = metrics.mag_mae * 0.3
+
+        # OBJECTIVE: Optimize RAW predictions (no ensemble filtering)
+        # Target: 65-70% accuracy for both UP and DOWN
+        # Balanced UP/DOWN split (~48/52)
+        # Low MAE
+
+        acc_penalty = (1 - metrics.up_accuracy) + (1 - metrics.down_accuracy)
+
+        # Balance penalty: want roughly 48/52 split
+        balance_penalty = abs(metrics.up_pct - 0.48) * 3.0
+
+        # Volume penalties: need minimum samples
+        min_viable = 150
+        up_volume_penalty = max(0, min_viable - metrics.up_count) * 0.3
+        down_volume_penalty = max(0, min_viable - metrics.down_count) * 0.3
+
+        # MAE penalty
+        mae_penalty = metrics.mae * 0.3
+
+        # Validation penalties
         val_penalty = (max(0, metrics.expansion_val_mae - 12.0) * 0.5 +
             max(0, metrics.compression_val_mae - 8.0) * 0.5 +
-            max(0, 0.58 - metrics.up_val_acc) * 2.0 +
-            max(0, 0.58 - metrics.down_val_acc) * 2.0)
-        score = acc_score + balance_penalty + up_volume_penalty + down_volume_penalty + mag_penalty + val_penalty
+            max(0, 0.55 - metrics.up_val_acc) * 2.0 +
+            max(0, 0.55 - metrics.down_val_acc) * 2.0)
+
+        score = acc_penalty + balance_penalty + up_volume_penalty + down_volume_penalty + mae_penalty + val_penalty
         return score
 
     def _sample_hyperparameters(self, trial):
@@ -382,7 +387,7 @@ class Phase1Tuner:
     def run(self):
         logger.info(f"Starting Phase 1 optimization: {self.n_trials} trials")
         logger.info(f"Tuning 54 hyperparameters (models + feature selection)")
-        logger.info(f"Evaluating on {len(self.test_df)} test days with CURRENT ensemble config")
+        logger.info(f"Evaluating RAW predictions on {len(self.test_df)} test days (NO ensemble filtering)")
         logger.info("="*80)
         study = optuna.create_study(direction='minimize',
             sampler=TPESampler(seed=42, n_startup_trials=min(50, self.n_trials // 6)))
@@ -393,8 +398,8 @@ class Phase1Tuner:
         best = study.best_trial; attrs = best.user_attrs
         results = {
             'timestamp': datetime.now().isoformat(),
-            'phase': 'Phase 1 - Model Hyperparameter Tuning',
-            'description': 'Optimizes 4-model architecture + feature selection using current ensemble config',
+            'phase': 'Phase 1 - Model Hyperparameter Tuning (RAW)',
+            'description': 'Optimizes 4-model architecture + feature selection on RAW predictions (no ensemble)',
             'optimization': {'n_trials': self.n_trials, 'best_trial': best.number, 'best_score': float(best.value)},
             'data_splits': {
                 'train': f"{self.train_df.index[0].date()} to {self.train_end.date()}",
@@ -402,16 +407,12 @@ class Phase1Tuner:
                 'test': f"{self.test_start.date()} to {self.test_df.index[-1].date()}",
                 'train_size': len(self.train_df), 'val_size': len(self.val_df), 'test_size': len(self.test_df)},
             'test_metrics': {
-                'raw_predictions': {'total': int(attrs['raw_total']), 'up_count': int(attrs['raw_up_count']),
-                    'down_count': int(attrs['raw_down_count']), 'up_pct': float(attrs['raw_up_pct']),
-                    'down_pct': float(attrs['raw_down_pct']), 'accuracy': float(attrs['raw_accuracy']),
-                    'up_accuracy': float(attrs['raw_up_accuracy']), 'down_accuracy': float(attrs['raw_down_accuracy'])},
-                'actionable_signals': {'total': int(attrs['act_total']), 'rate': float(attrs['act_rate']),
-                    'up_count': int(attrs['act_up_count']), 'down_count': int(attrs['act_down_count']),
-                    'up_pct': float(attrs['act_up_pct']), 'down_pct': float(attrs['act_down_pct']),
-                    'accuracy': float(attrs['act_accuracy']), 'up_accuracy': float(attrs['act_up_accuracy']),
-                    'down_accuracy': float(attrs['act_down_accuracy']), 'mag_mae': float(attrs['mag_mae']),
-                    'mag_mae_up': float(attrs['mag_mae_up']), 'mag_mae_down': float(attrs['mag_mae_down'])},
+                'raw_predictions': {
+                    'total': int(attrs['total']), 'up_count': int(attrs['up_count']),
+                    'down_count': int(attrs['down_count']), 'up_pct': float(attrs['up_pct']),
+                    'down_pct': float(attrs['down_pct']), 'accuracy': float(attrs['accuracy']),
+                    'up_accuracy': float(attrs['up_accuracy']), 'down_accuracy': float(attrs['down_accuracy']),
+                    'mae': float(attrs['mae']), 'mae_up': float(attrs['mae_up']), 'mae_down': float(attrs['mae_down'])},
                 'validation': {'expansion_mae': float(attrs['expansion_val_mae']),
                     'compression_mae': float(attrs['compression_val_mae']), 'up_accuracy': float(attrs['up_val_acc']),
                     'down_accuracy': float(attrs['down_val_acc'])},
@@ -426,7 +427,7 @@ class Phase1Tuner:
         self._print_summary(best, attrs)
 
     def _generate_config(self, trial, attrs):
-        config_text = f"""# PHASE 1 OPTIMIZED CONFIG - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        config_text = f"""# PHASE 1 OPTIMIZED CONFIG (RAW PREDICTIONS) - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 QUALITY_FILTER_CONFIG = {{'enabled': True, 'min_threshold': {trial.params['quality_threshold']:.4f},
     'warn_pct': 20.0, 'error_pct': 50.0, 'strategy': 'raise'}}
@@ -447,9 +448,9 @@ FEATURE_SELECTION_CV_PARAMS = {{'n_estimators': {trial.params['cv_n_estimators']
 FEATURE_SELECTION_CONFIG = {{'expansion_top_n': {trial.params['expansion_top_n']},
     'compression_top_n': {trial.params['compression_top_n']}, 'up_top_n': {trial.params['up_top_n']},
     'down_top_n': {trial.params['down_top_n']}, 'cv_folds': 5,
-    'protected_features': ['is_fomc_period', 'is_opex_week', 'is_earnings_heavy'],
+    'protected_features': [],
     'correlation_threshold': {trial.params['correlation_threshold']:.4f},
-    'description': 'Phase 1 optimized on 2024-2025 test data'}}
+    'description': 'Phase 1 optimized on RAW predictions (no ensemble filtering)'}}
 
 EXPANSION_PARAMS = {{'objective': 'reg:squarederror', 'eval_metric': 'rmse',
     'max_depth': {trial.params['exp_max_depth']}, 'learning_rate': {trial.params['exp_learning_rate']:.4f},
@@ -483,8 +484,8 @@ DOWN_CLASSIFIER_PARAMS = {{'objective': 'binary:logistic', 'eval_metric': 'aucpr
     'gamma': {trial.params['down_gamma']:.4f}, 'scale_pos_weight': 1.0,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}}
 
-# TEST PERFORMANCE: Raw {attrs['raw_accuracy']:.1%} (UP {attrs['raw_up_accuracy']:.1%}, DOWN {attrs['raw_down_accuracy']:.1%})
-# Actionable {attrs['act_accuracy']:.1%} (UP {attrs['act_up_accuracy']:.1%}, DOWN {attrs['act_down_accuracy']:.1%}) MAE {attrs['mag_mae']:.2f}%
+# TEST PERFORMANCE (RAW): {attrs['accuracy']:.1%} (UP {attrs['up_accuracy']:.1%}, DOWN {attrs['down_accuracy']:.1%})
+# MAE: {attrs['mae']:.2f}% (UP: {attrs['mae_up']:.2f}%, DOWN: {attrs['mae_down']:.2f}%)
 # Validation: Exp {attrs['expansion_val_mae']:.2f}% Comp {attrs['compression_val_mae']:.2f}% UP {attrs['up_val_acc']:.1%} DOWN {attrs['down_val_acc']:.1%}
 """
         config_file = self.output_dir / "phase1_optimized_config.py"
@@ -493,24 +494,18 @@ DOWN_CLASSIFIER_PARAMS = {{'objective': 'binary:logistic', 'eval_metric': 'aucpr
 
     def _print_summary(self, trial, attrs):
         logger.info("\n" + "="*80)
-        logger.info("PHASE 1 OPTIMIZATION COMPLETE")
+        logger.info("PHASE 1 OPTIMIZATION COMPLETE (RAW PREDICTIONS)")
         logger.info("="*80)
         logger.info(f"Best trial: #{trial.number} | Score: {trial.value:.3f}")
         logger.info("")
-        logger.info("📊 TEST SET PERFORMANCE (2024-2025):")
-        logger.info("")
-        logger.info("  RAW PREDICTIONS:")
-        logger.info(f"    Total: {int(attrs['raw_total'])}")
-        logger.info(f"    UP: {attrs['raw_up_pct']:.1%} ({int(attrs['raw_up_count'])} signals)")
-        logger.info(f"    DOWN: {attrs['raw_down_pct']:.1%} ({int(attrs['raw_down_count'])} signals)")
-        logger.info(f"    Accuracy: {attrs['raw_accuracy']:.1%} | UP: {attrs['raw_up_accuracy']:.1%} | DOWN: {attrs['raw_down_accuracy']:.1%}")
-        logger.info("")
-        logger.info("  ACTIONABLE SIGNALS (current ensemble config):")
-        logger.info(f"    Actionable rate: {attrs['act_rate']:.1%} ({int(attrs['act_total'])} signals)")
-        logger.info(f"    UP: {attrs['act_up_pct']:.1%} ({int(attrs['act_up_count'])} signals)")
-        logger.info(f"    DOWN: {attrs['act_down_pct']:.1%} ({int(attrs['act_down_count'])} signals)")
-        logger.info(f"    Accuracy: {attrs['act_accuracy']:.1%} | UP: {attrs['act_up_accuracy']:.1%} | DOWN: {attrs['act_down_accuracy']:.1%}")
-        logger.info(f"    Magnitude MAE: {attrs['mag_mae']:.2f}% (UP: {attrs['mag_mae_up']:.2f}%, DOWN: {attrs['mag_mae_down']:.2f}%)")
+        logger.info("📊 RAW TEST SET PERFORMANCE (2024-2025):")
+        logger.info(f"    Total: {int(attrs['total'])}")
+        logger.info(f"    UP: {attrs['up_pct']:.1%} ({int(attrs['up_count'])} predictions)")
+        logger.info(f"    DOWN: {attrs['down_pct']:.1%} ({int(attrs['down_count'])} predictions)")
+        logger.info(f"    Overall accuracy: {attrs['accuracy']:.1%}")
+        logger.info(f"    UP accuracy: {attrs['up_accuracy']:.1%}")
+        logger.info(f"    DOWN accuracy: {attrs['down_accuracy']:.1%}")
+        logger.info(f"    MAE: {attrs['mae']:.2f}% (UP: {attrs['mae_up']:.2f}%, DOWN: {attrs['mae_down']:.2f}%)")
         logger.info("")
         logger.info("  VALIDATION METRICS:")
         logger.info(f"    Expansion MAE: {attrs['expansion_val_mae']:.2f}%")
@@ -529,11 +524,11 @@ DOWN_CLASSIFIER_PARAMS = {{'objective': 'binary:logistic', 'eval_metric': 'aucpr
         logger.info("  1. Review results in tuning_phase1/phase1_results.json")
         logger.info("  2. Apply parameters from phase1_optimized_config.py to your config.py")
         logger.info("  3. Retrain models with optimized hyperparameters")
-        logger.info("  4. Proceed to Phase 2: Post-hoc ensemble tuning")
+        logger.info("  4. Proceed to Phase 2: Ensemble config tuning on these RAW models")
         logger.info("="*80)
 
 def main():
-    parser = argparse.ArgumentParser(description="Phase 1: Model Hyperparameter Tuner for Asymmetric 4-Model System")
+    parser = argparse.ArgumentParser(description="Phase 1: Model Hyperparameter Tuner (RAW predictions)")
     parser.add_argument('--trials', type=int, default=300, help="Number of optimization trials (default: 300)")
     parser.add_argument('--output-dir', type=str, default='tuning_phase1', help="Output directory (default: tuning_phase1)")
     args = parser.parse_args()

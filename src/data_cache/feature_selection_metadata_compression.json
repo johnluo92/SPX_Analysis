@@ -1,32 +1,32 @@
 {
   "target_type": "compression",
-  "top_n": 105,
-  "correlation_threshold": 0.9269,
-  "n_selected": 105,
-  "n_removed_correlation": 11,
+  "top_n": 116,
+  "correlation_threshold": 0.8925,
+  "n_selected": 116,
+  "n_removed_correlation": 29,
   "n_samples": 2613,
   "top_10_features": [
     "vix_vs_ma63",
+    "regime_median_return_5d",
     "vix_velocity_5d_regime_adj",
     "vix_percentile_126d",
-    "vix_vs_ma21",
     "bb_position_20d",
-    "vvix",
+    "vix_vs_ma21",
+    "vvix_velocity_10d",
     "vix_vel_spx_rv_ratio",
-    "vix_regime",
-    "liquidity_stress_composite",
-    "reversion_strength_63d"
+    "vvix",
+    "liquidity_stress_composite"
   ],
   "top_10_importance": [
-    0.05051509365439415,
-    0.023815599083900452,
-    0.022927848156541586,
-    0.020900526084005833,
-    0.01567283011972904,
-    0.014791640639305114,
-    0.014607517002150416,
-    0.013108235597610474,
-    0.012688814947614447,
-    0.00975660108961165
+    0.050841177627444264,
+    0.020829520560801028,
+    0.020624808222055434,
+    0.020394783839583396,
+    0.015891741774976254,
+    0.011424313485622405,
+    0.010410549212247133,
+    0.010183910047635436,
+    0.00996828603092581,
+    0.009181672608247027
   ]
 }
