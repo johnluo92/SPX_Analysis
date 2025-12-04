@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np,pandas as pd,requests,yfinance as yf
 from dotenv import load_dotenv
 load_dotenv();warnings.filterwarnings("ignore")
+
 class DataFetchLogger:
     def __init__(self,name="DataFetcher"):
         self.logger=logging.getLogger(name);self.logger.handlers.clear();self.logger.propagate=False;h=logging.StreamHandler();h.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",datefmt="%H:%M:%S"));self.logger.addHandler(h);self.logger.setLevel(logging.ERROR)
@@ -12,6 +13,7 @@ class DataFetchLogger:
     def warning(self,msg):self.logger.warning(msg)
     def error(self,msg):self.logger.error(msg)
     def debug(self,msg):self.logger.debug(msg)
+
 class UnifiedDataFetcher:
     QUARTERLY_SERIES={"GDP","GDPC1"}
     MONTHLY_SERIES={"UNRATE","CPIAUCSL","CPILFESL","PCEPI","PCEPILFE","UMCSENT","INDPRO","PAYEMS","M1SL","M2SL"}
@@ -19,19 +21,33 @@ class UnifiedDataFetcher:
     DAILY_SERIES={"DGS1MO","DGS3MO","DGS6MO","DGS1","DGS2","DGS5","DGS10","DGS30","DFF","SOFR","SOFR90DAYAVG","BAMLH0A0HYM2","BAMLH0A1HYBB","BAMLH0A2HYB","BAMLH0A3HYC","BAMLC0A0CM","VIXCLS","T10Y2Y","T10Y3M","T5YIE","T10YIE"}
     FRED_SERIES_GROUPS={"TREASURIES":{"DGS1MO":"1M_Treasury","DGS3MO":"3M_Treasury","DGS6MO":"6M_Treasury","DGS1":"1Y_Treasury","DGS2":"2Y_Treasury","DGS5":"5Y_Treasury","DGS10":"10Y_Treasury","DGS30":"30Y_Treasury"},"TREASURY_SPREADS":{"T10Y2Y":"Yield_Curve_10Y2Y","T10Y3M":"Yield_Curve_10Y3M","T5YIE":"Breakeven_Inflation_5Y","T10YIE":"Breakeven_Inflation_10Y"},"FED_RATES":{"DFF":"Fed_Funds_Effective","SOFR":"SOFR","SOFR90DAYAVG":"SOFR_90D_Avg"},"CREDIT_SPREADS":{"BAMLH0A0HYM2":"HY_OAS_All","BAMLH0A1HYBB":"HY_OAS_BB","BAMLH0A2HYB":"HY_OAS_B","BAMLH0A3HYC":"HY_OAS_CCC","BAMLC0A0CM":"IG_OAS"},"VOLATILITY":{"VIXCLS":"VIX_Close"},"ECONOMIC":{"UNRATE":"Unemployment_Rate","CPIAUCSL":"CPI","CPILFESL":"Core_CPI","PCEPI":"PCE_Price_Index","PCEPILFE":"Core_PCE","GDP":"GDP","GDPC1":"Real_GDP","UMCSENT":"Consumer_Sentiment"},"LABOR":{"ICSA":"Initial_Claims","PAYEMS":"Nonfarm_Payrolls"},"FINANCIAL_STRESS":{"STLFSI4":"STL_Financial_Stress"}}
     CBOE_FILES={"SKEW":"SKEW_INDEX_CBOE.csv","PCCI":"PCCI_INDX_CBOE.csv","PCCE":"PCCE_EQUITIES_CBOE.csv","PCC":"PCC_INDX_EQ_TOTAL_CBOE.csv","COR1M":"COR1M_CBOE.csv","COR3M":"COR3M_CBOE.csv","VXTH":"VXTH_TAILHEDGE_CBOE.csv","CNDR":"CNDR_SPX_IRON_CONDOR_CBOE.csv","VX1-VX2":"VX1-VX2.csv","VX2-VX1_RATIO":"(VX2-VX1)OVER(VX1).csv","CL1-CL2":"CL1-CL2.csv","DX1-DX2":"DX1-DX2.csv","BVOL":"BVOL.csv","BFLY":"BFLY.csv","DSPX":"DSPX.csv","VPN":"VPN.csv","GAMMA":"GAMMA.csv","VIX_VIX3M":"VIXoverVIX3M.csv","VXTLT":"VXTLT.csv","GOLDSILVER":"GOLDSILVER_RATIO.csv"}
+
     def __init__(self,cache_dir="./data_cache",cboe_data_dir="./CBOE_Data_Archive"):
-        self.fred_base_url="https://api.stlouisfed.org/fred/series/observations";self.fred_api_key=os.getenv("FRED_API_KEY");self.cache_dir=Path(cache_dir);self.cache_dir.mkdir(exist_ok=True);self.cboe_data_dir=Path(cboe_data_dir);self.logger=DataFetchLogger()
+        self.fred_base_url="https://api.stlouisfed.org/fred/series/observations";self.fred_api_key=os.getenv("FRED_API_KEY");self.cache_dir=Path(cache_dir);self.cache_dir.mkdir(exist_ok=True);self.cboe_data_dir=Path(cboe_data_dir);self.logger=DataFetchLogger();self._investing_com_updated=False
         if not self.fred_api_key:self.logger.error("FRED API key missing - FRED fetches will fail")
         try:
             from config import FORWARD_FILL_LIMITS,FRED_SERIES_METADATA
             self.forward_fill_limits=FORWARD_FILL_LIMITS;self.fred_metadata=FRED_SERIES_METADATA
         except:self.forward_fill_limits={"daily":5,"weekly":10,"monthly":45,"quarterly":135};self.fred_metadata={}
+        self._auto_update_investing_com()
+
+    def _auto_update_investing_com(self):
+        if self._investing_com_updated:
+            return
+        try:
+            from core.scraper.investing_com_scraper import update_all
+            update_all(cboe_data_dir=str(self.cboe_data_dir), force=False)
+            self._investing_com_updated=True
+        except Exception:
+            pass
+
     def _get_forward_fill_limit(self,series_id):
         if series_id in self.fred_metadata:freq=self.fred_metadata[series_id].get("frequency","daily");return self.forward_fill_limits.get(freq,5)
         if series_id in self.QUARTERLY_SERIES:return self.forward_fill_limits.get("quarterly",135)
         if series_id in self.MONTHLY_SERIES:return self.forward_fill_limits.get("monthly",45)
         if series_id in self.WEEKLY_SERIES:return self.forward_fill_limits.get("weekly",10)
         return self.forward_fill_limits.get("daily",5)
+
     def _get_last_date_from_cache(self,cache_path):
         try:
             if cache_path.exists():
@@ -39,6 +55,7 @@ class UnifiedDataFetcher:
                 if not df.empty:return df.index[-1].strftime("%Y-%m-%d")
         except:pass
         return None
+
     def _merge_with_cache(self,new_data,cache_path):
         try:
             if cache_path.exists()and new_data is not None and not new_data.empty:
@@ -46,6 +63,7 @@ class UnifiedDataFetcher:
                 if not cached_df.empty:combined=pd.concat([cached_df,new_data]);combined=combined[~combined.index.duplicated(keep="last")];return combined.sort_index()
         except Exception as e:self.logger.debug(f"Cache merge failed: {e}")
         return new_data
+
     def _normalize_data(self,data,name,min_rows=10):
         if data is None or(hasattr(data,"empty")and data.empty):return None
         if isinstance(data,pd.Series):data=pd.DataFrame(data)
@@ -56,6 +74,7 @@ class UnifiedDataFetcher:
         data.index=pd.DatetimeIndex(data.index.date)
         if data.index.duplicated().any():data=data[~data.index.duplicated(keep="last")]
         return None if len(data)<min_rows else data
+
     def _should_update_fred_series(self,series_id,last_date):
         last_dt=pd.to_datetime(last_date);now=datetime.now()
         if series_id in self.QUARTERLY_SERIES:
@@ -68,6 +87,7 @@ class UnifiedDataFetcher:
             return True
         if series_id in self.WEEKLY_SERIES:return len(pd.bdate_range(last_dt,now))-1>2
         return len(pd.bdate_range(last_dt,now))-1>1 if series_id in self.DAILY_SERIES else(now-last_dt).days>2
+
     def fetch_fred(self,series_id,start_date=None,end_date=None,incremental=True):
         if not self.fred_api_key:self.logger.error(f"FRED:{series_id}: Cannot fetch - API key missing");return None
         cache_path=self.cache_dir/f"fred_{series_id}.parquet";fetch_start=start_date
@@ -109,8 +129,10 @@ class UnifiedDataFetcher:
                 except:pass
             self.logger.error(f"FRED:{series_id}: Fetch failed with no cache available - {str(e)[:100]}")
             return None
+
     def fetch_fred_series(self,series_id,start_date=None,end_date=None,incremental=True):
         return self.fetch_fred(series_id,start_date,end_date,incremental)
+
     def fetch_all_fred_series(self,start_date=None,end_date=None,incremental=True):
         all_series={};updated=0;cached=0;failed=0;stalest_info=None
         for group_name,series_dict in self.FRED_SERIES_GROUPS.items():
@@ -124,6 +146,7 @@ class UnifiedDataFetcher:
                 else:failed+=1
         total=len([item for subdict in self.FRED_SERIES_GROUPS.values()for item in subdict]);stalest_str=f" | Stalest: {stalest_info[0]} from {stalest_info[1]}"if stalest_info else"";self.logger.info(f"FRED: {updated}/{total} updated, {cached} cached, {failed} failed{stalest_str}")
         return all_series
+
     def fetch_yahoo(self,symbol,start_date=None,end_date=None,incremental=True):
         cache_path=self.cache_dir/f"yahoo_{symbol.replace('^','').replace('=','_')}.parquet"
         if end_date:end_dt=pd.to_datetime(end_date);is_historical_request=end_dt<(datetime.now()-timedelta(days=7))
@@ -198,8 +221,8 @@ class UnifiedDataFetcher:
                         return cached_df
                 except:pass
             self.logger.error(f"Yahoo:{symbol}: Fetch failed with no cache available - {str(e)[:100]}");return None
+
     def fetch_vix_term(self,symbols=["^VIX","^VIX3M","^VIX6M"],start_date=None,end_date=None):
-        """Fetch VIX term structure from Yahoo Finance"""
         term_data={};ff_daily=self.forward_fill_limits.get("daily",5)
         for sym in symbols:
             try:
@@ -212,12 +235,14 @@ class UnifiedDataFetcher:
             combined=pd.DataFrame(term_data)
             return combined
         return None
+
     def fetch_price(self,symbol):
         try:
             ticker=yf.Ticker(symbol);data=ticker.history(period="1d")
             if not data.empty:return float(data["Close"].iloc[-1])
         except Exception as e:self.logger.debug(f"Price fetch failed for {symbol}: {str(e)[:100]}")
         return None
+
     def fetch_cboe_series(self,symbol,return_metadata=False):
         if symbol not in self.CBOE_FILES:self.logger.error(f"CBOE:{symbol}: Unknown symbol");return None if not return_metadata else(None,{})
         file_path=self.cboe_data_dir/self.CBOE_FILES[symbol]
@@ -240,6 +265,7 @@ class UnifiedDataFetcher:
                 else:metadata["data_quality"]="stale"
             return series if not return_metadata else(series,metadata)
         except Exception as e:self.logger.error(f"CBOE:{symbol}: Load failed - {str(e)[:100]}");return None if not return_metadata else(None,metadata)
+
     def fetch_all_cboe(self,return_metadata=False):
         series_dict={};metadata_dict={};loaded=0;failed=0
         for symbol in self.CBOE_FILES.keys():
@@ -249,6 +275,7 @@ class UnifiedDataFetcher:
             else:failed+=1
         total=len(self.CBOE_FILES);self.logger.info(f"CBOE: {loaded}/{total} loaded, {failed} failed")
         return(series_dict,metadata_dict)if return_metadata else series_dict
+
     def fetch_fomc_calendar(self,start_year,end_year):
         cache_path=self.cache_dir/"fomc_calendar.csv"
         if not cache_path.exists():self.logger.error(f"FOMC: Calendar file not found at {cache_path}");return None
@@ -261,6 +288,7 @@ class UnifiedDataFetcher:
             if df.empty:self.logger.error(f"FOMC: No meetings found in range {start_year}-{end_year}");return None
             self.logger.info(f"FOMC: {len(df)} meetings ({start_year}-{end_year})");return df
         except Exception as e:self.logger.error(f"FOMC: Failed to load calendar - {str(e)[:100]}");return None
+
     def update_fomc_calendar_from_csv(self,csv_path):
         try:
             import_df=pd.read_csv(csv_path,parse_dates=["date"])

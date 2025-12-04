@@ -1,33 +1,33 @@
 {
   "correlation_threshold": 0.8925,
-  "n_removed_correlation": 27,
+  "n_removed_correlation": 29,
   "n_samples": 2613,
   "n_selected": 116,
   "random_state": 42,
   "target_type": "compression",
   "top_10_features": [
-    "regime_expected_return_5d",
     "vix_vs_ma63",
+    "regime_median_return_5d",
     "vix_percentile_126d",
     "vix_velocity_5d_regime_adj",
-    "vix_vel_spx_rv_ratio",
-    "vix_zscore_252d_x_regime_3",
-    "bb_position_20d",
     "vix_vs_ma21",
     "vvix",
-    "liquidity_stress_composite"
+    "vix_vel_spx_rv_ratio",
+    "liquidity_stress_composite",
+    "reversion_strength_63d",
+    "vix_vs_rv_21d"
   ],
   "top_10_importance": [
-    0.048906925693154336,
-    0.042285938560962674,
-    0.03514333665370941,
-    0.019224188197404145,
-    0.01325332240667194,
-    0.012053693830966949,
-    0.011784002743661403,
-    0.011601054249331355,
-    0.011183488089591265,
-    0.010344381304457783
+    0.07203406989574432,
+    0.04068161249160766,
+    0.022448003757745028,
+    0.015386929083615542,
+    0.015097121987491847,
+    0.01278443681076169,
+    0.011777122784405947,
+    0.010458208573982119,
+    0.009232579660601915,
+    0.00876851105131209
   ],
   "top_n": 116
 }

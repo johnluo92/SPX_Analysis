@@ -73,14 +73,17 @@ class AsymmetricVIXForecaster:
         for warning in validation["warnings"]: logger.warning(f"  ⚠️  {warning}")
         stats=validation["stats"]
         logger.info(f"Valid targets: {stats['count']} | UP: {df['target_direction'].sum()} ({df['target_direction'].mean():.1%}) | DOWN: {len(df)-df['target_direction'].sum()}")
-        if expansion_features: self.expansion_features=expansion_features
+
+        # CRITICAL: Sort feature lists for deterministic column ordering
+        if expansion_features: self.expansion_features=sorted(expansion_features)
         else: self.expansion_features=self._prepare_features(df)[1]
-        if compression_features: self.compression_features=compression_features
+        if compression_features: self.compression_features=sorted(compression_features)
         else: self.compression_features=self._prepare_features(df)[1]
-        if up_features: self.up_features=up_features
+        if up_features: self.up_features=sorted(up_features)
         else: self.up_features=self._prepare_features(df)[1]
-        if down_features: self.down_features=down_features
+        if down_features: self.down_features=sorted(down_features)
         else: self.down_features=self._prepare_features(df)[1]
+
         total_samples=len(df)
         train_end_idx=df[df.index<=pd.Timestamp(TRAIN_END_DATE)].index[-1]
         train_end_idx=df.index.get_loc(train_end_idx)
@@ -108,12 +111,15 @@ class AsymmetricVIXForecaster:
         logger.info(f"Test UP: {test_up_mask.sum()} | DOWN: {test_down_mask.sum()}")
         logger.info(f"\n{'='*60}")
         logger.info("📈 EXPANSION REGRESSOR (UP samples)")
+
+        # CRITICAL: Maintain sorted column order
         X_exp_train=train_df[train_up_mask][self.expansion_features]
         y_exp_train=train_df[train_up_mask]['target_log_vix_change']
         X_exp_val=val_df[val_up_mask][self.expansion_features]
         y_exp_val=val_df[val_up_mask]['target_log_vix_change']
         X_exp_test=test_df[test_up_mask][self.expansion_features]
         y_exp_test=test_df[test_up_mask]['target_log_vix_change']
+
         self.expansion_model,exp_metrics=self._train_regressor_model(X_exp_train,y_exp_train,X_exp_val,y_exp_val,X_exp_test,y_exp_test,EXPANSION_PARAMS,"Expansion",train_df[train_up_mask],val_df[val_up_mask])
         self.metrics["expansion"]=exp_metrics
         logger.info(f"\n{'='*60}")
@@ -159,10 +165,10 @@ class AsymmetricVIXForecaster:
         return X,feature_cols
 
     def _train_regressor_model(self,X_train,y_train,X_val,y_val,X_test,y_test,params,name,train_df,val_df):
-        # Ensure random_state is set for determinism
+        # CRITICAL: Enforce determinism
         params = params.copy()
-        if 'random_state' not in params:
-            params['random_state'] = params.get('seed', 42)
+        params['random_state'] = params.get('seed', 42)
+        params['n_jobs'] = 1  # Force single-threaded for determinism
 
         model=XGBRegressor(**params)
         train_weights=None; val_weights=None
@@ -185,10 +191,10 @@ class AsymmetricVIXForecaster:
         return model,metrics
 
     def _train_classifier_model(self,X_train,y_train,X_val,y_val,X_test,y_test,params,name,train_df,val_df,invert=False):
-        # Ensure random_state is set for determinism
+        # CRITICAL: Enforce determinism
         params = params.copy()
-        if 'random_state' not in params:
-            params['random_state'] = params.get('seed', 42)
+        params['random_state'] = params.get('seed', 42)
+        params['n_jobs'] = 1  # Force single-threaded for determinism
 
         model=XGBClassifier(**params)
         train_weights=None; val_weights=None
@@ -206,11 +212,17 @@ class AsymmetricVIXForecaster:
         return model,metrics,y_val_proba,y_test_proba
 
     def predict(self,X,current_vix):
-        X_up=X[self.up_features]; X_down=X[self.down_features]
+        # CRITICAL: Maintain sorted column order
+        X_up=X[sorted(self.up_features)]
+        X_down=X[sorted(self.down_features)]
+
         p_up=float(self.up_classifier.predict_proba(X_up)[0][1])
         p_down=float(self.down_classifier.predict_proba(X_down)[0][1])
         total=p_up+p_down; p_up_norm=p_up/total; p_down_norm=p_down/total
-        X_exp=X[self.expansion_features]; X_comp=X[self.compression_features]
+
+        X_exp=X[sorted(self.expansion_features)]
+        X_comp=X[sorted(self.compression_features)]
+
         expansion_log=float(self.expansion_model.predict(X_exp)[0])
         compression_log=float(self.compression_model.predict(X_comp)[0])
         expansion_log=np.clip(expansion_log,-2,2); compression_log=np.clip(compression_log,-2,2)
@@ -243,10 +255,10 @@ class AsymmetricVIXForecaster:
         with open(save_path/"compression_model.pkl","wb")as f: pickle.dump(self.compression_model,f)
         with open(save_path/"up_classifier.pkl","wb")as f: pickle.dump(self.up_classifier,f)
         with open(save_path/"down_classifier.pkl","wb")as f: pickle.dump(self.down_classifier,f)
-        with open(save_path/"feature_names_expansion.json","w")as f: json.dump(self.expansion_features,f,indent=2)
-        with open(save_path/"feature_names_compression.json","w")as f: json.dump(self.compression_features,f,indent=2)
-        with open(save_path/"feature_names_up.json","w")as f: json.dump(self.up_features,f,indent=2)
-        with open(save_path/"feature_names_down.json","w")as f: json.dump(self.down_features,f,indent=2)
+        with open(save_path/"feature_names_expansion.json","w")as f: json.dump(sorted(self.expansion_features),f,indent=2)
+        with open(save_path/"feature_names_compression.json","w")as f: json.dump(sorted(self.compression_features),f,indent=2)
+        with open(save_path/"feature_names_up.json","w")as f: json.dump(sorted(self.up_features),f,indent=2)
+        with open(save_path/"feature_names_down.json","w")as f: json.dump(sorted(self.down_features),f,indent=2)
         with open(save_path/"training_metrics.json","w")as f: json.dump(self.metrics,f,indent=2,sort_keys=True)
 
     def load(self,models_dir="models"):
@@ -255,10 +267,10 @@ class AsymmetricVIXForecaster:
         with open(models_path/"compression_model.pkl","rb")as f: self.compression_model=pickle.load(f)
         with open(models_path/"up_classifier.pkl","rb")as f: self.up_classifier=pickle.load(f)
         with open(models_path/"down_classifier.pkl","rb")as f: self.down_classifier=pickle.load(f)
-        with open(models_path/"feature_names_expansion.json","r")as f: self.expansion_features=json.load(f)
-        with open(models_path/"feature_names_compression.json","r")as f: self.compression_features=json.load(f)
-        with open(models_path/"feature_names_up.json","r")as f: self.up_features=json.load(f)
-        with open(models_path/"feature_names_down.json","r")as f: self.down_features=json.load(f)
+        with open(models_path/"feature_names_expansion.json","r")as f: self.expansion_features=sorted(json.load(f))
+        with open(models_path/"feature_names_compression.json","r")as f: self.compression_features=sorted(json.load(f))
+        with open(models_path/"feature_names_up.json","r")as f: self.up_features=sorted(json.load(f))
+        with open(models_path/"feature_names_down.json","r")as f: self.down_features=sorted(json.load(f))
         logger.info(f"✅ Loaded 4 models: {len(self.expansion_features)} exp, {len(self.compression_features)} comp, {len(self.up_features)} up, {len(self.down_features)} down features")
 
     def _generate_diagnostics(self,test_df,save_dir):
