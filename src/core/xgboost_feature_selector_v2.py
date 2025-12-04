@@ -34,14 +34,9 @@ class FeatureSelector:
         full_df['vix']=vix
         full_df=self.target_calculator.calculate_all_targets(full_df,vix_col='vix')
 
-        # CRITICAL: Sort by index BEFORE splitting
-        full_df = full_df.sort_index()
-
         # Step 2: Split train+val vs test
         train_val_df=full_df.iloc[:test_start_idx]
-
-        # CRITICAL: Sort feature columns for determinism
-        feature_cols=sorted([c for c in features_df.columns])
+        feature_cols=[c for c in features_df.columns]
 
         # Step 3: Domain-specific data filtering
         if self.target_type=='expansion':
@@ -77,7 +72,6 @@ class FeatureSelector:
         cv_params = FEATURE_SELECTION_CV_PARAMS.copy()
         cv_params['random_state'] = self.random_state
         cv_params['seed'] = self.random_state
-        cv_params['n_jobs'] = 1  # CRITICAL: Force single-threaded for determinism
 
         if is_classifier:
             model=XGBClassifier(objective='binary:logistic',eval_metric='aucpr',**cv_params)
@@ -103,7 +97,6 @@ class FeatureSelector:
         self.feature_importance={feat:float(imp) for feat,imp in sorted(zip(feature_cols,importance_scores))}
 
         # Step 8: Select top N*1.5 features (will reduce after correlation filtering)
-        # CRITICAL: Sort by (-importance, name) for deterministic tie-breaking
         sorted_features=sorted(self.feature_importance.items(),key=lambda x:(-x[1],x[0]))
         candidate_features=[f for f,_ in sorted_features[:int(self.top_n*1.5)]]
 
@@ -125,7 +118,7 @@ class FeatureSelector:
                     imp_j=self.feature_importance[feat_j]
                     corr_items.append((self.correlation_matrix.iloc[i,j], feat_i, feat_j, imp_i, imp_j))
 
-        # CRITICAL: Sort by (correlation desc, feat_i, feat_j) for determinism
+        # Sort by correlation (desc), then by feature names for determinism
         corr_items.sort(key=lambda x: (-x[0], x[1], x[2]))
 
         for _, feat_i, feat_j, imp_i, imp_j in corr_items:
@@ -142,10 +135,7 @@ class FeatureSelector:
         remaining=[f for f in candidate_features if f not in to_remove]
 
         # Step 10: Final selection (top_n after correlation filtering)
-        # CRITICAL: Sort remaining features by importance for deterministic selection
-        remaining_with_importance = [(f, self.feature_importance[f]) for f in remaining]
-        remaining_with_importance.sort(key=lambda x: (-x[1], x[0]))  # Sort by (-importance, name)
-        self.selected_features = [f for f, _ in remaining_with_importance[:self.top_n]]
+        self.selected_features=remaining[:self.top_n]
 
         logger.info(f"  Removed {len(self.removed_features)} correlated features")
         logger.info(f"  Final selection: {len(self.selected_features)} features")
@@ -163,7 +153,7 @@ class FeatureSelector:
             "top_10_importance":[self.feature_importance[f] for f in self.selected_features[:10]]
         }
 
-        return sorted(self.selected_features),self.metadata
+        return self.selected_features,self.metadata
 
     def save_results(self,output_dir="data_cache",suffix=""):
         output_path=Path(output_dir)
@@ -174,10 +164,10 @@ class FeatureSelector:
         with open(importance_file,"w") as f:
             json.dump(dict(sorted(self.feature_importance.items())),f,indent=2,sort_keys=True)
 
-        # Save selected features (sorted)
+        # Save selected features
         selected_file=output_path/f"selected_features{suffix}.json"
         with open(selected_file,"w") as f:
-            json.dump(sorted(self.selected_features),f,indent=2)
+            json.dump(self.selected_features,f,indent=2)
 
         # Save metadata
         metadata_file=output_path/f"feature_selection_metadata{suffix}.json"
