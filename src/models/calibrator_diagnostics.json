@@ -6,19 +6,19 @@
   "min_samples": 50,
   "corrections": {
     "regime_cohort": {
-      "low_vol_fomc_period": -0.4787351767906129,
-      "normal_fomc_period": 8.950094413310955,
-      "normal_mid_cycle": 13.363052021386595
+      "low_vol_fomc_period": -2.413960750916812,
+      "normal_fomc_period": 8.067005779264617,
+      "normal_mid_cycle": 11.510447227228447
     },
     "regime": {
-      "low_vol": 1.7300506269804283,
-      "normal": 7.0992761556850565
+      "low_vol": -0.3080114700091504,
+      "normal": 6.200217582746287
     },
     "cohort": {
-      "fomc_period": 4.44870603998148,
-      "opex_week": -7.377310765284767,
-      "mid_cycle": 8.675508936939915
+      "fomc_period": 2.7784299725691737,
+      "opex_week": -7.372692944507813,
+      "mid_cycle": 6.894794194277998
     },
-    "global": 3.3430406244110653
+    "global": 1.9690608231604707
   }
 }

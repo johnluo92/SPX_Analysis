@@ -6,7 +6,7 @@ import pandas as pd
 from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,PUBLICATION_LAGS,MACRO_EVENT_CONFIG,FORWARD_FILL_LIMITS
 from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
 from core.temporal_validator import TemporalSafetyValidator
-from core.regime_classifier import RegimeClassifier
+from core.regime_classifier import RegimeClassifier,compute_skew_vix_features
 from core.vx_futures_engineer import VXFuturesEngineer
 warnings.filterwarnings("ignore")
 class LaborMarketFeatureEngine:
@@ -372,8 +372,11 @@ class FeatureEngineer:
         return f
     def _build_cboe_features(self,cb:pd.DataFrame,vix:pd.Series,skew:pd.Series=None)->pd.DataFrame:
         f=pd.DataFrame(index=vix.index)
-        if skew is not None:
-            sk=skew;f["SKEW"]=sk;f["skew_regime"]=calculate_regime_with_validation(sk,bins=SKEW_REGIME_BINS,labels=SKEW_REGIME_LABELS,feature_name="skew");f["skew_vs_vix"]=sk-vix;f["skew_vix_ratio"]=sk/vix.replace(0,np.nan);sma=sk.rolling(63).mean();f["skew_displacement"]=((sk-sma)/sma.replace(0,np.nan))*100
+        if skew is not None and not skew.isna().all():
+            sk=skew;f["SKEW"]=sk
+            skew_vix_feat=self.regime_classifier.compute_all_skew_vix_features(vix,sk)
+            for col in skew_vix_feat.columns:
+                if col not in f.columns:f[col]=skew_vix_feat[col]
         if "VXTH" in cb.columns:vx=cb["VXTH"];f["VXTH"]=vx;f["VXTH_change_21d"]=vx.diff(21);f["VXTH_zscore_63d"]=calculate_robust_zscore(vx,63);f["vxth_vix_ratio"]=vx/vix.replace(0,np.nan)
         if "VXTLT" in cb.columns:
             vt=cb["VXTLT"];f["VXTLT"]=vt;f["VXTLT_change_21d"]=vt.diff(21);f["VXTLT_zscore_63d"]=calculate_robust_zscore(vt,63);f["VXTLT_velocity_10d"]=vt.diff(10);f["VXTLT_acceleration_5d"]=vt.diff(5).diff(5);f["bond_vol_regime"]=calculate_regime_with_validation(vt,bins=[0,5,10,15,100],labels=[0,1,2,3],feature_name="vxtlt");f["vxtlt_vix_ratio"]=vt/vix.replace(0,np.nan);f["vxtlt_vix_spread"]=vt-vix
