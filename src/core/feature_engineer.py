@@ -98,7 +98,7 @@ class TransformationEngine:
     @staticmethod
     def add_log_transforms(features:Dict[str,pd.Series])->pd.DataFrame:
         f=pd.DataFrame()
-        log_candidates=["vix_vol_21d","spx_realized_vol_21d","crude_oil_vol_21d","dxy_vol_21d"]
+        log_candidates=["vix_vol_21d","spx_realized_vol_21d","crude_oil_vol_21d"]
         for name in log_candidates:
             if name in features and features[name] is not None:
                 series=features[name];f[f"{name}_log"]=np.log1p(series.clip(lower=0))
@@ -141,7 +141,6 @@ class MetaFeatureEngine:
             rp=df["vix"]-df["spx_realized_vol_21d"];m["risk_premium_ma21"]=rp.rolling(21).mean();m["risk_premium_velocity"]=rp.diff(10);m["risk_premium_zscore"]=calculate_robust_zscore(rp,63)
         if macro is not None:
             if "Gold" in macro.columns and "spx_ret_21d" in df.columns:gr=macro["Gold"].pct_change(21)*100;m["gold_spx_divergence"]=(gr.rank(pct=True)-df["spx_ret_21d"].rank(pct=True)).abs()
-            if "Dollar_Index" in macro.columns and "spx_ret_21d" in df.columns:dr=macro["Dollar_Index"].pct_change(21)*100;m["dollar_spx_correlation"]=dr.rolling(63).corr(df["spx_ret_21d"])
         return m
     @staticmethod
     def extract_rate_of_change_features(df:pd.DataFrame)->pd.DataFrame:
@@ -175,56 +174,6 @@ class FuturesFeatureEngine:
             p=fd["Crude_Oil"]
             for w in [10,21,63]:f[f"crude_oil_ret_{w}d"]=p.pct_change(w)*100
             f["crude_oil_vol_21d"]=p.pct_change().rolling(21).std()*np.sqrt(252)*100;f["crude_oil_zscore_63d"]=calculate_robust_zscore(p,63)
-        return f
-    @staticmethod
-    def extract_dollar_futures_features(dd:Dict[str,pd.Series])->pd.DataFrame:
-        f=pd.DataFrame()
-        if "DX1-DX2" in dd:dxs=dd["DX1-DX2"];f["DX1-DX2"]=dxs;f["DX1-DX2_velocity_5d"]=dxs.diff(5);f["DX1-DX2_zscore_63d"]=calculate_robust_zscore(dxs,63)
-        if "Dollar_Index" in dd:
-            dxy=dd["Dollar_Index"]
-            for w in [10,21,63]:f[f"dxy_ret_{w}d"]=dxy.pct_change(w)*100
-            for w in [50,200]:ma=dxy.rolling(w).mean();f[f"dxy_vs_ma{w}"]=((dxy-ma)/ma.replace(0,np.nan))*100
-            f["dxy_vol_21d"]=dxy.pct_change().rolling(21).std()*np.sqrt(252)*100
-        return f
-    @staticmethod
-    def extract_futures_cross_relationships(vxf:pd.DataFrame,cd:Dict[str,pd.Series],dd:Dict[str,pd.Series],sr:pd.Series=None)->pd.DataFrame:
-        f=pd.DataFrame()
-        if "vx1_vx2_spread" in vxf.columns and "CL1-CL2" in cd:vs,cls=vxf["vx1_vx2_spread"],cd["CL1-CL2"];f["vx_crude_corr_21d"]=vs.rolling(21).corr(cls);f["vx_crude_divergence"]=(vs.rolling(63).rank(pct=True)-cls.rolling(63).rank(pct=True)).abs()
-        if "vx1_vx2_spread" in vxf.columns and "Dollar_Index" in dd:f["vx_dollar_corr_21d"]=vxf["vx1_vx2_spread"].rolling(21).corr(dd["Dollar_Index"].pct_change(21)*100)
-        if "Dollar_Index" in dd and "Crude_Oil" in cd:f["dollar_crude_corr_21d"]=dd["Dollar_Index"].pct_change().rolling(21).corr(cd["Crude_Oil"].pct_change())
-        if sr is not None:
-            if "vx1_vx2_spread" in vxf.columns:f["spx_vx_spread_corr_21d"]=sr.rolling(21).corr(vxf["vx1_vx2_spread"])
-            if "Dollar_Index" in dd:f["spx_dollar_corr_21d"]=sr.rolling(21).corr(dd["Dollar_Index"].pct_change(21)*100)
-        return f
-class TreasuryYieldFeatureEngine:
-    @staticmethod
-    def extract_term_spreads(y:pd.DataFrame)->pd.DataFrame:
-        f=pd.DataFrame(index=y.index);req=["3M","2Y","10Y"]
-        if not all(c in y.columns for c in req):return f
-        f["yield_10y2y"]=y["10Y"]-y["2Y"];f["yield_10y2y_zscore"]=calculate_robust_zscore(f["yield_10y2y"],252);f["yield_10y3m"]=y["10Y"]-y["3M"];f["yield_2y3m"]=y["2Y"]-y["3M"]
-        if "5Y" in y.columns:f["yield_5y2y"]=y["5Y"]-y["2Y"]
-        if "30Y" in y.columns:f["yield_30y10y"]=y["30Y"]-y["10Y"]
-        for sn in ["yield_10y2y","yield_10y3m","yield_2y3m"]:
-            if sn not in f.columns:continue
-            sp=f[sn];f[f"{sn}_velocity_10d"]=sp.diff(10);f[f"{sn}_velocity_21d"]=sp.diff(21);f[f"{sn}_velocity_63d"]=sp.diff(63);f[f"{sn}_acceleration"]=sp.diff(10).diff(10);f[f"{sn}_vs_ma63"]=sp-sp.rolling(63).mean();f[f"{sn}_percentile_252d"]=calculate_percentile_with_validation(sp,252)
-        if "yield_10y2y" in f.columns:f["yield_10y2y_inversion_depth"]=f["yield_10y2y"].clip(upper=0).abs()
-        if "yield_10y3m" in f.columns:f["yield_10y3m_inversion_depth"]=f["yield_10y3m"].clip(upper=0).abs()
-        return f
-    @staticmethod
-    def extract_curve_shape(y:pd.DataFrame)->pd.DataFrame:
-        f=pd.DataFrame(index=y.index);req=["3M","2Y","10Y"]
-        if not all(c in y.columns for c in req):return f
-        ay=[c for c in ["3M","2Y","5Y","10Y","30Y"] if c in y.columns]
-        if ay:f["yield_curve_level"]=y[ay].mean(axis=1);f["yield_curve_level_zscore"]=calculate_robust_zscore(f["yield_curve_level"],252)
-        if "5Y" in y.columns:f["yield_curve_curvature"]=2*y["5Y"]-y["2Y"]-y["10Y"];f["yield_curve_curvature_zscore"]=calculate_robust_zscore(f["yield_curve_curvature"],252)
-        return f
-    @staticmethod
-    def extract_rate_volatility(y:pd.DataFrame)->pd.DataFrame:
-        f=pd.DataFrame(index=y.index)
-        for c in ["6M","10Y","30Y"]:
-            if c in y.columns:f[f"{c.lower()}_vol_63d"]=y[c].diff().rolling(63).std()*np.sqrt(252)
-        vc=[c for c in f.columns if "_vol_" in c]
-        if vc:f["yield_curve_vol_avg"]=f[vc].mean(axis=1);f["yield_curve_vol_dispersion"]=f[vc].std(axis=1)
         return f
 class FeatureEngineer:
     def __init__(self,data_fetcher):
@@ -339,10 +288,11 @@ class FeatureEngineer:
             else:ir=ed>(datetime.now()-timedelta(days=7));mode="RECENT" if ir else"HISTORICAL"
         sd=ed-timedelta(days=years*365+450);self.training_start_date=sd;self.training_end_date=ed;ss=sd.strftime("%Y-%m-%d");es=ed.strftime("%Y-%m-%d")
         print(f"Mode: {mode}");print(f"Date Ranges: Warmup Start -> Warmup End (usable period) -> Training End Date: {ss} → {(sd+timedelta(days=450)).strftime('%Y-%m-%d')} → {es}")
-        spx_df=self.fetcher.fetch_yahoo("^GSPC",ss,es);vix=self.fetcher.fetch_yahoo("^VIX",ss,es);vvix=self.fetcher.fetch_yahoo("^VVIX",ss,es)
+        spx_df=self.fetcher.fetch_yahoo("^GSPC",ss,es);vix=self.fetcher.fetch_yahoo("^VIX",ss,es);vvix=self.fetcher.fetch_yahoo("^VVIX",ss,es);skew_df=self.fetcher.fetch_yahoo("^SKEW",ss,es)
         vix_term_df=self.fetcher.fetch_vix_term(["^VIX","^VIX3M","^VIX6M"],ss,es)
         if spx_df is None or vix is None:raise ValueError("❌ Core data fetch failed")
         spx=spx_df["Close"].squeeze();vix=vix["Close"].squeeze();ff_daily=FORWARD_FILL_LIMITS.get("daily",5);vix=vix.reindex(spx.index,method="ffill",limit=ff_daily);spx_ohlc=spx_df.reindex(spx.index,method="ffill",limit=ff_daily)
+        skew=skew_df["Close"].squeeze().reindex(spx.index,method="ffill",limit=ff_daily) if skew_df is not None else None
         vix3m=vix_term_df["VIX3M"].reindex(spx.index,method="ffill",limit=ff_daily)if vix_term_df is not None and "VIX3M" in vix_term_df.columns else None
         vix6m=vix_term_df["VIX6M"].reindex(spx.index,method="ffill",limit=ff_daily)if vix_term_df is not None and "VIX6M" in vix_term_df.columns else None
         if vvix is not None:vvix_series=vvix["Close"].squeeze().reindex(spx.index,method="ffill",limit=ff_daily)
@@ -354,7 +304,7 @@ class FeatureEngineer:
                 cb[s]=ser.reindex(spx.index,method="ffill",limit=ff_daily)
                 if s in cboe_meta:meta=cboe_meta[s];cb[f"{s}_quality_flag"]=1.0 if meta["data_quality"]=="excellent"else(0.8 if meta["data_quality"]=="good"else(0.5 if meta["data_quality"]=="acceptable"else 0.2))
         else:cb=pd.DataFrame(index=spx.index)
-        bf=self._build_base_features(spx,vix,spx_ohlc,cb,vix3m,vix6m);cbf=self._build_cboe_features(cb,vix) if not cb.empty else pd.DataFrame(index=spx.index);ff=self._build_futures_features(ss,es,spx.index,spx,cb);md=self._fetch_macro_data(ss,es,spx.index);mf=self._build_macro_features(md) if md is not None else pd.DataFrame(index=spx.index);ef=self._build_economic_features(md);tf=self._build_treasury_features(ss,es,spx.index);vvf=self._build_vvix_features(vvix_series,vix) if vvix_series is not None else pd.DataFrame(index=spx.index);cmb=pd.concat([bf,cbf],axis=1);mtf=self._build_meta_features(cmb,spx,vix,md);calf=self._build_calendar_features(spx.index)
+        bf=self._build_base_features(spx,vix,spx_ohlc,cb,vix3m,vix6m);cbf=self._build_cboe_features(cb,vix,skew) if not cb.empty or skew is not None else pd.DataFrame(index=spx.index);ff=self._build_futures_features(ss,es,spx.index,spx,cb);md=self._fetch_macro_data(ss,es,spx.index);mf=self._build_macro_features(md) if md is not None else pd.DataFrame(index=spx.index);ef=self._build_economic_features(md);tf=self._build_treasury_features(ss,es,spx.index);vvf=self._build_vvix_features(vvix_series,vix) if vvix_series is not None else pd.DataFrame(index=spx.index);cmb=pd.concat([bf,cbf],axis=1);mtf=self._build_meta_features(cmb,spx,vix,md);calf=self._build_calendar_features(spx.index)
         interaction_vix={"vix_velocity_5d":bf.get("vix_velocity_5d"),"vix_zscore_252d":bf.get("vix_zscore_252d")}
         interaction_spx={"spx_realized_vol_63d":bf.get("spx_realized_vol_63d"),"spx_ret_5d":bf.get("spx_ret_5d"),"spx_vol_ratio_10_63":bf.get("spx_vol_ratio_10_63")}
         intf=self.interaction_engine.build_vix_spx_interactions(interaction_vix,interaction_spx)
@@ -364,7 +314,7 @@ class FeatureEngineer:
         regime_cond_f=self.regime_conditional_engine.build_regime_conditional_features(regime_feat_dict,bf.get("vix_regime"))if"vix_regime"in bf.columns else pd.DataFrame()
         mom_feats={"spx_ret_5d":bf.get("spx_ret_5d"),"vix_velocity_5d":bf.get("vix_velocity_5d")}
         regime_adj_mom=self.regime_conditional_engine.build_regime_adjusted_momentum(mom_feats,bf)if all(c in bf.columns for c in ["regime_expected_return_5d"])else pd.DataFrame()
-        transform_feats={"vix_vol_21d":bf.get("vix_vol_21d"),"spx_realized_vol_21d":bf.get("spx_realized_vol_21d"),"crude_oil_vol_21d":ff.get("crude_oil_vol_21d")if not ff.empty else None,"dxy_vol_21d":ff.get("dxy_vol_21d")if not ff.empty else None,"vix_velocity_5d":bf.get("vix_velocity_5d"),"vix_accel_5d":bf.get("vix_accel_5d"),"spx_gap":bf.get("spx_gap"),"spx_gap_magnitude":bf.get("spx_gap_magnitude")}
+        transform_feats={"vix_vol_21d":bf.get("vix_vol_21d"),"spx_realized_vol_21d":bf.get("spx_realized_vol_21d"),"crude_oil_vol_21d":ff.get("crude_oil_vol_21d")if not ff.empty else None,"vix_velocity_5d":bf.get("vix_velocity_5d"),"vix_accel_5d":bf.get("vix_accel_5d"),"spx_gap":bf.get("spx_gap"),"spx_gap_magnitude":bf.get("spx_gap_magnitude")}
         log_transf=self.transformation_engine.add_log_transforms(transform_feats)
         binary_transf=self.transformation_engine.add_binary_extremes(transform_feats)
         af=pd.concat([bf,cbf,ff,mf,ef,tf,vvf,mtf,intf,vol_cluster_f,credit_vol_f,regime_cond_f,regime_adj_mom,log_transf,binary_transf,calf],axis=1);af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)
@@ -420,15 +370,10 @@ class FeatureEngineer:
         for w in [21,63]:f[f"vvix_percentile_{w}d"]=calculate_percentile_with_validation(vvix,w)
         f["vol_of_vol_regime"]=calculate_regime_with_validation(vvix,bins=[0,80,110,140,300],labels=[0,1,2,3],feature_name="vvix")
         return f
-    def _build_cboe_features(self,cb:pd.DataFrame,vix:pd.Series)->pd.DataFrame:
+    def _build_cboe_features(self,cb:pd.DataFrame,vix:pd.Series,skew:pd.Series=None)->pd.DataFrame:
         f=pd.DataFrame(index=vix.index)
-        if "SKEW" in cb.columns:
-            sk=cb["SKEW"];f["SKEW"]=sk;f["skew_regime"]=calculate_regime_with_validation(sk,bins=SKEW_REGIME_BINS,labels=SKEW_REGIME_LABELS,feature_name="skew");f["skew_vs_vix"]=sk-vix;f["skew_vix_ratio"]=sk/vix.replace(0,np.nan);sma=sk.rolling(63).mean();f["skew_displacement"]=((sk-sma)/sma.replace(0,np.nan))*100
-        if "PCCE" in cb.columns and "PCCI" in cb.columns:f["pc_equity_inst_divergence"]=(cb["PCCE"].rolling(63).rank(pct=True)-cb["PCCI"].rolling(63).rank(pct=True)).abs()
-        if "PCC" in cb.columns:f["pcc_accel_10d"]=cb["PCC"].diff(10).diff(10)
-        for cn in ["COR1M","COR3M"]:
-            if cn in cb.columns:cr=cb[cn];f[cn]=cr;f[f"{cn}_change_21d"]=cr.diff(21);f[f"{cn}_zscore_63d"]=calculate_robust_zscore(cr,63)
-        if "COR1M" in cb.columns and "COR3M" in cb.columns:f["cor_term_structure"]=cb["COR1M"]-cb["COR3M"];f["cor_term_slope_change_21d"]=f["cor_term_structure"].diff(21)
+        if skew is not None:
+            sk=skew;f["SKEW"]=sk;f["skew_regime"]=calculate_regime_with_validation(sk,bins=SKEW_REGIME_BINS,labels=SKEW_REGIME_LABELS,feature_name="skew");f["skew_vs_vix"]=sk-vix;f["skew_vix_ratio"]=sk/vix.replace(0,np.nan);sma=sk.rolling(63).mean();f["skew_displacement"]=((sk-sma)/sma.replace(0,np.nan))*100
         if "VXTH" in cb.columns:vx=cb["VXTH"];f["VXTH"]=vx;f["VXTH_change_21d"]=vx.diff(21);f["VXTH_zscore_63d"]=calculate_robust_zscore(vx,63);f["vxth_vix_ratio"]=vx/vix.replace(0,np.nan)
         if "VXTLT" in cb.columns:
             vt=cb["VXTLT"];f["VXTLT"]=vt;f["VXTLT_change_21d"]=vt.diff(21);f["VXTLT_zscore_63d"]=calculate_robust_zscore(vt,63);f["VXTLT_velocity_10d"]=vt.diff(10);f["VXTLT_acceleration_5d"]=vt.diff(5).diff(5);f["bond_vol_regime"]=calculate_regime_with_validation(vt,bins=[0,5,10,15,100],labels=[0,1,2,3],feature_name="vxtlt");f["vxtlt_vix_ratio"]=vt/vix.replace(0,np.nan);f["vxtlt_vix_spread"]=vt-vix
@@ -444,25 +389,13 @@ class FeatureEngineer:
     def _build_futures_features(self,ss:str,es:str,idx:pd.DatetimeIndex,spx:pd.Series,cb:pd.DataFrame)->pd.DataFrame:
         ff_daily=FORWARD_FILL_LIMITS.get("daily",5)
         try:vxf=self.vx_engineer.build_all_vx_features(start_date=ss,end_date=es,target_index=idx);vxf=vxf.reindex(idx,method="ffill",limit=ff_daily)
-        except Exception as e:warnings.warn(f"VX engineer failed: {e}. Using fallback.");vxd={};(vxd.update({"VX1-VX2":cb["VX1-VX2"]}) if cb is not None and "VX1-VX2" in cb.columns else None);(vxd.update({"VX2-VX1_RATIO":cb["VX2-VX1_RATIO"]}) if cb is not None and "VX2-VX1_RATIO" in cb.columns else None);vxf=self._legacy_vix_futures_features(vxd);vxf=vxf.reindex(idx,method="ffill",limit=ff_daily) if not vxf.empty else pd.DataFrame(index=idx)
+        except Exception as e:warnings.warn(f"VX engineer failed: {e}. Using empty fallback.");vxf=pd.DataFrame(index=idx)
         comd={}
         if cb is not None and "CL1-CL2" in cb.columns:comd["CL1-CL2"]=cb["CL1-CL2"]
         crd=self.fetcher.fetch_yahoo("CL=F",ss,es)
         if crd is not None:comd["Crude_Oil"]=crd["Close"].squeeze().reindex(idx,method="ffill",limit=ff_daily)
         comf=self.futures_engine.extract_commodity_futures_features(comd);comf=comf.reindex(idx,method="ffill",limit=ff_daily) if not comf.empty else pd.DataFrame(index=idx)
-        dold={}
-        if cb is not None and "DX1-DX2" in cb.columns:dold["DX1-DX2"]=cb["DX1-DX2"]
-        dxy=self.fetcher.fetch_yahoo("DX-Y.NYB",ss,es)
-        if dxy is not None:dold["Dollar_Index"]=dxy["Close"].squeeze().reindex(idx,method="ffill",limit=ff_daily)
-        dolf=self.futures_engine.extract_dollar_futures_features(dold);dolf=dolf.reindex(idx,method="ffill",limit=ff_daily) if not dolf.empty else pd.DataFrame(index=idx)
-        srt=spx.pct_change(21)*100;crf=self.futures_engine.extract_futures_cross_relationships(vxf,comd,dold,srt);crf=crf.reindex(idx,method="ffill",limit=ff_daily) if not crf.empty else pd.DataFrame(index=idx)
-        return pd.concat([vxf,comf,dolf,crf],axis=1)
-    def _legacy_vix_futures_features(self,vxd:Dict[str,pd.Series])->pd.DataFrame:
-        f=pd.DataFrame()
-        if "VX1-VX2" in vxd:sp=vxd["VX1-VX2"];f["VX1-VX2"]=sp;f["VX1-VX2_change_21d"]=sp.diff(21);f["VX1-VX2_zscore_63d"]=calculate_robust_zscore(sp,63);f["VX1-VX2_percentile_63d"]=calculate_percentile_with_validation(sp,63)
-        if "VX2-VX1_RATIO" in vxd:r=vxd["VX2-VX1_RATIO"];f["VX2-VX1_RATIO"]=r;f["VX2-VX1_RATIO_velocity_10d"]=r.diff(10);f["vx_term_structure_regime"]=calculate_regime_with_validation(r,bins=[-1,-0.05,0,0.05,1],labels=[0,1,2,3],feature_name="vx_ratio")
-        if "VX1-VX2" in vxd and "VX2-VX1_RATIO" in vxd:sp,r=vxd["VX1-VX2"],vxd["VX2-VX1_RATIO"];f["vx_curve_acceleration"]=r.diff(5).diff(5);f["vx_term_structure_divergence"]=(sp.rolling(63).rank(pct=True)-r.rolling(63).rank(pct=True)).abs()
-        return f
+        return pd.concat([vxf,comf],axis=1)
     def _fetch_macro_data(self,ss:str,es:str,idx:pd.DatetimeIndex)->pd.DataFrame:
         fd={};ff_monthly=FORWARD_FILL_LIMITS.get("monthly",45);ff_weekly=FORWARD_FILL_LIMITS.get("weekly",10);ff_daily=FORWARD_FILL_LIMITS.get("daily",5)
         frs={"CPI":"CPIAUCSL","Initial_Claims":"ICSA","STL_Fin_Stress":"STLFSI4","Fed_Funds":"DFF","HY_OAS_All":"BAMLH0A0HYM2","HY_OAS_BB":"BAMLH0A1HYBB","HY_OAS_B":"BAMLH0A2HYB","HY_OAS_CCC":"BAMLH0A3HYC","IG_OAS":"BAMLC0A0CM"}
@@ -487,9 +420,9 @@ class FeatureEngineer:
         return df
     def _build_macro_features(self,m:pd.DataFrame)->pd.DataFrame:
         f=pd.DataFrame(index=m.index)
-        if "Dollar_Index" in m.columns:
-            dxy=m["Dollar_Index"];f["Dollar_Index_lag1"]=dxy.shift(1);f["Dollar_Index_zscore_63d"]=calculate_robust_zscore(dxy,63)
-            for w in [10,21,63]:f[f"dxy_ret_{w}d"]=dxy.pct_change(w)*100
+        if "Gold" in m.columns:
+            gold=m["Gold"];f["Gold_lag1"]=gold.shift(1);f["Gold_zscore_63d"]=calculate_robust_zscore(gold,63)
+            for w in [10,21,63]:f[f"gold_ret_{w}d"]=gold.pct_change(w)*100
         if "Bond_Vol" in m.columns:bv=m["Bond_Vol"];f["Bond_Vol_lag1"]=bv.shift(1);f["Bond_Vol_zscore_63d"]=calculate_robust_zscore(bv,63);[f.update({f"Bond_Vol_mom_{w}d":bv.diff(w)}) for w in [10,21,63]]
         if "CPI" in m.columns:[f.update({f"CPI_change_{w}d":m["CPI"].diff(w)}) for w in [10,21,63]]
         return f
@@ -539,3 +472,33 @@ class FeatureEngineer:
             if df[c].dtype==object:df[c]=pd.to_numeric(df[c],errors="coerce")
             if df[c].dtype in [np.int32,np.int64,np.float32]:df[c]=df[c].astype(np.float64)
         return df
+class TreasuryYieldFeatureEngine:
+    @staticmethod
+    def extract_term_spreads(y:pd.DataFrame)->pd.DataFrame:
+        f=pd.DataFrame(index=y.index);req=["3M","2Y","10Y"]
+        if not all(c in y.columns for c in req):return f
+        f["yield_10y2y"]=y["10Y"]-y["2Y"];f["yield_10y2y_zscore"]=calculate_robust_zscore(f["yield_10y2y"],252);f["yield_10y3m"]=y["10Y"]-y["3M"];f["yield_2y3m"]=y["2Y"]-y["3M"]
+        if "5Y" in y.columns:f["yield_5y2y"]=y["5Y"]-y["2Y"]
+        if "30Y" in y.columns:f["yield_30y10y"]=y["30Y"]-y["10Y"]
+        for sn in ["yield_10y2y","yield_10y3m","yield_2y3m"]:
+            if sn not in f.columns:continue
+            sp=f[sn];f[f"{sn}_velocity_10d"]=sp.diff(10);f[f"{sn}_velocity_21d"]=sp.diff(21);f[f"{sn}_velocity_63d"]=sp.diff(63);f[f"{sn}_acceleration"]=sp.diff(10).diff(10);f[f"{sn}_vs_ma63"]=sp-sp.rolling(63).mean();f[f"{sn}_percentile_252d"]=calculate_percentile_with_validation(sp,252)
+        if "yield_10y2y" in f.columns:f["yield_10y2y_inversion_depth"]=f["yield_10y2y"].clip(upper=0).abs()
+        if "yield_10y3m" in f.columns:f["yield_10y3m_inversion_depth"]=f["yield_10y3m"].clip(upper=0).abs()
+        return f
+    @staticmethod
+    def extract_curve_shape(y:pd.DataFrame)->pd.DataFrame:
+        f=pd.DataFrame(index=y.index);req=["3M","2Y","10Y"]
+        if not all(c in y.columns for c in req):return f
+        ay=[c for c in ["3M","2Y","5Y","10Y","30Y"] if c in y.columns]
+        if ay:f["yield_curve_level"]=y[ay].mean(axis=1);f["yield_curve_level_zscore"]=calculate_robust_zscore(f["yield_curve_level"],252)
+        if "5Y" in y.columns:f["yield_curve_curvature"]=2*y["5Y"]-y["2Y"]-y["10Y"];f["yield_curve_curvature_zscore"]=calculate_robust_zscore(f["yield_curve_curvature"],252)
+        return f
+    @staticmethod
+    def extract_rate_volatility(y:pd.DataFrame)->pd.DataFrame:
+        f=pd.DataFrame(index=y.index)
+        for c in ["6M","10Y","30Y"]:
+            if c in y.columns:f[f"{c.lower()}_vol_63d"]=y[c].diff().rolling(63).std()*np.sqrt(252)
+        vc=[c for c in f.columns if "_vol_" in c]
+        if vc:f["yield_curve_vol_avg"]=f[vc].mean(axis=1);f["yield_curve_vol_dispersion"]=f[vc].std(axis=1)
+        return f
