@@ -1,0 +1,128 @@
+2025-12-05 17:58:43,749 - INFO - Loading production data...
+2025-12-05 17:59:00,670 - INFO - Dataset: 5343 samples, 363 features
+2025-12-05 17:59:00,670 - INFO - Date range: 2004-09-13 to 2025-12-04
+2025-12-05 17:59:00,670 - INFO - 
+2025-12-05 17:59:00,960 - INFO - Using directional ensemble config (up/down specific parameters)
+2025-12-05 17:59:00,970 - INFO - ✅ Loaded 4 models: 73 exp, 94 comp, 96 up, 99 down features
+2025-12-05 17:59:00,970 - INFO - ✅ Loaded Phase 1 models: 73 exp, 94 comp, 96 up, 99 down features
+2025-12-05 17:59:00,970 - INFO - ================================================================================
+2025-12-05 17:59:00,970 - INFO - PHASE 2: ENSEMBLE CONFIG TUNER
+2025-12-05 17:59:00,970 - INFO - ================================================================================
+2025-12-05 17:59:00,970 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
+2025-12-05 17:59:00,970 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
+2025-12-05 17:59:00,970 - INFO - Test:   484 days (2024-01-01 to 2025-12-04)
+2025-12-05 17:59:00,970 - INFO - Using Phase 1 optimized models from models/ directory
+2025-12-05 17:59:00,970 - INFO - ================================================================================
+2025-12-05 17:59:00,970 - INFO - Starting Phase 2 optimization: 500 trials
+2025-12-05 17:59:00,970 - INFO - Tuning ensemble config (up_advantage, thresholds, weights, etc.)
+2025-12-05 17:59:00,970 - INFO - Evaluating on 484 test days
+2025-12-05 17:59:00,970 - INFO - Objective: TARGET 80%+ accuracy for both UP and DOWN
+2025-12-05 17:59:00,970 - INFO - Trading frequency will decrease with higher accuracy targets (quality over quantity)
+2025-12-05 17:59:00,970 - INFO - ================================================================================
+2025-12-05 17:59:00,989 - INFO - Generating base predictions (once)...
+2025-12-05 17:59:18,251 - INFO - 
+✅ Results saved: tuning_phase2/phase2_results.json
+2025-12-05 17:59:18,251 - INFO - ✅ Config saved: tuning_phase2/phase2_optimized_config.py
+2025-12-05 17:59:18,252 - INFO - 
+================================================================================
+2025-12-05 17:59:18,252 - INFO - PHASE 2 OPTIMIZATION COMPLETE
+2025-12-05 17:59:18,252 - INFO - ================================================================================
+2025-12-05 17:59:18,252 - INFO - Best trial: #0 | Score: 999.000
+2025-12-05 17:59:18,252 - INFO - Accuracy target: 80%+
+2025-12-05 17:59:18,252 - INFO - 
+2025-12-05 17:59:18,252 - INFO - 📊 TEST SET PERFORMANCE (2024-2025):
+2025-12-05 17:59:18,252 - INFO - 
+2025-12-05 17:59:18,252 - INFO -   RAW PREDICTIONS:
+2025-12-05 17:59:18,252 - INFO -     Total: 484
+2025-12-05 17:59:18,252 - INFO -     UP: 65.7% (318 signals)
+2025-12-05 17:59:18,252 - INFO -     DOWN: 34.3% (166 signals)
+2025-12-05 17:59:18,252 - INFO -     Accuracy: 58.5% | UP: 54.4% | DOWN: 66.3%
+2025-12-05 17:59:18,252 - INFO - 
+2025-12-05 17:59:18,252 - INFO -   ACTIONABLE SIGNALS (optimized ensemble):
+2025-12-05 17:59:18,252 - INFO -     Total: 163 signals (33.7% actionable)
+2025-12-05 17:59:18,252 - INFO -     UP: 0.6% (1 signals)
+2025-12-05 17:59:18,252 - INFO -     DOWN: 99.4% (162 signals)
+2025-12-05 17:59:18,252 - INFO -     Accuracy: 66.3% | UP: 100.0% | DOWN: 66.0%
+2025-12-05 17:59:18,252 - INFO -     Magnitude MAE: 16.32% (UP: 11.16%, DOWN: 16.35%)
+2025-12-05 17:59:18,252 - INFO - ================================================================================
+2025-12-05 17:59:18,252 - INFO - 
+2025-12-05 17:59:18,252 - INFO - 🎯 OPTIMIZED ACCURACY:
+2025-12-05 17:59:18,252 - INFO -    ✓ UP:   100.0% (target: 80%+)
+2025-12-05 17:59:18,252 - INFO -    ✗ DOWN: 66.0% (target: 80%+)
+2025-12-05 17:59:18,252 - INFO -    Balanced: False
+2025-12-05 17:59:18,252 - INFO - 
+2025-12-05 17:59:18,252 - INFO - 📈 TRADING FREQUENCY: ~1.6 signals/week
+2025-12-05 17:59:18,252 - INFO - ================================================================================
+2025-12-05 17:59:18,252 - INFO - 
+2025-12-05 17:59:18,252 - INFO - 📝 NEXT STEPS:
+2025-12-05 17:59:18,252 - INFO -   1. Review results in tuning_phase2/phase2_results.json
+2025-12-05 17:59:18,252 - INFO -   2. Apply ENSEMBLE_CONFIG from phase2_optimized_config.py to your config.py
+2025-12-05 17:59:18,252 - INFO -   3. Run: py integrated_system.py
+2025-12-05 17:59:18,252 - INFO - ================================================================================
+2025-12-05 17:59:18,252 - INFO - 
+✅ Phase 2 complete!
+2025-12-05 17:59:43,844 - INFO - Loading production data...
+2025-12-05 17:59:59,057 - INFO - Dataset: 5343 samples, 363 features
+2025-12-05 17:59:59,057 - INFO - Date range: 2004-09-13 to 2025-12-04
+2025-12-05 17:59:59,057 - INFO - 
+2025-12-05 17:59:59,360 - INFO - Using directional ensemble config (up/down specific parameters)
+2025-12-05 17:59:59,373 - INFO - ✅ Loaded 4 models: 73 exp, 94 comp, 96 up, 99 down features
+2025-12-05 17:59:59,373 - INFO - ✅ Loaded Phase 1 models: 73 exp, 94 comp, 96 up, 99 down features
+2025-12-05 17:59:59,373 - INFO - ================================================================================
+2025-12-05 17:59:59,373 - INFO - PHASE 2: ENSEMBLE CONFIG TUNER
+2025-12-05 17:59:59,373 - INFO - ================================================================================
+2025-12-05 17:59:59,373 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
+2025-12-05 17:59:59,374 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
+2025-12-05 17:59:59,374 - INFO - Test:   484 days (2024-01-01 to 2025-12-04)
+2025-12-05 17:59:59,374 - INFO - Using Phase 1 optimized models from models/ directory
+2025-12-05 17:59:59,374 - INFO - ================================================================================
+2025-12-05 17:59:59,374 - INFO - Starting Phase 2 optimization: 200 trials
+2025-12-05 17:59:59,374 - INFO - Tuning ensemble config (up_advantage, thresholds, weights, etc.)
+2025-12-05 17:59:59,374 - INFO - Evaluating on 484 test days
+2025-12-05 17:59:59,374 - INFO - Objective: TARGET 55%+ accuracy for both UP and DOWN
+2025-12-05 17:59:59,374 - INFO - Trading frequency will decrease with higher accuracy targets (quality over quantity)
+2025-12-05 17:59:59,374 - INFO - ================================================================================
+2025-12-05 17:59:59,389 - INFO - Generating base predictions (once)...
+2025-12-05 18:00:07,470 - INFO - 
+✅ Results saved: tuning_phase2/phase2_results.json
+2025-12-05 18:00:07,470 - INFO - ✅ Config saved: tuning_phase2/phase2_optimized_config.py
+2025-12-05 18:00:07,470 - INFO - 
+================================================================================
+2025-12-05 18:00:07,470 - INFO - PHASE 2 OPTIMIZATION COMPLETE
+2025-12-05 18:00:07,470 - INFO - ================================================================================
+2025-12-05 18:00:07,470 - INFO - Best trial: #141 | Score: 12.634
+2025-12-05 18:00:07,470 - INFO - Accuracy target: 55%+
+2025-12-05 18:00:07,470 - INFO - 
+2025-12-05 18:00:07,470 - INFO - 📊 TEST SET PERFORMANCE (2024-2025):
+2025-12-05 18:00:07,470 - INFO - 
+2025-12-05 18:00:07,470 - INFO -   RAW PREDICTIONS:
+2025-12-05 18:00:07,470 - INFO -     Total: 484
+2025-12-05 18:00:07,470 - INFO -     UP: 56.2% (272 signals)
+2025-12-05 18:00:07,470 - INFO -     DOWN: 43.8% (212 signals)
+2025-12-05 18:00:07,470 - INFO -     Accuracy: 63.4% | UP: 59.6% | DOWN: 68.4%
+2025-12-05 18:00:07,470 - INFO - 
+2025-12-05 18:00:07,470 - INFO -   ACTIONABLE SIGNALS (optimized ensemble):
+2025-12-05 18:00:07,470 - INFO -     Total: 375 signals (77.5% actionable)
+2025-12-05 18:00:07,470 - INFO -     UP: 44.3% (166 signals)
+2025-12-05 18:00:07,470 - INFO -     DOWN: 55.7% (209 signals)
+2025-12-05 18:00:07,470 - INFO -     Accuracy: 69.1% | UP: 69.3% | DOWN: 68.9%
+2025-12-05 18:00:07,470 - INFO -     Magnitude MAE: 13.12% (UP: 11.01%, DOWN: 14.80%)
+2025-12-05 18:00:07,470 - INFO - ================================================================================
+2025-12-05 18:00:07,470 - INFO - 
+2025-12-05 18:00:07,470 - INFO - 🎯 OPTIMIZED ACCURACY:
+2025-12-05 18:00:07,471 - INFO -    ✓ UP:   69.3% (target: 55%+)
+2025-12-05 18:00:07,471 - INFO -    ✓ DOWN: 68.9% (target: 55%+)
+2025-12-05 18:00:07,471 - INFO -    Balanced: True
+2025-12-05 18:00:07,471 - INFO - 
+2025-12-05 18:00:07,471 - INFO - 📈 TRADING FREQUENCY: ~3.8 signals/week
+2025-12-05 18:00:07,471 - INFO - ================================================================================
+2025-12-05 18:00:07,471 - INFO - 
+2025-12-05 18:00:07,471 - INFO - 📝 NEXT STEPS:
+2025-12-05 18:00:07,471 - INFO -   1. Review results in tuning_phase2/phase2_results.json
+2025-12-05 18:00:07,471 - INFO -   2. Apply ENSEMBLE_CONFIG from phase2_optimized_config.py to your config.py
+2025-12-05 18:00:07,471 - INFO -   3. Run: py integrated_system.py
+2025-12-05 18:00:07,471 - INFO - ================================================================================
+2025-12-05 18:00:07,471 - INFO - 
+✅ Phase 2 complete!
+2025-12-05 18:02:10,330 - INFO - Loading production data...
+2025-12-05 18:02:14,995 - ERROR - $^FVX: possibly delisted; no price data found  (1d 2025-11-28 -> 2025-12-01)

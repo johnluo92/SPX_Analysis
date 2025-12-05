@@ -1,4 +1,5 @@
-# PHASE 2 OPTIMIZED CONFIG - 2025-12-05 15:59:15
+# PHASE 2 OPTIMIZED CONFIG - 2025-12-05 18:00:07
+# Target accuracy: 55%+ for both UP and DOWN
 
 ENSEMBLE_CONFIG = {
     'enabled': True,
@@ -30,7 +31,7 @@ ENSEMBLE_CONFIG = {
     'boost_threshold_down': 10.6137,
     'boost_amount_up': 0.0771,
     'boost_amount_down': 0.0529,
-    'description': 'Phase 2 optimized for maximum accuracy with realistic constraints'
+    'description': 'Phase 2 optimized for 55%+ accuracy (high precision)'
 }
 
 # TEST PERFORMANCE WITH OPTIMIZED ENSEMBLE:
