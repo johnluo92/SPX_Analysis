@@ -282,7 +282,7 @@ class Phase1Tuner:
             'n_estimators': trial_params['up_n_estimators'], 'subsample': trial_params['up_subsample'],
             'colsample_bytree': trial_params['up_colsample_bytree'], 'min_child_weight': trial_params['up_min_child_weight'],
             'reg_alpha': trial_params['up_reg_alpha'], 'reg_lambda': trial_params['up_reg_lambda'],
-            'gamma': trial_params['up_gamma'], 'scale_pos_weight': 1.0,
+            'gamma': trial_params['up_gamma'], 'scale_pos_weight': trial_params['up_scale_pos_weight'],
             'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}
 
     def _build_down_params(self, trial_params):
@@ -291,7 +291,7 @@ class Phase1Tuner:
             'n_estimators': trial_params['down_n_estimators'], 'subsample': trial_params['down_subsample'],
             'colsample_bytree': trial_params['down_colsample_bytree'], 'min_child_weight': trial_params['down_min_child_weight'],
             'reg_alpha': trial_params['down_reg_alpha'], 'reg_lambda': trial_params['down_reg_lambda'],
-            'gamma': trial_params['down_gamma'], 'scale_pos_weight': 1.0,
+            'gamma': trial_params['down_gamma'], 'scale_pos_weight': trial_params['down_scale_pos_weight'],
             'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}
 
     def objective(self, trial):
@@ -382,11 +382,14 @@ class Phase1Tuner:
         params['down_reg_alpha'] = trial.suggest_float('down_reg_alpha', 1.0, 6.0)
         params['down_reg_lambda'] = trial.suggest_float('down_reg_lambda', 2.0, 10.0)
         params['down_gamma'] = trial.suggest_float('down_gamma', 0.1, 1.2)
+        params['up_scale_pos_weight'] = trial.suggest_float('up_scale_pos_weight', 0.5, 2.0)
+        params['down_scale_pos_weight'] = trial.suggest_float('down_scale_pos_weight', 0.5, 2.0)
         return params
+
 
     def run(self):
         logger.info(f"Starting Phase 1 optimization: {self.n_trials} trials")
-        logger.info(f"Tuning 54 hyperparameters (models + feature selection)")
+        logger.info(f"Tuning 56 hyperparameters (models + feature selection + scale_pos_weight)")
         logger.info(f"Evaluating RAW predictions on {len(self.test_df)} test days (NO ensemble filtering)")
         logger.info("="*80)
         study = optuna.create_study(direction='minimize',
@@ -473,7 +476,7 @@ UP_CLASSIFIER_PARAMS = {{'objective': 'binary:logistic', 'eval_metric': 'aucpr',
     'n_estimators': {trial.params['up_n_estimators']}, 'subsample': {trial.params['up_subsample']:.4f},
     'colsample_bytree': {trial.params['up_colsample_bytree']:.4f}, 'min_child_weight': {trial.params['up_min_child_weight']},
     'reg_alpha': {trial.params['up_reg_alpha']:.4f}, 'reg_lambda': {trial.params['up_reg_lambda']:.4f},
-    'gamma': {trial.params['up_gamma']:.4f}, 'scale_pos_weight': 1.0,
+    'gamma': {trial.params['up_gamma']:.4f}, 'scale_pos_weight': {trial.params['up_scale_pos_weight']:.4f},
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}}
 
 DOWN_CLASSIFIER_PARAMS = {{'objective': 'binary:logistic', 'eval_metric': 'aucpr',
@@ -481,7 +484,7 @@ DOWN_CLASSIFIER_PARAMS = {{'objective': 'binary:logistic', 'eval_metric': 'aucpr
     'n_estimators': {trial.params['down_n_estimators']}, 'subsample': {trial.params['down_subsample']:.4f},
     'colsample_bytree': {trial.params['down_colsample_bytree']:.4f}, 'min_child_weight': {trial.params['down_min_child_weight']},
     'reg_alpha': {trial.params['down_reg_alpha']:.4f}, 'reg_lambda': {trial.params['down_reg_lambda']:.4f},
-    'gamma': {trial.params['down_gamma']:.4f}, 'scale_pos_weight': 1.0,
+    'gamma': {trial.params['down_gamma']:.4f}, 'scale_pos_weight': {trial.params['down_scale_pos_weight']:.4f},
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}}
 
 # TEST PERFORMANCE (RAW): {attrs['accuracy']:.1%} (UP {attrs['up_accuracy']:.1%}, DOWN {attrs['down_accuracy']:.1%})

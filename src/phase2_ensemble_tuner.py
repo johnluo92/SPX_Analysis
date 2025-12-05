@@ -36,7 +36,6 @@ class EnsembleMetrics:
     mag_mae: float = 0.0
     mag_mae_up: float = 0.0
     mag_mae_down: float = 0.0
-    calibration_window_days: int = 0
 
 class Phase2Tuner:
     def __init__(self, df, vix, n_trials=200, output_dir="tuning_phase2"):
@@ -161,16 +160,19 @@ class Phase2Tuner:
             classifier_prob = p_up_norm
 
         abs_mag = abs(magnitude_pct)
-        weights = ensemble_config['confidence_weights']
-        scaling = ensemble_config['magnitude_scaling']
+        weights = ensemble_config['confidence_weights'][direction.lower()]
+        scaling = ensemble_config['magnitude_scaling'][direction.lower()]
 
         mag_strength = min(abs_mag / scaling['large'], 1.0)
         confidence = weights['classifier'] * classifier_prob + weights['magnitude'] * mag_strength
 
-        if abs_mag > ensemble_config['confidence_boost_threshold']:
-            confidence = min(confidence + ensemble_config['confidence_boost_amount'], 1.0)
+        boost_threshold = ensemble_config['boost_threshold_up'] if direction == 'UP' else ensemble_config['boost_threshold_down']
+        boost_amount = ensemble_config['boost_amount_up'] if direction == 'UP' else ensemble_config['boost_amount_down']
+        if abs_mag > boost_threshold:
+            confidence = min(confidence + boost_amount, 1.0)
 
-        confidence = np.clip(confidence, ensemble_config['min_ensemble_confidence'], 1.0)
+        min_conf = ensemble_config['min_confidence_up'] if direction == 'UP' else ensemble_config['min_confidence_down']
+        confidence = np.clip(confidence, min_conf, 1.0)
 
         thresholds = ensemble_config['dynamic_thresholds'][direction.lower()]
         if abs_mag > scaling['large']:
@@ -210,7 +212,7 @@ class Phase2Tuner:
 
         return pd.DataFrame(results)
 
-    def _calculate_metrics(self, predictions, calibration_window_days):
+    def _calculate_metrics(self, predictions):
         df = predictions
 
         raw_up = df[df['pred_direction'] == 1]
@@ -240,8 +242,7 @@ class Phase2Tuner:
             act_rate=len(act_df) / len(df) if len(df) > 0 else 0.0,
             mag_mae=mean_absolute_error(act_df_clean['actual_magnitude'], act_df_clean['magnitude']) if len(act_df_clean) > 0 else 999.0,
             mag_mae_up=mean_absolute_error(act_up_clean['actual_magnitude'], act_up_clean['magnitude']) if len(act_up_clean) > 0 else 999.0,
-            mag_mae_down=mean_absolute_error(act_down_clean['actual_magnitude'], act_down_clean['magnitude']) if len(act_down_clean) > 0 else 999.0,
-            calibration_window_days=calibration_window_days
+            mag_mae_down=mean_absolute_error(act_down_clean['actual_magnitude'], act_down_clean['magnitude']) if len(act_down_clean) > 0 else 999.0
         )
 
         return metrics
@@ -267,8 +268,7 @@ class Phase2Tuner:
                 self._base_predictions = self._generate_base_predictions(test_filt)
 
             predictions = self._evaluate_ensemble_config(ensemble_config, self._base_predictions)
-            calibration_window = ensemble_config['calibration_window_days']
-            metrics = self._calculate_metrics(predictions, calibration_window)
+            metrics = self._calculate_metrics(predictions)
 
             for field_name, value in metrics.__dict__.items():
                 trial.set_user_attr(field_name, float(value))
@@ -354,23 +354,32 @@ class Phase2Tuner:
             }
         }
 
-        classifier_weight = trial.suggest_float('classifier_weight', 0.55, 0.75)
+        classifier_weight_up = trial.suggest_float('classifier_weight_up', 0.50, 0.80)
+        classifier_weight_down = trial.suggest_float('classifier_weight_down', 0.50, 0.80)
         config['confidence_weights'] = {
-            'classifier': classifier_weight,
-            'magnitude': 1.0 - classifier_weight
+            'up': {'classifier': classifier_weight_up, 'magnitude': 1.0 - classifier_weight_up},
+            'down': {'classifier': classifier_weight_down, 'magnitude': 1.0 - classifier_weight_down}
         }
 
         config['magnitude_scaling'] = {
-            'small': trial.suggest_float('mag_scale_small', 2.5, 4.5),
-            'medium': trial.suggest_float('mag_scale_medium', 5.0, 7.5),
-            'large': trial.suggest_float('mag_scale_large', 10.0, 14.0)
+            'up': {
+                'small': trial.suggest_float('mag_scale_up_small', 2.5, 4.5),
+                'medium': trial.suggest_float('mag_scale_up_medium', 5.0, 7.5),
+                'large': trial.suggest_float('mag_scale_up_large', 10.0, 14.0)
+            },
+            'down': {
+                'small': trial.suggest_float('mag_scale_down_small', 2.0, 4.0),
+                'medium': trial.suggest_float('mag_scale_down_medium', 4.0, 6.5),
+                'large': trial.suggest_float('mag_scale_down_large', 8.0, 12.0)
+            }
         }
 
-        config['confidence_boost_threshold'] = trial.suggest_float('boost_threshold', 12.0, 18.0)
-        config['confidence_boost_amount'] = trial.suggest_float('boost_amount', 0.04, 0.07)
-        config['min_ensemble_confidence'] = trial.suggest_float('min_confidence', 0.50, 0.60)
-
-        config['calibration_window_days'] = trial.suggest_int('calibration_window_days', 500, 800, step=50)
+        config['boost_threshold_up'] = trial.suggest_float('boost_threshold_up', 10.0, 18.0)
+        config['boost_threshold_down'] = trial.suggest_float('boost_threshold_down', 10.0, 18.0)
+        config['boost_amount_up'] = trial.suggest_float('boost_amount_up', 0.03, 0.08)
+        config['boost_amount_down'] = trial.suggest_float('boost_amount_down', 0.03, 0.08)
+        config['min_confidence_up'] = trial.suggest_float('min_confidence_up', 0.50, 0.65)
+        config['min_confidence_down'] = trial.suggest_float('min_confidence_down', 0.50, 0.65)
 
         return config
 
@@ -444,8 +453,7 @@ class Phase2Tuner:
                     'mag_mae': float(attrs['mag_mae']),
                     'mag_mae_up': float(attrs['mag_mae_up']),
                     'mag_mae_down': float(attrs['mag_mae_down'])
-                },
-                'calibration_window_days': int(attrs['calibration_window_days'])
+                }
             },
             'best_parameters': {
                 'up_advantage': params['up_advantage'],
@@ -455,14 +463,20 @@ class Phase2Tuner:
                 'down_thresh_high': down_high,
                 'down_thresh_med': down_med,
                 'down_thresh_low': down_low,
-                'classifier_weight': params['classifier_weight'],
-                'mag_scale_small': params['mag_scale_small'],
-                'mag_scale_medium': params['mag_scale_medium'],
-                'mag_scale_large': params['mag_scale_large'],
-                'boost_threshold': params['boost_threshold'],
-                'boost_amount': params['boost_amount'],
-                'min_confidence': params['min_confidence'],
-                'calibration_window_days': params['calibration_window_days']
+                'classifier_weight_up': params['classifier_weight_up'],
+                'classifier_weight_down': params['classifier_weight_down'],
+                'mag_scale_up_small': params['mag_scale_up_small'],
+                'mag_scale_up_medium': params['mag_scale_up_medium'],
+                'mag_scale_up_large': params['mag_scale_up_large'],
+                'mag_scale_down_small': params['mag_scale_down_small'],
+                'mag_scale_down_medium': params['mag_scale_down_medium'],
+                'mag_scale_down_large': params['mag_scale_down_large'],
+                'boost_threshold_up': params['boost_threshold_up'],
+                'boost_threshold_down': params['boost_threshold_down'],
+                'boost_amount_up': params['boost_amount_up'],
+                'boost_amount_down': params['boost_amount_down'],
+                'min_confidence_up': params['min_confidence_up'],
+                'min_confidence_down': params['min_confidence_down']
             }
         }
 
@@ -489,20 +503,17 @@ class Phase2Tuner:
 
         config_text = f"""# PHASE 2 OPTIMIZED CONFIG - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-CALIBRATION_WINDOW_DAYS = {params['calibration_window_days']}
-
 ENSEMBLE_CONFIG = {{
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
     'up_advantage': {params['up_advantage']:.4f},
     'confidence_weights': {{
-        'classifier': {params['classifier_weight']:.4f},
-        'magnitude': {1.0 - params['classifier_weight']:.4f}
+        'up': {{'classifier': {params['classifier_weight_up']:.4f}, 'magnitude': {1.0 - params['classifier_weight_up']:.4f}}},
+        'down': {{'classifier': {params['classifier_weight_down']:.4f}, 'magnitude': {1.0 - params['classifier_weight_down']:.4f}}}
     }},
     'magnitude_scaling': {{
-        'small': {params['mag_scale_small']:.4f},
-        'medium': {params['mag_scale_medium']:.4f},
-        'large': {params['mag_scale_large']:.4f}
+        'up': {{'small': {params['mag_scale_up_small']:.4f}, 'medium': {params['mag_scale_up_medium']:.4f}, 'large': {params['mag_scale_up_large']:.4f}}},
+        'down': {{'small': {params['mag_scale_down_small']:.4f}, 'medium': {params['mag_scale_down_medium']:.4f}, 'large': {params['mag_scale_down_large']:.4f}}}
     }},
     'dynamic_thresholds': {{
         'up': {{
@@ -516,9 +527,12 @@ ENSEMBLE_CONFIG = {{
             'low_magnitude': {down_low:.4f}
         }}
     }},
-    'min_ensemble_confidence': {params['min_confidence']:.4f},
-    'confidence_boost_threshold': {params['boost_threshold']:.4f},
-    'confidence_boost_amount': {params['boost_amount']:.4f},
+    'min_confidence_up': {params['min_confidence_up']:.4f},
+    'min_confidence_down': {params['min_confidence_down']:.4f},
+    'boost_threshold_up': {params['boost_threshold_up']:.4f},
+    'boost_threshold_down': {params['boost_threshold_down']:.4f},
+    'boost_amount_up': {params['boost_amount_up']:.4f},
+    'boost_amount_down': {params['boost_amount_down']:.4f},
     'description': 'Phase 2 optimized for HIGH PRECISION (85% target accuracy)'
 }}
 
@@ -527,7 +541,6 @@ ENSEMBLE_CONFIG = {{
 # MAE {attrs['mag_mae']:.2f}% | Signals: {int(attrs['act_total'])} ({attrs['act_rate']:.1%} actionable)
 # UP signals: {int(attrs['act_up_count'])} ({attrs['act_up_pct']:.1%}) | DOWN signals: {int(attrs['act_down_count'])} ({attrs['act_down_pct']:.1%})
 # Trading frequency: ~{(attrs['act_total'] / 700) * 7:.1f} signals/week
-# Calibration window: {int(attrs['calibration_window_days'])} days
 """
 
         config_file = self.output_dir / "phase2_optimized_config.py"
@@ -556,9 +569,6 @@ ENSEMBLE_CONFIG = {{
         logger.info(f"    DOWN: {attrs['act_down_pct']:.1%} ({int(attrs['act_down_count'])} signals)")
         logger.info(f"    Accuracy: {attrs['act_accuracy']:.1%} | UP: {attrs['act_up_accuracy']:.1%} | DOWN: {attrs['act_down_accuracy']:.1%}")
         logger.info(f"    Magnitude MAE: {attrs['mag_mae']:.2f}% (UP: {attrs['mag_mae_up']:.2f}%, DOWN: {attrs['mag_mae_down']:.2f}%)")
-        logger.info("")
-        logger.info("  CALIBRATION:")
-        logger.info(f"    Window: {int(attrs['calibration_window_days'])} days")
         logger.info("="*80)
         logger.info("")
 
@@ -582,8 +592,7 @@ ENSEMBLE_CONFIG = {{
         logger.info("📝 NEXT STEPS:")
         logger.info("  1. Review results in tuning_phase2/phase2_results.json")
         logger.info("  2. Apply ENSEMBLE_CONFIG from phase2_optimized_config.py to your config.py")
-        logger.info("  3. Apply CALIBRATION_WINDOW_DAYS to config.py")
-        logger.info("  4. Run: py integrated_system.py")
+        logger.info("  3. Run: py integrated_system.py")
         logger.info("="*80)
 
 def main():
