@@ -1,40 +1,40 @@
-# PHASE 2 OPTIMIZED CONFIG - 2025-12-05 15:48:32
+# PHASE 2 OPTIMIZED CONFIG - 2025-12-05 15:59:15
 
 ENSEMBLE_CONFIG = {
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
-    'up_advantage': 0.0958,
+    'up_advantage': 0.0535,
     'confidence_weights': {
-        'up': {'classifier': 0.6177, 'magnitude': 0.3823},
-        'down': {'classifier': 0.7698, 'magnitude': 0.2302}
+        'up': {'classifier': 0.7054, 'magnitude': 0.2946},
+        'down': {'classifier': 0.6296, 'magnitude': 0.3704}
     },
     'magnitude_scaling': {
-        'up': {'small': 2.5246, 'medium': 6.6956, 'large': 12.1994},
-        'down': {'small': 2.3534, 'medium': 5.9531, 'large': 9.1828}
+        'up': {'small': 3.9697, 'medium': 6.4848, 'large': 12.4908},
+        'down': {'small': 2.8488, 'medium': 6.2560, 'large': 8.7506}
     },
     'dynamic_thresholds': {
         'up': {
-            'high_magnitude': 0.4808,
-            'medium_magnitude': 0.5488,
-            'low_magnitude': 0.5714
+            'high_magnitude': 0.6033,
+            'medium_magnitude': 0.6561,
+            'low_magnitude': 0.6940
         },
         'down': {
-            'high_magnitude': 0.5764,
-            'medium_magnitude': 0.6487,
-            'low_magnitude': 0.6703
+            'high_magnitude': 0.5861,
+            'medium_magnitude': 0.6580,
+            'low_magnitude': 0.7073
         }
     },
-    'min_confidence_up': 0.5030,
-    'min_confidence_down': 0.6081,
-    'boost_threshold_up': 11.9205,
-    'boost_threshold_down': 14.0452,
-    'boost_amount_up': 0.0307,
-    'boost_amount_down': 0.0353,
-    'description': 'Phase 2 optimized for HIGH PRECISION (85% target accuracy)'
+    'min_confidence_up': 0.5864,
+    'min_confidence_down': 0.6459,
+    'boost_threshold_up': 17.2750,
+    'boost_threshold_down': 10.6137,
+    'boost_amount_up': 0.0771,
+    'boost_amount_down': 0.0529,
+    'description': 'Phase 2 optimized for maximum accuracy with realistic constraints'
 }
 
 # TEST PERFORMANCE WITH OPTIMIZED ENSEMBLE:
-# Actionable 56.7% (UP 53.0%, DOWN 66.4%)
-# MAE 15.06% | Signals: 467 (96.5% actionable)
-# UP signals: 336 (71.9%) | DOWN signals: 131 (28.1%)
-# Trading frequency: ~4.7 signals/week
+# Actionable 69.1% (UP 69.3%, DOWN 68.9%)
+# MAE 13.12% | Signals: 375 (77.5% actionable)
+# UP signals: 166 (44.3%) | DOWN signals: 209 (55.7%)
+# Trading frequency: ~3.8 signals/week

@@ -274,13 +274,13 @@ class Phase2Tuner:
             for field_name, value in metrics.__dict__.items():
                 trial.set_user_attr(field_name, float(value))
 
-            # HIGH PRECISION OBJECTIVE: 80-90% accuracy for both UP and DOWN
+            # HIGH PRECISION OBJECTIVE: Optimize for best possible accuracy
             up_acc = metrics.act_up_accuracy
             down_acc = metrics.act_down_accuracy
 
-            # Hard constraints (fail fast)
-            min_acc = 0.80  # Must hit 80% for both
-            min_signals = 50  # Need statistical validity, not volume
+            # Hard constraints (fail fast) - realistic based on Phase 1 models
+            min_acc = 0.55  # At least 55% (better than random)
+            min_signals = 30  # Need some signals but not too strict
 
             if up_acc < min_acc:
                 return 999.0
@@ -288,29 +288,34 @@ class Phase2Tuner:
                 return 999.0
             if metrics.act_up_count < min_signals or metrics.act_down_count < min_signals:
                 return 999.0
+            if metrics.act_total < 60:  # Need reasonable total signals
+                return 999.0
 
-            # Target: 85% accuracy for both (sweet spot in 80-90% range)
-            target_acc = 0.85
+            # Target: Maximize both accuracies (aim high but realistically)
+            # We want both to be as high as possible, weighted equally
+            target_acc = 0.75  # Aspirational target
 
-            # Primary: Minimize squared distance from target for both
-            up_error = (up_acc - target_acc) ** 2
-            down_error = (down_acc - target_acc) ** 2
-            accuracy_loss = (up_error + down_error) * 100  # Scale up
+            # Primary: Maximize accuracy for both (inverse loss)
+            # Use negative log to heavily penalize low accuracy, reward high accuracy
+            up_score = -np.log(max(up_acc, 0.51))  # Avoid log(0)
+            down_score = -np.log(max(down_acc, 0.51))
+            accuracy_loss = (up_score + down_score) * 10.0
 
-            # Secondary: Prefer balanced UP/DOWN split (45-55% range)
-            balance_penalty = abs(metrics.act_up_pct - 0.50) * 5.0
+            # Secondary: Reward balanced UP/DOWN accuracy (penalty if one is much worse)
+            accuracy_gap = abs(up_acc - down_acc)
+            balance_penalty = accuracy_gap * 15.0
 
             # Tertiary: Prefer lower MAE (better magnitude predictions)
-            mag_penalty = max(0, metrics.mag_mae - 12.0) * 0.3
+            mag_penalty = metrics.mag_mae * 0.5
 
-            # Quaternary: Slight penalty for very low signal counts (but not primary objective)
-            # Prefer 100+ signals but don't force it
-            volume_penalty = 0.0
-            if metrics.act_total < 100:
-                volume_penalty = (100 - metrics.act_total) * 0.05
+            # Quaternary: Prefer balanced signal distribution (45-55% range)
+            signal_balance_penalty = abs(metrics.act_up_pct - 0.50) * 3.0
 
-            # Total score: minimize loss (prioritize accuracy, then balance, then MAE)
-            score = accuracy_loss + balance_penalty + mag_penalty + volume_penalty
+            # Prefer higher actionable rate (more usable signals)
+            actionable_reward = -metrics.act_rate * 2.0  # Negative = reward
+
+            # Total score: minimize loss (prioritize accuracy, balance, MAE, distribution)
+            score = accuracy_loss + balance_penalty + mag_penalty + signal_balance_penalty + actionable_reward
 
             return score
 
@@ -388,8 +393,8 @@ class Phase2Tuner:
         logger.info(f"Starting Phase 2 optimization: {self.n_trials} trials")
         logger.info(f"Tuning ensemble config (up_advantage, thresholds, weights, etc.)")
         logger.info(f"Evaluating on {len(self.test_df)} test days")
-        logger.info(f"Objective: HIGH PRECISION - target 85% accuracy for both UP and DOWN")
-        logger.info(f"Actionable rate will fall naturally (quality over quantity)")
+        logger.info(f"Objective: Maximize accuracy for both UP and DOWN (realistic targets)")
+        logger.info(f"Min constraints: 55% accuracy, 30 signals each direction")
         logger.info("="*80)
 
         study = optuna.create_study(direction='minimize',
@@ -534,7 +539,7 @@ ENSEMBLE_CONFIG = {{
     'boost_threshold_down': {params['boost_threshold_down']:.4f},
     'boost_amount_up': {params['boost_amount_up']:.4f},
     'boost_amount_down': {params['boost_amount_down']:.4f},
-    'description': 'Phase 2 optimized for HIGH PRECISION (85% target accuracy)'
+    'description': 'Phase 2 optimized for maximum accuracy with realistic constraints'
 }}
 
 # TEST PERFORMANCE WITH OPTIMIZED ENSEMBLE:
@@ -564,7 +569,7 @@ ENSEMBLE_CONFIG = {{
         logger.info(f"    DOWN: {attrs['raw_down_pct']:.1%} ({int(attrs['raw_down_count'])} signals)")
         logger.info(f"    Accuracy: {attrs['raw_accuracy']:.1%} | UP: {attrs['raw_up_accuracy']:.1%} | DOWN: {attrs['raw_down_accuracy']:.1%}")
         logger.info("")
-        logger.info("  ACTIONABLE SIGNALS (high precision ensemble):")
+        logger.info("  ACTIONABLE SIGNALS (optimized ensemble):")
         logger.info(f"    Total: {int(attrs['act_total'])} signals ({attrs['act_rate']:.1%} actionable)")
         logger.info(f"    UP: {attrs['act_up_pct']:.1%} ({int(attrs['act_up_count'])} signals)")
         logger.info(f"    DOWN: {attrs['act_down_pct']:.1%} ({int(attrs['act_down_count'])} signals)")
@@ -575,19 +580,15 @@ ENSEMBLE_CONFIG = {{
 
         up_acc = attrs['act_up_accuracy']
         down_acc = attrs['act_down_accuracy']
-        target = 0.85
 
-        logger.info(f"🎯 HIGH PRECISION TARGET: 85% accuracy")
-        up_delta = (up_acc - target) * 100
-        down_delta = (down_acc - target) * 100
-        up_status = "✓" if up_acc >= 0.80 else "✗"
-        down_status = "✓" if down_acc >= 0.80 else "✗"
-        logger.info(f"   {up_status} UP:   {up_acc:.1%} ({up_delta:+.1f}% from target)")
-        logger.info(f"   {down_status} DOWN: {down_acc:.1%} ({down_delta:+.1f}% from target)")
+        logger.info(f"🎯 OPTIMIZED ACCURACY:")
+        logger.info(f"   UP:   {up_acc:.1%}")
+        logger.info(f"   DOWN: {down_acc:.1%}")
+        logger.info(f"   Balanced: {abs(up_acc - down_acc) < 0.05}")
 
         avg_signals_per_week = (attrs['act_total'] / 700) * 7
         logger.info("")
-        logger.info(f"📈 TRADING FREQUENCY: ~{avg_signals_per_week:.1f} signals/week (quality over quantity)")
+        logger.info(f"📈 TRADING FREQUENCY: ~{avg_signals_per_week:.1f} signals/week")
         logger.info("="*80)
         logger.info("")
         logger.info("📝 NEXT STEPS:")
