@@ -38,12 +38,13 @@ class EnsembleMetrics:
     mag_mae_down: float = 0.0
 
 class Phase2Tuner:
-    def __init__(self, df, vix, n_trials=200, output_dir="tuning_phase2"):
+    def __init__(self, df, vix, n_trials=200, output_dir="tuning_phase2", min_accuracy=0.55):
         self.df = df.copy()
         self.vix = vix.copy()
         self.n_trials = n_trials
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.min_accuracy = min_accuracy  # Configurable minimum accuracy
 
         self.train_end = pd.Timestamp("2021-12-31")
         self.val_end = pd.Timestamp("2023-12-31")
@@ -274,30 +275,28 @@ class Phase2Tuner:
             for field_name, value in metrics.__dict__.items():
                 trial.set_user_attr(field_name, float(value))
 
-            # HIGH PRECISION OBJECTIVE: Optimize for best possible accuracy
+            # CONFIGURABLE HIGH PRECISION OBJECTIVE
             up_acc = metrics.act_up_accuracy
             down_acc = metrics.act_down_accuracy
 
-            # Hard constraints (fail fast) - realistic based on Phase 1 models
-            min_acc = 0.55  # At least 55% (better than random)
-            min_signals = 30  # Need some signals but not too strict
+            # Hard constraints (fail fast)
+            min_signals = max(10, int(30 * (self.min_accuracy / 0.75)))  # Scale signal requirement with accuracy target
 
-            if up_acc < min_acc:
+            if up_acc < self.min_accuracy:
                 return 999.0
-            if down_acc < min_acc:
+            if down_acc < self.min_accuracy:
                 return 999.0
             if metrics.act_up_count < min_signals or metrics.act_down_count < min_signals:
                 return 999.0
-            if metrics.act_total < 60:  # Need reasonable total signals
+            if metrics.act_total < (min_signals * 2):
                 return 999.0
 
-            # Target: Maximize both accuracies (aim high but realistically)
-            # We want both to be as high as possible, weighted equally
-            target_acc = 0.75  # Aspirational target
+            # Target accuracy (configurable, default to 10% above minimum)
+            target_acc = min(0.90, self.min_accuracy + 0.10)
 
             # Primary: Maximize accuracy for both (inverse loss)
             # Use negative log to heavily penalize low accuracy, reward high accuracy
-            up_score = -np.log(max(up_acc, 0.51))  # Avoid log(0)
+            up_score = -np.log(max(up_acc, 0.51))
             down_score = -np.log(max(down_acc, 0.51))
             accuracy_loss = (up_score + down_score) * 10.0
 
@@ -330,19 +329,27 @@ class Phase2Tuner:
 
         config['up_advantage'] = trial.suggest_float('up_advantage', 0.05, 0.15)
 
-        # FIXED: Sample thresholds in correct order (high < medium < low)
-        # For UP direction
-        up_high = trial.suggest_float('up_thresh_high', 0.48, 0.62)  # Easiest to pass
-        up_med = trial.suggest_float('up_thresh_med_offset', 0.02, 0.08)  # Offset from high
-        up_low = trial.suggest_float('up_thresh_low_offset', 0.02, 0.08)  # Offset from medium
+        # Sample thresholds in correct order (high < medium < low)
+        # Adjust ranges based on min_accuracy target
+        if self.min_accuracy >= 0.75:
+            # High precision mode - stricter thresholds
+            up_high_range = (0.55, 0.70)
+            down_high_range = (0.60, 0.75)
+        else:
+            # Normal mode
+            up_high_range = (0.48, 0.62)
+            down_high_range = (0.53, 0.67)
+
+        up_high = trial.suggest_float('up_thresh_high', *up_high_range)
+        up_med = trial.suggest_float('up_thresh_med_offset', 0.02, 0.08)
+        up_low = trial.suggest_float('up_thresh_low_offset', 0.02, 0.08)
 
         up_thresh_med = up_high + up_med
         up_thresh_low = up_thresh_med + up_low
 
-        # For DOWN direction
-        down_high = trial.suggest_float('down_thresh_high', 0.53, 0.67)  # Easiest to pass
-        down_med = trial.suggest_float('down_thresh_med_offset', 0.02, 0.08)  # Offset from high
-        down_low = trial.suggest_float('down_thresh_low_offset', 0.02, 0.08)  # Offset from medium
+        down_high = trial.suggest_float('down_thresh_high', *down_high_range)
+        down_med = trial.suggest_float('down_thresh_med_offset', 0.02, 0.08)
+        down_low = trial.suggest_float('down_thresh_low_offset', 0.02, 0.08)
 
         down_thresh_med = down_high + down_med
         down_thresh_low = down_thresh_med + down_low
@@ -384,8 +391,15 @@ class Phase2Tuner:
         config['boost_threshold_down'] = trial.suggest_float('boost_threshold_down', 10.0, 18.0)
         config['boost_amount_up'] = trial.suggest_float('boost_amount_up', 0.03, 0.08)
         config['boost_amount_down'] = trial.suggest_float('boost_amount_down', 0.03, 0.08)
-        config['min_confidence_up'] = trial.suggest_float('min_confidence_up', 0.50, 0.65)
-        config['min_confidence_down'] = trial.suggest_float('min_confidence_down', 0.50, 0.65)
+
+        # Adjust min_confidence based on accuracy target
+        if self.min_accuracy >= 0.75:
+            conf_range = (0.55, 0.70)
+        else:
+            conf_range = (0.50, 0.65)
+
+        config['min_confidence_up'] = trial.suggest_float('min_confidence_up', *conf_range)
+        config['min_confidence_down'] = trial.suggest_float('min_confidence_down', *conf_range)
 
         return config
 
@@ -393,8 +407,8 @@ class Phase2Tuner:
         logger.info(f"Starting Phase 2 optimization: {self.n_trials} trials")
         logger.info(f"Tuning ensemble config (up_advantage, thresholds, weights, etc.)")
         logger.info(f"Evaluating on {len(self.test_df)} test days")
-        logger.info(f"Objective: Maximize accuracy for both UP and DOWN (realistic targets)")
-        logger.info(f"Min constraints: 55% accuracy, 30 signals each direction")
+        logger.info(f"Objective: TARGET {self.min_accuracy:.0%}+ accuracy for both UP and DOWN")
+        logger.info(f"Trading frequency will decrease with higher accuracy targets (quality over quantity)")
         logger.info("="*80)
 
         study = optuna.create_study(direction='minimize',
@@ -425,7 +439,8 @@ class Phase2Tuner:
             'optimization': {
                 'n_trials': self.n_trials,
                 'best_trial': best.number,
-                'best_score': float(best.value)
+                'best_score': float(best.value),
+                'min_accuracy_target': self.min_accuracy
             },
             'data_splits': {
                 'train': f"{self.train_df.index[0].date()} to {self.train_end.date()}",
@@ -508,6 +523,7 @@ class Phase2Tuner:
         down_low = down_med + params['down_thresh_low_offset']
 
         config_text = f"""# PHASE 2 OPTIMIZED CONFIG - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+# Target accuracy: {self.min_accuracy:.0%}+ for both UP and DOWN
 
 ENSEMBLE_CONFIG = {{
     'enabled': True,
@@ -539,7 +555,7 @@ ENSEMBLE_CONFIG = {{
     'boost_threshold_down': {params['boost_threshold_down']:.4f},
     'boost_amount_up': {params['boost_amount_up']:.4f},
     'boost_amount_down': {params['boost_amount_down']:.4f},
-    'description': 'Phase 2 optimized for maximum accuracy with realistic constraints'
+    'description': 'Phase 2 optimized for {self.min_accuracy:.0%}+ accuracy (high precision)'
 }}
 
 # TEST PERFORMANCE WITH OPTIMIZED ENSEMBLE:
@@ -560,6 +576,7 @@ ENSEMBLE_CONFIG = {{
         logger.info("PHASE 2 OPTIMIZATION COMPLETE")
         logger.info("="*80)
         logger.info(f"Best trial: #{trial.number} | Score: {trial.value:.3f}")
+        logger.info(f"Accuracy target: {self.min_accuracy:.0%}+")
         logger.info("")
         logger.info("📊 TEST SET PERFORMANCE (2024-2025):")
         logger.info("")
@@ -582,13 +599,17 @@ ENSEMBLE_CONFIG = {{
         down_acc = attrs['act_down_accuracy']
 
         logger.info(f"🎯 OPTIMIZED ACCURACY:")
-        logger.info(f"   UP:   {up_acc:.1%}")
-        logger.info(f"   DOWN: {down_acc:.1%}")
+        target_status_up = "✓" if up_acc >= self.min_accuracy else "✗"
+        target_status_down = "✓" if down_acc >= self.min_accuracy else "✗"
+        logger.info(f"   {target_status_up} UP:   {up_acc:.1%} (target: {self.min_accuracy:.0%}+)")
+        logger.info(f"   {target_status_down} DOWN: {down_acc:.1%} (target: {self.min_accuracy:.0%}+)")
         logger.info(f"   Balanced: {abs(up_acc - down_acc) < 0.05}")
 
         avg_signals_per_week = (attrs['act_total'] / 700) * 7
         logger.info("")
         logger.info(f"📈 TRADING FREQUENCY: ~{avg_signals_per_week:.1f} signals/week")
+        if avg_signals_per_week < 1:
+            logger.info(f"   ⚠️  Low frequency: ~{52 / (attrs['act_total'] / 700):.1f} weeks per signal")
         logger.info("="*80)
         logger.info("")
         logger.info("📝 NEXT STEPS:")
@@ -601,7 +622,12 @@ def main():
     parser = argparse.ArgumentParser(description="Phase 2: Ensemble Config Tuner (Post-hoc)")
     parser.add_argument('--trials', type=int, default=200, help="Number of optimization trials (default: 200)")
     parser.add_argument('--output-dir', type=str, default='tuning_phase2', help="Output directory")
+    parser.add_argument('--min-accuracy', type=float, default=0.55, help="Minimum accuracy target (0.55-0.90, default: 0.55)")
     args = parser.parse_args()
+
+    if not (0.50 <= args.min_accuracy <= 0.95):
+        logger.error("❌ min-accuracy must be between 0.50 and 0.95")
+        sys.exit(1)
 
     logger.info("Loading production data...")
     from config import TRAINING_YEARS, get_last_complete_month_end
@@ -628,7 +654,8 @@ def main():
         logger.error(f"Missing required columns: {missing}")
         sys.exit(1)
 
-    tuner = Phase2Tuner(df=df, vix=result["vix"], n_trials=args.trials, output_dir=args.output_dir)
+    tuner = Phase2Tuner(df=df, vix=result["vix"], n_trials=args.trials,
+                        output_dir=args.output_dir, min_accuracy=args.min_accuracy)
 
     study = tuner.run()
 

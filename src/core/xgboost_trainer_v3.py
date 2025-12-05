@@ -19,8 +19,56 @@ class AsymmetricVIXForecaster:
         self.metrics={}
         self.ensemble_enabled=ENSEMBLE_CONFIG["enabled"]
         self.up_advantage=ENSEMBLE_CONFIG.get("up_advantage",0.07)
-        self.confidence_boost_threshold=ENSEMBLE_CONFIG.get("confidence_boost_threshold",15.0)
-        self.confidence_boost_amount=ENSEMBLE_CONFIG.get("confidence_boost_amount",0.05)
+
+        # SUPPORT BOTH OLD AND NEW CONFIG STRUCTURES
+        # New structure has directional parameters (up/down)
+        self._has_directional_config = isinstance(ENSEMBLE_CONFIG.get("confidence_weights", {}), dict) and \
+                                       "up" in ENSEMBLE_CONFIG.get("confidence_weights", {})
+
+        if self._has_directional_config:
+            # NEW DIRECTIONAL CONFIG
+            logger.info("Using directional ensemble config (up/down specific parameters)")
+            self.confidence_weights = ENSEMBLE_CONFIG["confidence_weights"]
+            self.magnitude_scaling = ENSEMBLE_CONFIG["magnitude_scaling"]
+            self.dynamic_thresholds = ENSEMBLE_CONFIG["dynamic_thresholds"]
+            self.min_confidence_up = ENSEMBLE_CONFIG.get("min_confidence_up", 0.50)
+            self.min_confidence_down = ENSEMBLE_CONFIG.get("min_confidence_down", 0.50)
+            self.boost_threshold_up = ENSEMBLE_CONFIG.get("boost_threshold_up", 15.0)
+            self.boost_threshold_down = ENSEMBLE_CONFIG.get("boost_threshold_down", 15.0)
+            self.boost_amount_up = ENSEMBLE_CONFIG.get("boost_amount_up", 0.05)
+            self.boost_amount_down = ENSEMBLE_CONFIG.get("boost_amount_down", 0.05)
+        else:
+            # OLD SINGLE-VALUE CONFIG (backward compatible)
+            logger.info("Using legacy ensemble config (single parameters)")
+            weights = ENSEMBLE_CONFIG.get("confidence_weights", {"classifier": 0.60, "magnitude": 0.40})
+            scaling = ENSEMBLE_CONFIG.get("magnitude_scaling", {"small": 3.0, "medium": 6.0, "large": 12.0})
+            thresholds = ENSEMBLE_CONFIG.get("dynamic_thresholds", {
+                "up": {"high_magnitude": 0.50, "medium_magnitude": 0.55, "low_magnitude": 0.60},
+                "down": {"high_magnitude": 0.55, "medium_magnitude": 0.60, "low_magnitude": 0.65}
+            })
+
+            # Convert to directional format internally
+            self.confidence_weights = {
+                "up": weights.copy(),
+                "down": weights.copy()
+            }
+            self.magnitude_scaling = {
+                "up": scaling.copy(),
+                "down": scaling.copy()
+            }
+            self.dynamic_thresholds = thresholds
+
+            min_conf = ENSEMBLE_CONFIG.get("min_ensemble_confidence", 0.50)
+            self.min_confidence_up = min_conf
+            self.min_confidence_down = min_conf
+
+            boost_thresh = ENSEMBLE_CONFIG.get("confidence_boost_threshold", 15.0)
+            boost_amt = ENSEMBLE_CONFIG.get("confidence_boost_amount", 0.05)
+            self.boost_threshold_up = boost_thresh
+            self.boost_threshold_down = boost_thresh
+            self.boost_amount_up = boost_amt
+            self.boost_amount_down = boost_amt
+
         from core.target_calculator import TargetCalculator
         self.target_calculator=TargetCalculator()
 
@@ -45,22 +93,42 @@ class AsymmetricVIXForecaster:
         return filtered_df
 
     def _compute_ensemble_confidence(self,classifier_prob,magnitude_pct,direction):
+        """Compute ensemble confidence with directional parameters"""
         if not self.ensemble_enabled: return float(classifier_prob)
-        cfg=ENSEMBLE_CONFIG; weights=cfg["confidence_weights"]; scaling=cfg["magnitude_scaling"]
-        abs_mag=abs(magnitude_pct)
-        mag_strength=min(abs_mag/scaling["large"],1.0)
-        ensemble_conf=weights["classifier"]*classifier_prob+weights["magnitude"]*mag_strength
-        if abs_mag>self.confidence_boost_threshold:
-            ensemble_conf=min(ensemble_conf+self.confidence_boost_amount,1.0)
-        ensemble_conf=np.clip(ensemble_conf,cfg["min_ensemble_confidence"],1.0)
+
+        # Use directional weights and scaling
+        weights = self.confidence_weights[direction.lower()]
+        scaling = self.magnitude_scaling[direction.lower()]
+
+        abs_mag = abs(magnitude_pct)
+        mag_strength = min(abs_mag / scaling["large"], 1.0)
+        ensemble_conf = weights["classifier"] * classifier_prob + weights["magnitude"] * mag_strength
+
+        # Apply directional boost
+        boost_threshold = self.boost_threshold_up if direction == "UP" else self.boost_threshold_down
+        boost_amount = self.boost_amount_up if direction == "UP" else self.boost_amount_down
+
+        if abs_mag > boost_threshold:
+            ensemble_conf = min(ensemble_conf + boost_amount, 1.0)
+
+        # Apply directional minimum confidence
+        min_conf = self.min_confidence_up if direction == "UP" else self.min_confidence_down
+        ensemble_conf = np.clip(ensemble_conf, min_conf, 1.0)
+
         return float(ensemble_conf)
 
     def _get_dynamic_threshold(self,magnitude_pct,direction):
-        cfg=ENSEMBLE_CONFIG; thresholds=cfg["dynamic_thresholds"][direction.lower()]
-        scaling=cfg["magnitude_scaling"]; abs_mag=abs(magnitude_pct)
-        if abs_mag>scaling["large"]: return thresholds["high_magnitude"]
-        elif abs_mag>scaling["medium"]: return thresholds["medium_magnitude"]
-        else: return thresholds["low_magnitude"]
+        """Get dynamic threshold with directional parameters"""
+        thresholds = self.dynamic_thresholds[direction.lower()]
+        scaling = self.magnitude_scaling[direction.lower()]
+        abs_mag = abs(magnitude_pct)
+
+        if abs_mag > scaling["large"]:
+            return thresholds["high_magnitude"]
+        elif abs_mag > scaling["medium"]:
+            return thresholds["medium_magnitude"]
+        else:
+            return thresholds["low_magnitude"]
 
     def train(self,df,expansion_features=None,compression_features=None,up_features=None,down_features=None,save_dir="models"):
         # CRITICAL: Sort dataframe by index for deterministic splits
