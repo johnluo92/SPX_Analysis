@@ -1,33 +1,33 @@
 {
-  "correlation_threshold": 0.8925,
-  "n_removed_correlation": 28,
+  "correlation_threshold": 0.9246,
+  "n_removed_correlation": 15,
   "n_samples": 4859,
-  "n_selected": 101,
+  "n_selected": 99,
   "random_state": 42,
   "target_type": "down",
   "top_10_features": [
     "vix_velocity_5d_regime_adj",
-    "vix_velocity_5d",
     "vix_vs_ma10",
     "skew_vix_ratio_percentile_252d",
-    "vvix_velocity_21d",
-    "ig_hy_spread",
-    "vix_vol_21d_log",
+    "month",
+    "skew_vix_ratio",
+    "hy_spread",
+    "rsi_14",
     "vix_zscore_252d",
-    "yield_curve_vol_avg",
-    "spx_realized_vol_63d"
+    "spx_ret_5d",
+    "crude_oil_ret_63d"
   ],
   "top_10_importance": [
-    0.00885813208296895,
-    0.007655765954405069,
-    0.007471302105113864,
-    0.0072724978439509865,
-    0.007212353218346834,
-    0.007013716921210289,
-    0.006340694427490234,
-    0.006292334292083979,
-    0.005731489323079586,
-    0.005445489101111889
+    0.010736140515655279,
+    0.009003181103616953,
+    0.008968347776681184,
+    0.007306598033756018,
+    0.006899203266948461,
+    0.006829435564577579,
+    0.006675596348941326,
+    0.0064203844405710695,
+    0.006286844611167908,
+    0.005952654033899307
   ],
-  "top_n": 101
+  "top_n": 99
 }

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np, pandas as pd, optuna
 from optuna.samplers import TPESampler
 from sklearn.metrics import mean_absolute_error
-
+from config import QUALITY_FILTER_CONFIG
 warnings.filterwarnings("ignore")
 
 Path("logs").mkdir(exist_ok=True)
@@ -111,10 +111,10 @@ class Phase2Tuner:
             if pd.isna(test_df.loc[idx, 'target_direction']):
                 continue
 
-            X_exp = test_df.loc[[idx], self.forecaster.expansion_features].fillna(0)
-            X_comp = test_df.loc[[idx], self.forecaster.compression_features].fillna(0)
-            X_up = test_df.loc[[idx], self.forecaster.up_features].fillna(0)
-            X_down = test_df.loc[[idx], self.forecaster.down_features].fillna(0)
+            X_exp = test_df.loc[[idx], sorted(self.forecaster.expansion_features)].fillna(0)
+            X_comp = test_df.loc[[idx], sorted(self.forecaster.compression_features)].fillna(0)
+            X_up = test_df.loc[[idx], sorted(self.forecaster.up_features)].fillna(0)
+            X_down = test_df.loc[[idx], sorted(self.forecaster.down_features)].fillna(0)
 
             exp_log = np.clip(self.forecaster.expansion_model.predict(X_exp)[0], -2, 2)
             comp_log = np.clip(self.forecaster.compression_model.predict(X_comp)[0], -2, 2)
@@ -258,7 +258,8 @@ class Phase2Tuner:
                     logger.debug(f"Trial {trial.number}: Invalid threshold ordering for {direction}")
                     return 999.0
 
-            test_filt = self._apply_quality_filter(self.test_df, threshold=0.55)
+            from config import QUALITY_FILTER_CONFIG
+            test_filt = self._apply_quality_filter(self.test_df, threshold=QUALITY_FILTER_CONFIG['min_threshold'])
             if len(test_filt) < 100:
                 logger.debug(f"Trial {trial.number}: Insufficient test data")
                 return 999.0

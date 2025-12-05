@@ -1,62 +1,67 @@
 {
-  "timestamp": "2025-12-04T01:26:30.752522",
+  "timestamp": "2025-12-05T15:48:32.093030",
   "phase": "Phase 2 - Ensemble Config Tuning",
   "description": "Optimizes post-hoc ensemble decision logic using Phase 1 models",
   "optimization": {
-    "n_trials": 200,
+    "n_trials": 5,
     "best_trial": 0,
     "best_score": 999.0
   },
   "data_splits": {
     "train": "2004-09-13 to 2021-12-31",
     "val": "2022-01-03 to 2023-12-31",
-    "test": "2024-01-01 to 2025-12-03",
+    "test": "2024-01-01 to 2025-12-04",
     "train_size": 4358,
     "val_size": 501,
-    "test_size": 483
+    "test_size": 484
   },
   "test_metrics": {
     "raw_predictions": {
-      "total": 483,
-      "up_count": 226,
-      "down_count": 257,
-      "up_pct": 0.46790890269151136,
-      "down_pct": 0.5320910973084886,
-      "accuracy": 0.6418219461697723,
-      "up_accuracy": 0.6238938053097345,
-      "down_accuracy": 0.6575875486381323
+      "total": 484,
+      "up_count": 336,
+      "down_count": 148,
+      "up_pct": 0.6942148760330579,
+      "down_pct": 0.30578512396694213,
+      "accuracy": 0.5681818181818182,
+      "up_accuracy": 0.5297619047619048,
+      "down_accuracy": 0.6554054054054054
     },
     "actionable_signals": {
-      "total": 416,
-      "rate": 0.8612836438923396,
-      "up_count": 161,
-      "down_count": 255,
-      "up_pct": 0.3870192307692308,
-      "down_pct": 0.6129807692307693,
-      "accuracy": 0.6778846153846154,
-      "up_accuracy": 0.7018633540372671,
-      "down_accuracy": 0.6627450980392157,
-      "mag_mae": 13.74434337889674,
-      "mag_mae_up": 11.228139103280649,
-      "mag_mae_down": 15.329353946213965
-    },
-    "calibration_window_days": 550
+      "total": 467,
+      "rate": 0.9648760330578512,
+      "up_count": 336,
+      "down_count": 131,
+      "up_pct": 0.7194860813704497,
+      "down_pct": 0.28051391862955033,
+      "accuracy": 0.5674518201284796,
+      "up_accuracy": 0.5297619047619048,
+      "down_accuracy": 0.6641221374045801,
+      "mag_mae": 15.058685441554063,
+      "mag_mae_up": 14.31303311799891,
+      "mag_mae_down": 16.948430261556453
+    }
   },
   "best_parameters": {
-    "up_advantage": 0.08745401188473625,
-    "up_thresh_high": 0.6701428612819833,
-    "up_thresh_med": 0.6663987883622811,
-    "up_thresh_low": 0.6997316968394073,
-    "down_thresh_high": 0.5612037280884873,
-    "down_thresh_med": 0.6111989040672405,
-    "down_thresh_low": 0.6416167224336399,
-    "classifier_weight": 0.7232352291549871,
-    "mag_scale_small": 3.7022300234864174,
-    "mag_scale_medium": 6.770181444490114,
-    "mag_scale_large": 10.08233797718321,
-    "boost_threshold": 17.819459112971966,
-    "boost_amount": 0.06497327922401266,
-    "min_confidence": 0.5212339110678276,
-    "calibration_window_days": 550
+    "up_advantage": 0.09578212521220471,
+    "up_thresh_high": 0.4808396056138144,
+    "up_thresh_med": 0.548810515359341,
+    "up_thresh_low": 0.5714432339469235,
+    "down_thresh_high": 0.5764264520226607,
+    "down_thresh_med": 0.648658150265254,
+    "down_thresh_low": 0.6703014236036974,
+    "classifier_weight_up": 0.6177358676307898,
+    "classifier_weight_down": 0.7698445218135815,
+    "mag_scale_up_small": 2.524622339129875,
+    "mag_scale_up_medium": 6.695634499378131,
+    "mag_scale_up_large": 12.199373729904693,
+    "mag_scale_down_small": 2.353362800722666,
+    "mag_scale_down_medium": 5.953061128215872,
+    "mag_scale_down_large": 9.182818796723042,
+    "boost_threshold_up": 11.920532665109228,
+    "boost_threshold_down": 14.045218248821259,
+    "boost_amount_up": 0.030709611514574818,
+    "boost_amount_down": 0.0352763767759468,
+    "min_confidence_up": 0.5029856932188008,
+    "min_confidence_down": 0.6081212496647084
   }
 }

@@ -165,10 +165,10 @@ class AsymmetricVIXForecaster:
         return X,feature_cols
 
     def _train_regressor_model(self,X_train,y_train,X_val,y_val,X_test,y_test,params,name,train_df,val_df):
-        # CRITICAL: Enforce determinism
+        # Use params from config (tuner-optimized)
         params = params.copy()
-        params['random_state'] = params.get('seed', 42)
-        params['n_jobs'] = 1  # Force single-threaded for determinism
+        if 'seed' in params and 'random_state' not in params:
+            params['random_state'] = params['seed']
 
         model=XGBRegressor(**params)
         train_weights=None; val_weights=None
@@ -191,10 +191,10 @@ class AsymmetricVIXForecaster:
         return model,metrics
 
     def _train_classifier_model(self,X_train,y_train,X_val,y_val,X_test,y_test,params,name,train_df,val_df,invert=False):
-        # CRITICAL: Enforce determinism
+        # Use params from config (tuner-optimized)
         params = params.copy()
-        params['random_state'] = params.get('seed', 42)
-        params['n_jobs'] = 1  # Force single-threaded for determinism
+        if 'seed' in params and 'random_state' not in params:
+            params['random_state'] = params['seed']
 
         model=XGBClassifier(**params)
         train_weights=None; val_weights=None

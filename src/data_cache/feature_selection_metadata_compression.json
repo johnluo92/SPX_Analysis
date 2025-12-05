@@ -1,33 +1,33 @@
 {
-  "correlation_threshold": 0.8925,
-  "n_removed_correlation": 29,
+  "correlation_threshold": 0.9246,
+  "n_removed_correlation": 10,
   "n_samples": 2613,
-  "n_selected": 116,
+  "n_selected": 94,
   "random_state": 42,
   "target_type": "compression",
   "top_10_features": [
     "vix_vs_ma63",
-    "joint_regime_expected_return",
-    "vix_skew_joint_regime",
     "vix_percentile_126d",
     "vix_vs_ma21",
+    "vix_skew_joint_regime",
     "vix_velocity_5d_regime_adj",
-    "vix_velocity_21d",
-    "vix_velocity_5d",
     "reversion_strength_63d",
-    "vix_zscore_63d"
+    "vix_term_curvature_zscore",
+    "joint_regime_expected_return",
+    "bb_position_20d",
+    "spx_realized_vol_63d_x_regime_0"
   ],
   "top_10_importance": [
-    0.07748019844293594,
-    0.03173518073745072,
-    0.026388075901195407,
-    0.026000767759978772,
-    0.016269705537706614,
-    0.014478506613522768,
-    0.00994504950940609,
-    0.00984886847436428,
-    0.009273947961628438,
-    0.009191686590202152
+    0.05994162783026695,
+    0.018928029760718345,
+    0.01836332380771637,
+    0.016664096992462872,
+    0.015448103938251734,
+    0.015176726272329688,
+    0.011666347249411046,
+    0.010498387832194566,
+    0.009838221687823534,
+    0.009215919673442841
   ],
-  "top_n": 116
+  "top_n": 94
 }

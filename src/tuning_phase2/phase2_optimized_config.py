@@ -1,41 +1,40 @@
-# PHASE 2 OPTIMIZED CONFIG - 2025-12-04 01:26:30
-
-CALIBRATION_WINDOW_DAYS = 550
+# PHASE 2 OPTIMIZED CONFIG - 2025-12-05 15:48:32
 
 ENSEMBLE_CONFIG = {
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
-    'up_advantage': 0.0875,
+    'up_advantage': 0.0958,
     'confidence_weights': {
-        'classifier': 0.7232,
-        'magnitude': 0.2768
+        'up': {'classifier': 0.6177, 'magnitude': 0.3823},
+        'down': {'classifier': 0.7698, 'magnitude': 0.2302}
     },
     'magnitude_scaling': {
-        'small': 3.7022,
-        'medium': 6.7702,
-        'large': 10.0823
+        'up': {'small': 2.5246, 'medium': 6.6956, 'large': 12.1994},
+        'down': {'small': 2.3534, 'medium': 5.9531, 'large': 9.1828}
     },
     'dynamic_thresholds': {
         'up': {
-            'high_magnitude': 0.6701,
-            'medium_magnitude': 0.6664,
-            'low_magnitude': 0.6997
+            'high_magnitude': 0.4808,
+            'medium_magnitude': 0.5488,
+            'low_magnitude': 0.5714
         },
         'down': {
-            'high_magnitude': 0.5612,
-            'medium_magnitude': 0.6112,
-            'low_magnitude': 0.6416
+            'high_magnitude': 0.5764,
+            'medium_magnitude': 0.6487,
+            'low_magnitude': 0.6703
         }
     },
-    'min_ensemble_confidence': 0.5212,
-    'confidence_boost_threshold': 17.8195,
-    'confidence_boost_amount': 0.0650,
+    'min_confidence_up': 0.5030,
+    'min_confidence_down': 0.6081,
+    'boost_threshold_up': 11.9205,
+    'boost_threshold_down': 14.0452,
+    'boost_amount_up': 0.0307,
+    'boost_amount_down': 0.0353,
     'description': 'Phase 2 optimized for HIGH PRECISION (85% target accuracy)'
 }
 
 # TEST PERFORMANCE WITH OPTIMIZED ENSEMBLE:
-# Actionable 67.8% (UP 70.2%, DOWN 66.3%)
-# MAE 13.74% | Signals: 416 (86.1% actionable)
-# UP signals: 161 (38.7%) | DOWN signals: 255 (61.3%)
-# Trading frequency: ~4.2 signals/week
-# Calibration window: 550 days
+# Actionable 56.7% (UP 53.0%, DOWN 66.4%)
+# MAE 15.06% | Signals: 467 (96.5% actionable)
+# UP signals: 336 (71.9%) | DOWN signals: 131 (28.1%)
+# Trading frequency: ~4.7 signals/week
