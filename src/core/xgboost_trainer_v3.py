@@ -10,68 +10,85 @@ logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 
 class AsymmetricVIXForecaster:
-    def __init__(self):
+    # MODIFIED __init__ METHOD for xgboost_trainer_v3.py
+    # Replace the existing __init__ method with this:
+
+    def __init__(self, use_ensemble=True):
+        """
+        Args:
+            use_ensemble: If False, disables all Phase 2 ensemble logic
+                         (used during Phase 1 tuning)
+        """
         self.horizon=TARGET_CONFIG["horizon_days"]
         self.expansion_model=None; self.compression_model=None
         self.up_classifier=None; self.down_classifier=None
         self.expansion_features=None; self.compression_features=None
         self.up_features=None; self.down_features=None
         self.metrics={}
-        self.ensemble_enabled=ENSEMBLE_CONFIG["enabled"]
-        self.up_advantage=ENSEMBLE_CONFIG.get("up_advantage",0.07)
 
-        # SUPPORT BOTH OLD AND NEW CONFIG STRUCTURES
-        # New structure has directional parameters (up/down)
-        self._has_directional_config = isinstance(ENSEMBLE_CONFIG.get("confidence_weights", {}), dict) and \
-                                       "up" in ENSEMBLE_CONFIG.get("confidence_weights", {})
+        self.use_ensemble = use_ensemble
 
-        if self._has_directional_config:
-            # NEW DIRECTIONAL CONFIG
-            logger.info("Using directional ensemble config (up/down specific parameters)")
-            self.confidence_weights = ENSEMBLE_CONFIG["confidence_weights"]
-            self.magnitude_scaling = ENSEMBLE_CONFIG["magnitude_scaling"]
-            self.dynamic_thresholds = ENSEMBLE_CONFIG["dynamic_thresholds"]
-            self.min_confidence_up = ENSEMBLE_CONFIG.get("min_confidence_up", 0.50)
-            self.min_confidence_down = ENSEMBLE_CONFIG.get("min_confidence_down", 0.50)
-            self.boost_threshold_up = ENSEMBLE_CONFIG.get("boost_threshold_up", 15.0)
-            self.boost_threshold_down = ENSEMBLE_CONFIG.get("boost_threshold_down", 15.0)
-            self.boost_amount_up = ENSEMBLE_CONFIG.get("boost_amount_up", 0.05)
-            self.boost_amount_down = ENSEMBLE_CONFIG.get("boost_amount_down", 0.05)
+        if use_ensemble:
+            # Load Phase 2 ensemble config
+            self.ensemble_enabled=ENSEMBLE_CONFIG["enabled"]
+            self.up_advantage=ENSEMBLE_CONFIG.get("up_advantage",0.07)
+
+            # SUPPORT BOTH OLD AND NEW CONFIG STRUCTURES
+            # New structure has directional parameters (up/down)
+            self._has_directional_config = isinstance(ENSEMBLE_CONFIG.get("confidence_weights", {}), dict) and \
+                                           "up" in ENSEMBLE_CONFIG.get("confidence_weights", {})
+
+            if self._has_directional_config:
+                # NEW DIRECTIONAL CONFIG
+                logger.info("Using directional ensemble config (up/down specific parameters)")
+                self.confidence_weights = ENSEMBLE_CONFIG["confidence_weights"]
+                self.magnitude_scaling = ENSEMBLE_CONFIG["magnitude_scaling"]
+                self.dynamic_thresholds = ENSEMBLE_CONFIG["dynamic_thresholds"]
+                self.min_confidence_up = ENSEMBLE_CONFIG.get("min_confidence_up", 0.50)
+                self.min_confidence_down = ENSEMBLE_CONFIG.get("min_confidence_down", 0.50)
+                self.boost_threshold_up = ENSEMBLE_CONFIG.get("boost_threshold_up", 15.0)
+                self.boost_threshold_down = ENSEMBLE_CONFIG.get("boost_threshold_down", 15.0)
+                self.boost_amount_up = ENSEMBLE_CONFIG.get("boost_amount_up", 0.05)
+                self.boost_amount_down = ENSEMBLE_CONFIG.get("boost_amount_down", 0.05)
+            else:
+                # OLD SINGLE-VALUE CONFIG (backward compatible)
+                logger.info("Using legacy ensemble config (single parameters)")
+                weights = ENSEMBLE_CONFIG.get("confidence_weights", {"classifier": 0.60, "magnitude": 0.40})
+                scaling = ENSEMBLE_CONFIG.get("magnitude_scaling", {"small": 3.0, "medium": 6.0, "large": 12.0})
+                thresholds = ENSEMBLE_CONFIG.get("dynamic_thresholds", {
+                    "up": {"high_magnitude": 0.50, "medium_magnitude": 0.55, "low_magnitude": 0.60},
+                    "down": {"high_magnitude": 0.55, "medium_magnitude": 0.60, "low_magnitude": 0.65}
+                })
+
+                # Convert to directional format internally
+                self.confidence_weights = {
+                    "up": weights.copy(),
+                    "down": weights.copy()
+                }
+                self.magnitude_scaling = {
+                    "up": scaling.copy(),
+                    "down": scaling.copy()
+                }
+                self.dynamic_thresholds = thresholds
+
+                min_conf = ENSEMBLE_CONFIG.get("min_ensemble_confidence", 0.50)
+                self.min_confidence_up = min_conf
+                self.min_confidence_down = min_conf
+
+                boost_thresh = ENSEMBLE_CONFIG.get("confidence_boost_threshold", 15.0)
+                boost_amt = ENSEMBLE_CONFIG.get("confidence_boost_amount", 0.05)
+                self.boost_threshold_up = boost_thresh
+                self.boost_threshold_down = boost_thresh
+                self.boost_amount_up = boost_amt
+                self.boost_amount_down = boost_amt
         else:
-            # OLD SINGLE-VALUE CONFIG (backward compatible)
-            logger.info("Using legacy ensemble config (single parameters)")
-            weights = ENSEMBLE_CONFIG.get("confidence_weights", {"classifier": 0.60, "magnitude": 0.40})
-            scaling = ENSEMBLE_CONFIG.get("magnitude_scaling", {"small": 3.0, "medium": 6.0, "large": 12.0})
-            thresholds = ENSEMBLE_CONFIG.get("dynamic_thresholds", {
-                "up": {"high_magnitude": 0.50, "medium_magnitude": 0.55, "low_magnitude": 0.60},
-                "down": {"high_magnitude": 0.55, "medium_magnitude": 0.60, "low_magnitude": 0.65}
-            })
-
-            # Convert to directional format internally
-            self.confidence_weights = {
-                "up": weights.copy(),
-                "down": weights.copy()
-            }
-            self.magnitude_scaling = {
-                "up": scaling.copy(),
-                "down": scaling.copy()
-            }
-            self.dynamic_thresholds = thresholds
-
-            min_conf = ENSEMBLE_CONFIG.get("min_ensemble_confidence", 0.50)
-            self.min_confidence_up = min_conf
-            self.min_confidence_down = min_conf
-
-            boost_thresh = ENSEMBLE_CONFIG.get("confidence_boost_threshold", 15.0)
-            boost_amt = ENSEMBLE_CONFIG.get("confidence_boost_amount", 0.05)
-            self.boost_threshold_up = boost_thresh
-            self.boost_threshold_down = boost_thresh
-            self.boost_amount_up = boost_amt
-            self.boost_amount_down = boost_amt
+            # Phase 1 mode: no ensemble logic
+            self.ensemble_enabled = False
+            self.up_advantage = 0.0
+            # Don't load any Phase 2 config
 
         from core.target_calculator import TargetCalculator
         self.target_calculator=TargetCalculator()
-
     def _get_regime(self,vix_level):
         for i,boundary in enumerate(REGIME_BOUNDARIES[1:]):
             if vix_level<boundary: return REGIME_NAMES[i]
@@ -297,21 +314,40 @@ class AsymmetricVIXForecaster:
         expansion_pct=(np.exp(expansion_log)-1)*100; compression_pct=(np.exp(compression_log)-1)*100
         expansion_pct=np.clip(expansion_pct,-50,100); compression_pct=np.clip(compression_pct,-50,100)
 
-        # Asymmetric ensemble logic - DOWN must beat UP by advantage margin
-        if p_down > (p_up + self.up_advantage):
-            direction="DOWN"
-            magnitude_pct=compression_pct
-            magnitude_log=compression_log
-            classifier_prob=p_down_norm
-        else:
-            direction="UP"
-            magnitude_pct=expansion_pct
-            magnitude_log=expansion_log
-            classifier_prob=p_up_norm
+        if not self.use_ensemble:
+            # PHASE 1 MODE: Simple winner-takes-all (no up_advantage)
+            if p_up > p_down:
+                direction = "UP"
+                magnitude_pct = expansion_pct
+                magnitude_log = expansion_log
+                classifier_prob = p_up_norm
+            else:
+                direction = "DOWN"
+                magnitude_pct = compression_pct
+                magnitude_log = compression_log
+                classifier_prob = p_down_norm
 
-        ensemble_confidence=self._compute_ensemble_confidence(classifier_prob,magnitude_pct,direction)
-        actionable_threshold=self._get_dynamic_threshold(magnitude_pct,direction)
-        actionable=ensemble_confidence>actionable_threshold
+            # No confidence computation, no actionable filtering
+            ensemble_confidence = classifier_prob
+            actionable_threshold = 0.0
+            actionable = True  # All predictions actionable in Phase 1 mode
+        else:
+            # PHASE 2 MODE: Asymmetric ensemble with up_advantage
+            if p_down > (p_up + self.up_advantage):
+                direction="DOWN"
+                magnitude_pct=compression_pct
+                magnitude_log=compression_log
+                classifier_prob=p_down_norm
+            else:
+                direction="UP"
+                magnitude_pct=expansion_pct
+                magnitude_log=expansion_log
+                classifier_prob=p_up_norm
+
+            ensemble_confidence=self._compute_ensemble_confidence(classifier_prob,magnitude_pct,direction)
+            actionable_threshold=self._get_dynamic_threshold(magnitude_pct,direction)
+            actionable=ensemble_confidence>actionable_threshold
+
         expected_vix=current_vix*(1+magnitude_pct/100)
         current_regime=self._get_regime(current_vix); expected_regime=self._get_regime(expected_vix)
         regime_change=current_regime!=expected_regime

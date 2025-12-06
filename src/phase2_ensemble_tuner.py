@@ -82,7 +82,9 @@ class Phase2Tuner:
 
     def _load_phase1_models(self):
         from core.xgboost_trainer_v3 import AsymmetricVIXForecaster
-        self.forecaster = AsymmetricVIXForecaster()
+        # Load with ensemble enabled (Phase 2 mode)
+        self.forecaster = AsymmetricVIXForecaster(use_ensemble=True)
+
 
         models_path = Path("models")
         if not (models_path / "expansion_model.pkl").exists():

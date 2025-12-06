@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import numpy as np, pandas as pd, optuna
 from optuna.samplers import TPESampler
 from sklearn.metrics import mean_absolute_error
+from config import PHASE1_TUNER_TRIALS
 
 warnings.filterwarnings("ignore")
 
@@ -37,7 +38,7 @@ class RawMetrics:
     n_down_features: int = 0
 
 class Phase1Tuner:
-    def __init__(self, df, vix, n_trials=300, output_dir="tuning_phase1"):
+    def __init__(self, df, vix, n_trials=PHASE1_TUNER_TRIALS, output_dir="tuning_phase1"):
         self.df = df.copy(); self.vix = vix.copy(); self.n_trials = n_trials
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -188,12 +189,8 @@ class Phase1Tuner:
                 p_up = up_model.predict_proba(X_up)[0, 1]
                 p_down = down_model.predict_proba(X_down)[0, 1]
 
-                # Simple decision: whoever has higher probability wins
-                total = p_up + p_down
-                p_up_norm = p_up / total if total > 0 else 0.5
-                p_down_norm = p_down / total if total > 0 else 0.5
-
-                if p_up_norm > p_down_norm:
+                # PHASE 1: Simplest decision - raw probability comparison (no normalization)
+                if p_up > p_down:
                     pred_direction = 1
                     magnitude = exp_pct
                 else:
@@ -295,26 +292,28 @@ class Phase1Tuner:
             'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': -1}
 
     def objective(self, trial):
+        """
+        PHASE 1 OBJECTIVE: Optimize RAW predictions (no ensemble filtering)
+        Target: 60-70% accuracy for both UP and DOWN
+        Accept natural UP/DOWN imbalance (~20/80 expected)
+        Low MAE
+        """
         trial_params = self._sample_hyperparameters(trial)
         metrics = self._train_and_evaluate_models(trial_params)
         if metrics is None: return 999.0
         for field_name, value in metrics.__dict__.items():
             trial.set_user_attr(field_name, float(value))
 
-        # OBJECTIVE: Optimize RAW predictions (no ensemble filtering)
-        # Target: 65-70% accuracy for both UP and DOWN
-        # Balanced UP/DOWN split (~48/52)
-        # Low MAE
-
+        # Accuracy penalty: penalize low accuracy for both directions
         acc_penalty = (1 - metrics.up_accuracy) + (1 - metrics.down_accuracy)
 
-        # Balance penalty: want roughly 48/52 split
-        balance_penalty = abs(metrics.up_pct - 0.48) * 3.0
+        # NO balance penalty - accept natural distribution (system naturally does ~20/80)
 
-        # Volume penalties: need minimum samples
-        min_viable = 150
-        up_volume_penalty = max(0, min_viable - metrics.up_count) * 0.3
-        down_volume_penalty = max(0, min_viable - metrics.down_count) * 0.3
+        # Volume penalties: scale with expected natural distribution
+        min_up = 50  # Lower minimum since UP is naturally rare
+        min_down = 150  # Higher minimum since DOWN is naturally common
+        up_volume_penalty = max(0, min_up - metrics.up_count) * 0.5
+        down_volume_penalty = max(0, min_down - metrics.down_count) * 0.3
 
         # MAE penalty
         mae_penalty = metrics.mae * 0.3
@@ -325,7 +324,7 @@ class Phase1Tuner:
             max(0, 0.55 - metrics.up_val_acc) * 2.0 +
             max(0, 0.55 - metrics.down_val_acc) * 2.0)
 
-        score = acc_penalty + balance_penalty + up_volume_penalty + down_volume_penalty + mae_penalty + val_penalty
+        score = acc_penalty + up_volume_penalty + down_volume_penalty + mae_penalty + val_penalty
         return score
 
     def _sample_hyperparameters(self, trial):
@@ -505,6 +504,13 @@ DOWN_CLASSIFIER_PARAMS = {{'objective': 'binary:logistic', 'eval_metric': 'aucpr
         logger.info(f"    Total: {int(attrs['total'])}")
         logger.info(f"    UP: {attrs['up_pct']:.1%} ({int(attrs['up_count'])} predictions)")
         logger.info(f"    DOWN: {attrs['down_pct']:.1%} ({int(attrs['down_count'])} predictions)")
+        logger.info("")
+        logger.info("📊 NATURAL DISTRIBUTION:")
+        logger.info(f"   UP: {attrs['up_pct']:.1%} | DOWN: {attrs['down_pct']:.1%}")
+        if attrs['up_pct'] < 0.30:
+            logger.info(f"   ✓ System naturally favors DOWN (normal behavior)")
+            logger.info(f"   → Phase 2 will apply up_advantage to boost UP recall")
+        logger.info("")
         logger.info(f"    Overall accuracy: {attrs['accuracy']:.1%}")
         logger.info(f"    UP accuracy: {attrs['up_accuracy']:.1%}")
         logger.info(f"    DOWN accuracy: {attrs['down_accuracy']:.1%}")

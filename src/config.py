@@ -3,7 +3,7 @@ from datetime import datetime,timedelta
 import pandas as pd
 
 TRAINING_YEARS=20
-TUNER_TRIALS=200
+PHASE1_TUNER_TRIALS=50
 
 def get_last_complete_month_end():
     today=datetime.now(); first_of_month=today.replace(day=1); last_month_end=first_of_month-timedelta(days=1)
