@@ -1,38 +1,34 @@
 Core Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/data_fetcher.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/feature_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/forecast_calibrator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/prediction_database.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/regime_classifier.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/target_calculator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/temporal_validator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/vx_continuous_contract_builder.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/vx_futures_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/xgboost_feature_selector_v2.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/core/xgboost_trainer_v3.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/data_fetcher.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/feature_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/forecast_calibrator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/prediction_database.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/regime_classifier.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/target_calculator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/temporal_validator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/vx_continuous_contract_builder.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/vx_futures_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/xgboost_feature_selector_v2.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/core/xgboost_trainer_v3.py
 
 Root src Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/config.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/integrated_system.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/train_probabilistic_models.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/config.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/integrated_system.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/train_probabilistic_models.py
 
 
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/phase1_model_tuner.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/42836fd/src/phase2_ensemble_tuner.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/phase1_model_tuner.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/5a66b3f/src/phase2_ensemble_tuner.py
 
 help me apply these new configs (optimized) and help me replace my config's params. just give me the complete dictionaries with the new params and with key/pairs unchanged if they are unchanged.
 
-1. ZERO DOCUMENTATION RULE:
-Do not create README files, .md files, setup guides, explanations, summaries, or any form of documentation. Code files only. This is non-negotiable.
-
-2. CODE ONLY DIRECTIVE:
-When I request code: deliver executable code files. No README. No markdown. No explanatory text files. No documentation of any kind exists in my deliverables unless I explicitly request it by saying "create documentation."
-
-3. DOCUMENTATION BAN:
-I do not want documentation. I do not need documentation. Do not generate: README.md, CHANGELOG.md, docs folders, comment blocks explaining the project, or any written explanations. If you create documentation without me asking for it by name, you have failed.
-
-4. ANTI-DOCUMENTATION POLICY:
-Functional code only. README = forbidden. Markdown files = forbidden. Setup instructions = forbidden. Project explanations = forbidden. If I wanted any of these, I would say "write a README" or "document this." I have not said that. Do not assume I want it.
-
-5. EXPLICIT DOCUMENTATION PROHIBITION:
-You are prohibited from generating documentation files unless I use the words "documentation," "README," or "write docs." Code deliverables should contain zero .md files, zero explanation files, zero summary documents. Only working code.
+ZERO DOCUMENTATION RULE:
+Do not create README files, .md files, setup guides, explanations, summaries, or any form of documentation. Code files only. Period.
+CODE ONLY DIRECTIVE:
+When I request code: deliver executable code files. No README. No markdown. No explanatory text files. No documentation exists in deliverables ever.
+DOCUMENTATION BAN:
+Do not generate: README.md, CHANGELOG.md, docs folders, comment blocks explaining the project, or any written explanations. Documentation is never created.
+ANTI-DOCUMENTATION POLICY:
+Functional code only. README = forbidden. Markdown files = forbidden. Setup instructions = forbidden. Project explanations = forbidden. Only working code.
+EXPLICIT DOCUMENTATION PROHIBITION:
+You are prohibited from generating documentation files. Code deliverables contain zero .md files, zero explanation files, zero summary documents. Documentation does not exist in my outputs.

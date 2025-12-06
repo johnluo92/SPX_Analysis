@@ -189,46 +189,33 @@ class VIXForecaster:
         forecast_date=obs_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
         pred_id=f"pred_{forecast_date.strftime('%Y%m%d')}_h{TARGET_CONFIG['horizon_days']}"
         correction_type="calibrated"if calibrated else"not_fitted"
-        pred={"prediction_id":pred_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":obs_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(obs["vix"]),"calendar_cohort":obs.get("calendar_cohort","mid_cycle"),"cohort_weight":float(obs.get("cohort_weight",1.0)),"prob_up":float(forecast["p_up"]),"prob_down":float(forecast["p_down"]),"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast.get("metadata",{}).get("feature_quality",1.0)),"num_features_used":forecast.get("metadata",{}).get("features_used",0),"correction_type":correction_type,"features_used":"","model_version":"v6.0_asymmetric","direction_probability":forecast.get("direction_probability",0.5),"direction_prediction":forecast.get("direction","UNKNOWN"),"direction_correct":None}
+        pred={"prediction_id":pred_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":obs_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(obs["vix"]),"calendar_cohort":obs.get("calendar_cohort","mid_cycle"),"cohort_weight":float(obs.get("cohort_weight",1.0)),"prob_up":float(forecast["p_up"]),"prob_down":float(forecast["p_down"]),"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast.get("metadata",{}).get("feature_quality",1.0)),"num_features_used":forecast.get("metadata",{}).get("features_used",0),"correction_type":correction_type,"features_used":"","model_version":"v6.0_asymmetric","direction_probability":forecast.get("direction_probability",0.5),"direction_prediction":forecast.get("direction","UNKNOWN"),"direction_correct":None,"direction_confidence":float(forecast.get("direction_confidence",0.0)),"actionable":1 if forecast.get("actionable",False) else 0,"actionable_threshold":float(forecast.get("actionable_threshold",0.0))}
         self.db.store_prediction(pred); self.db.commit()
 
     def print_enhanced_forecast(self,forecast,cohort):
-        # PRODUCTION-GRADE FORECAST DISPLAY
         logger.info("\n"+"="*80)
         logger.info("📊 VIX FORECAST | {horizon}d Horizon".format(horizon=TARGET_CONFIG["horizon_days"]))
         logger.info("="*80)
-
-        # CURRENT MARKET STATE
         logger.info(f"\n📍 MARKET STATE")
         logger.info(f"   VIX: {forecast['current_vix']:.2f} | Regime: {forecast['current_regime']} | Cohort: {cohort}")
         logger.info(f"   Quality: {forecast.get('metadata',{}).get('feature_quality',1.0):.1%} | Weight: {forecast.get('metadata',{}).get('cohort_weight',1.0):.2f}x")
-
-        # FORECAST DECISION
         direction_symbol="▲" if forecast['magnitude_pct']>0 else"▼"
         abs_mag=abs(forecast['magnitude_pct'])
         logger.info(f"\n{direction_symbol} FORECAST")
         logger.info(f"   Direction: {'UP' if forecast['magnitude_pct']>0 else 'DOWN'} {abs_mag:.2f}%")
         logger.info(f"   Expected VIX: {forecast['current_vix']:.2f} → {forecast['expected_vix']:.2f}")
         logger.info(f"   Confidence: {forecast['direction_confidence']:.1%} (threshold: {forecast['actionable_threshold']:.1%})")
-
-        # CLASSIFIER PROBABILITIES (concise)
         logger.info(f"\n🎲 PROBABILITIES")
         logger.info(f"   P(UP): {forecast['p_up']:.1%} | P(DOWN): {forecast['p_down']:.1%}")
         logger.info(f"   Ensemble: {forecast['direction'].upper()} by {self.forecaster.up_advantage*100:.0f}% margin")
-
-        # CALIBRATION (if applied)
         if forecast.get('calibration',{}).get('correction_type')!='not_fitted':
             raw_mag=forecast['expansion_magnitude']if forecast['magnitude_pct']>0 else forecast['compression_magnitude']
             adj=forecast['calibration']['adjustment']
             logger.info(f"\n🔧 CALIBRATION")
             logger.info(f"   Raw: {raw_mag:+.2f}% → Adjusted: {forecast['magnitude_pct']:+.2f}% (Δ{adj:+.2f}%)")
             logger.info(f"   Type: {forecast['calibration']['correction_type']}")
-
-        # REGIME FORECAST
         if forecast['regime_change']:
             logger.info(f"\n⚠️  REGIME CHANGE: {forecast['current_regime']} → {forecast['expected_regime']}")
-
-        # ACTIONABILITY (PROMINENT)
         logger.info(f"\n{'='*80}")
         if forecast['actionable']:
             logger.info("✅ ACTIONABLE SIGNAL")

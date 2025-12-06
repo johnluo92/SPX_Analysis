@@ -34,7 +34,7 @@ XGBOOST_CONFIG={"strategy":"asymmetric_4model","cohort_aware":False,"cv_config":
 
 MODEL_OBJECTIVES=["expansion_regressor","compression_regressor","up_classifier","down_classifier"]
 
-PREDICTION_DB_CONFIG={"db_path":"data_cache/predictions.db","table_name":"forecasts","min_samples_for_calibration":MIN_SAMPLES_FOR_CORRECTION,"schema":{"prediction_id":"TEXT PRIMARY KEY","timestamp":"DATETIME","observation_date":"DATE","forecast_date":"DATE","horizon":"INTEGER","calendar_cohort":"TEXT","cohort_weight":"REAL","prob_up":"REAL","prob_down":"REAL","magnitude_forecast":"REAL","expected_vix":"REAL","feature_quality":"REAL","num_features_used":"INTEGER","current_vix":"REAL","actual_vix_change":"REAL","actual_direction":"INTEGER","direction_error":"REAL","magnitude_error":"REAL","correction_type":"TEXT","features_used":"TEXT","model_version":"TEXT","created_at":"DATETIME","direction_probability":"REAL","direction_prediction":"TEXT","direction_correct":"INTEGER"},"indexes":["CREATE INDEX idx_timestamp ON forecasts(timestamp)","CREATE INDEX idx_observation_date ON forecasts(observation_date)","CREATE INDEX idx_cohort ON forecasts(calendar_cohort)","CREATE INDEX idx_forecast_date ON forecasts(forecast_date)","CREATE INDEX idx_correction_type ON forecasts(correction_type)"]}
+PREDICTION_DB_CONFIG={"db_path":"data_cache/predictions.db","table_name":"forecasts","min_samples_for_calibration":MIN_SAMPLES_FOR_CORRECTION,"schema":{"prediction_id":"TEXT PRIMARY KEY","timestamp":"DATETIME","observation_date":"DATE","forecast_date":"DATE","horizon":"INTEGER","calendar_cohort":"TEXT","cohort_weight":"REAL","prob_up":"REAL","prob_down":"REAL","magnitude_forecast":"REAL","expected_vix":"REAL","feature_quality":"REAL","num_features_used":"INTEGER","current_vix":"REAL","actual_vix_change":"REAL","actual_direction":"INTEGER","direction_error":"REAL","magnitude_error":"REAL","correction_type":"TEXT","features_used":"TEXT","model_version":"TEXT","created_at":"DATETIME","direction_probability":"REAL","direction_prediction":"TEXT","direction_correct":"INTEGER","direction_confidence":"REAL","actionable":"INTEGER","actionable_threshold":"REAL"},"indexes":["CREATE INDEX idx_timestamp ON forecasts(timestamp)","CREATE INDEX idx_observation_date ON forecasts(observation_date)","CREATE INDEX idx_cohort ON forecasts(calendar_cohort)","CREATE INDEX idx_forecast_date ON forecasts(forecast_date)","CREATE INDEX idx_correction_type ON forecasts(correction_type)"]}
 
 ENABLE_TEMPORAL_SAFETY=True
 
@@ -55,40 +55,9 @@ QUALITY_FILTER_CONFIG={'enabled':True,'min_threshold':0.5750,'warn_pct':20.0,'er
 CALENDAR_COHORTS={'fomc_period':{'condition':'macro_event_period','range':(-7,2),'weight':1.3272,'description':'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},'opex_week':{'condition':'days_to_monthly_opex','range':(-7,0),'weight':1.1126,'description':'Options expiration week + VIX futures rollover'},'earnings_heavy':{'condition':'spx_earnings_pct','range':(0.15,1.0),'weight':1.3391,'description':'Peak earnings season (Jan, Apr, Jul, Oct)'},'mid_cycle':{'condition':'default','range':None,'weight':1.0,'description':'Regular market conditions'}}
 FEATURE_SELECTION_CV_PARAMS={'n_estimators':100,'max_depth':4,'learning_rate':0.0443,'subsample':0.8943,'colsample_bytree':0.9286,'n_jobs':1,'random_state':42}
 FEATURE_SELECTION_CONFIG={'expansion_top_n':73,'compression_top_n':94,'up_top_n':96,'down_top_n':99,'cv_folds':5,'protected_features':[],'correlation_threshold':0.9246,'description':'Phase 1 optimized on RAW predictions (no ensemble filtering)'}
-EXPANSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.0205,'n_estimators':709,'subsample':0.8139,'colsample_bytree':0.7334,'colsample_bylevel':0.9399,'min_child_weight':14,'reg_alpha':2.7827,'reg_lambda':9.2059,'gamma':0.1368,'early_stopping_rounds':50,'seed':42,'n_jobs':-1,'random_state':42}
-COMPRESSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':4,'learning_rate':0.0850,'n_estimators':440,'subsample':0.7546,'colsample_bytree':0.7527,'colsample_bylevel':0.7170,'min_child_weight':11,'reg_alpha':5.3725,'reg_lambda':9.4165,'gamma':0.5212,'early_stopping_rounds':50,'seed':42,'n_jobs':-1,'random_state':42}
-UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':10,'learning_rate':0.0971,'n_estimators':680,'subsample':0.7700,'colsample_bytree':0.8117,'min_child_weight':16,'reg_alpha':5.8625,'reg_lambda':2.4112,'gamma':0.6163,'scale_pos_weight':1.2817,'early_stopping_rounds':50,'seed':42,'n_jobs':-1,'random_state':42}
-DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':11,'learning_rate':0.0301,'n_estimators':445,'subsample':0.7961,'colsample_bytree':0.7944,'min_child_weight':7,'reg_alpha':4.2403,'reg_lambda':5.3672,'gamma':1.0380,'scale_pos_weight':0.9259,'early_stopping_rounds':50,'seed':42,'n_jobs':-1,'random_state':42}
+EXPANSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.0205,'n_estimators':709,'subsample':0.8139,'colsample_bytree':0.7334,'colsample_bylevel':0.9399,'min_child_weight':14,'reg_alpha':2.7827,'reg_lambda':9.2059,'gamma':0.1368,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+COMPRESSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':4,'learning_rate':0.0850,'n_estimators':440,'subsample':0.7546,'colsample_bytree':0.7527,'colsample_bylevel':0.7170,'min_child_weight':11,'reg_alpha':5.3725,'reg_lambda':9.4165,'gamma':0.5212,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':10,'learning_rate':0.0971,'n_estimators':680,'subsample':0.7700,'colsample_bytree':0.8117,'min_child_weight':16,'reg_alpha':5.8625,'reg_lambda':2.4112,'gamma':0.6163,'scale_pos_weight':1.2817,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':11,'learning_rate':0.0301,'n_estimators':445,'subsample':0.7961,'colsample_bytree':0.7944,'min_child_weight':7,'reg_alpha':4.2403,'reg_lambda':5.3672,'gamma':1.0380,'scale_pos_weight':0.9259,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
 
-ENSEMBLE_CONFIG = {
-    'enabled': True,
-    'reconciliation_method': 'winner_takes_all',
-    'up_advantage': 0.0535,
-    'confidence_weights': {
-        'up': {'classifier': 0.7054, 'magnitude': 0.2946},
-        'down': {'classifier': 0.6296, 'magnitude': 0.3704}
-    },
-    'magnitude_scaling': {
-        'up': {'small': 3.9697, 'medium': 6.4848, 'large': 12.4908},
-        'down': {'small': 2.8488, 'medium': 6.2560, 'large': 8.7506}
-    },
-    'dynamic_thresholds': {
-        'up': {
-            'high_magnitude': 0.6033,
-            'medium_magnitude': 0.6561,
-            'low_magnitude': 0.6940
-        },
-        'down': {
-            'high_magnitude': 0.5861,
-            'medium_magnitude': 0.6580,
-            'low_magnitude': 0.7073
-        }
-    },
-    'min_confidence_up': 0.5864,
-    'min_confidence_down': 0.6459,
-    'boost_threshold_up': 17.2750,
-    'boost_threshold_down': 10.6137,
-    'boost_amount_up': 0.0771,
-    'boost_amount_down': 0.0529,
-    'description': 'Phase 2 optimized for 55%+ accuracy (high precision)'
-}
+ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','up_advantage':0.0535,'confidence_weights':{'up':{'classifier':0.7054,'magnitude':0.2946},'down':{'classifier':0.6296,'magnitude':0.3704}},'magnitude_scaling':{'up':{'small':3.9697,'medium':6.4848,'large':12.4908},'down':{'small':2.8488,'medium':6.256,'large':8.7506}},'dynamic_thresholds':{'up':{'high_magnitude':0.6033,'medium_magnitude':0.6561,'low_magnitude':0.694},'down':{'high_magnitude':0.5861,'medium_magnitude':0.658,'low_magnitude':0.7073}},'min_confidence_up':0.5864,'min_confidence_down':0.6459,'boost_threshold_up':17.275,'boost_threshold_down':10.6137,'boost_amount_up':0.0771,'boost_amount_down':0.0529,'description':'Phase 2 optimized for 55%+ accuracy (high precision)'}
