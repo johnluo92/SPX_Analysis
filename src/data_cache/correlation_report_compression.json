@@ -1,18 +1,16 @@
 {
   "features_kept": 94,
-  "features_removed": 10,
+  "features_removed": 8,
   "random_state": 42,
   "removed_features": [
-    "credit_stress_composite",
-    "hy_b_spread",
+    "copper_ret_63d",
     "risk_premium_zscore",
-    "vix_bb_position_20d",
+    "vix_percentile_21d",
     "vix_percentile_252d",
     "vix_ret_5d",
+    "vix_vol_21d",
     "vix_z_spx_rv_product",
-    "vix_zscore_21d",
-    "vvix_ret_10d",
-    "yield_10y2y_zscore"
+    "vvix_ret_10d"
   ],
   "threshold": 0.9246,
   "total_features_before": 141

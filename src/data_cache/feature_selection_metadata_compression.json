@@ -1,6 +1,6 @@
 {
   "correlation_threshold": 0.9246,
-  "n_removed_correlation": 10,
+  "n_removed_correlation": 8,
   "n_samples": 2613,
   "n_selected": 94,
   "random_state": 42,
@@ -12,22 +12,22 @@
     "vix_skew_joint_regime",
     "vix_velocity_5d_regime_adj",
     "reversion_strength_63d",
-    "vix_term_curvature_zscore",
-    "joint_regime_expected_return",
+    "vix_vel_spx_rv_ratio",
     "bb_position_20d",
-    "spx_realized_vol_63d_x_regime_0"
+    "joint_regime_expected_return",
+    "vix_stretch_ma63"
   ],
   "top_10_importance": [
-    0.05994162783026695,
-    0.018928029760718345,
-    0.01836332380771637,
-    0.016664096992462872,
-    0.015448103938251734,
-    0.015176726272329688,
-    0.011666347249411046,
-    0.010498387832194566,
-    0.009838221687823534,
-    0.009215919673442841
+    0.043995537981390956,
+    0.016237499192357063,
+    0.016098863165825605,
+    0.015012375405058264,
+    0.01311339382082224,
+    0.011988288210704922,
+    0.008905818266794086,
+    0.008904407452791929,
+    0.008680679625831545,
+    0.008383870543912052
   ],
   "top_n": 94
 }

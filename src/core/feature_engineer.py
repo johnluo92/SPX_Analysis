@@ -8,6 +8,7 @@ from core.calculations import calculate_robust_zscore,calculate_regime_with_vali
 from core.temporal_validator import TemporalSafetyValidator
 from core.regime_classifier import RegimeClassifier,compute_skew_vix_features
 from core.vx_futures_engineer import VXFuturesEngineer
+from core.commodity_volatility_engineer import CommodityVolatilityEngineer
 warnings.filterwarnings("ignore")
 class LaborMarketFeatureEngine:
     @staticmethod
@@ -177,7 +178,7 @@ class FuturesFeatureEngine:
         return f
 class FeatureEngineer:
     def __init__(self,data_fetcher):
-        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.labor_engine=LaborMarketFeatureEngine();self.stress_engine=FinancialStressFeatureEngine();self.credit_engine=CreditSpreadFeatureEngine();self.vx_engineer=VXFuturesEngineer();self.vix_term_engine=VIXTermStructureEngine();self.interaction_engine=InteractionFeatureEngine();self.regime_conditional_engine=RegimeConditionalEngine();self.transformation_engine=TransformationEngine();self.validator=TemporalSafetyValidator();self.regime_classifier=RegimeClassifier();self.fomc_calendar=None;self.opex_calendar=None;self.earnings_calendar=None;self.vix_futures_expiry=None;self._cohort_cache={}
+        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.labor_engine=LaborMarketFeatureEngine();self.stress_engine=FinancialStressFeatureEngine();self.credit_engine=CreditSpreadFeatureEngine();self.vx_engineer=VXFuturesEngineer();self.commodity_vol_engineer=CommodityVolatilityEngineer(data_fetcher);self.vix_term_engine=VIXTermStructureEngine();self.interaction_engine=InteractionFeatureEngine();self.regime_conditional_engine=RegimeConditionalEngine();self.transformation_engine=TransformationEngine();self.validator=TemporalSafetyValidator();self.regime_classifier=RegimeClassifier();self.fomc_calendar=None;self.opex_calendar=None;self.earnings_calendar=None;self.vix_futures_expiry=None;self._cohort_cache={}
     def _load_calendar_data(self):
         if self.fomc_calendar is None:
             try:sy,ey=self.training_start_date.year,self.training_end_date.year+1;self.fomc_calendar=self.fetcher.fetch_fomc_calendar(start_year=sy,end_year=ey)
@@ -393,12 +394,24 @@ class FeatureEngineer:
         ff_daily=FORWARD_FILL_LIMITS.get("daily",5)
         try:vxf=self.vx_engineer.build_all_vx_features(start_date=ss,end_date=es,target_index=idx);vxf=vxf.reindex(idx,method="ffill",limit=ff_daily)
         except Exception as e:warnings.warn(f"VX engineer failed: {e}. Using empty fallback.");vxf=pd.DataFrame(index=idx)
+        try:
+            vix_series = cb.get('VIX') if cb is not None and 'VIX' in cb.columns else None
+            commodity_volf = self.commodity_vol_engineer.build_all_commodity_vol_features(
+                start_date=ss,
+                end_date=idx[-1].strftime("%Y-%m-%d"),
+                target_index=idx,
+                vix_series=vix_series
+            )
+            commodity_volf = commodity_volf.reindex(idx, method="ffill", limit=ff_daily)
+        except Exception as e:
+            warnings.warn(f"Commodity vol engineer failed: {e}. Using empty fallback.")
+            commodity_volf = pd.DataFrame(index=idx)
         comd={}
         if cb is not None and "CL1-CL2" in cb.columns:comd["CL1-CL2"]=cb["CL1-CL2"]
         crd=self.fetcher.fetch_yahoo("CL=F",ss,es)
         if crd is not None:comd["Crude_Oil"]=crd["Close"].squeeze().reindex(idx,method="ffill",limit=ff_daily)
         comf=self.futures_engine.extract_commodity_futures_features(comd);comf=comf.reindex(idx,method="ffill",limit=ff_daily) if not comf.empty else pd.DataFrame(index=idx)
-        return pd.concat([vxf,comf],axis=1)
+        return pd.concat([vxf, commodity_volf, comf], axis=1)
     def _fetch_macro_data(self,ss:str,es:str,idx:pd.DatetimeIndex)->pd.DataFrame:
         fd={};ff_monthly=FORWARD_FILL_LIMITS.get("monthly",45);ff_weekly=FORWARD_FILL_LIMITS.get("weekly",10);ff_daily=FORWARD_FILL_LIMITS.get("daily",5)
         frs={"CPI":"CPIAUCSL","Initial_Claims":"ICSA","STL_Fin_Stress":"STLFSI4","Fed_Funds":"DFF","HY_OAS_All":"BAMLH0A0HYM2","HY_OAS_BB":"BAMLH0A1HYBB","HY_OAS_B":"BAMLH0A2HYB","HY_OAS_CCC":"BAMLH0A3HYC","IG_OAS":"BAMLC0A0CM"}
