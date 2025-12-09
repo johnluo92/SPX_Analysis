@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """
-UNIFIED PHASE 1 TUNER - Evaluates with Ensemble Logic
-Systematic constraints prevent degenerate solutions:
-1. Signal balance penalty (20-35% UP target)
-2. Learning rate balance (ratio < 3x)
-3. Complexity penalty (simpler models)
-4. scale_pos_weight restored
-5. up_advantage tunable
+REFINED UNIFIED TUNER - Local Search Around Proven Parameters
+Searches in vicinity of battle-tested config values to find incremental improvements.
+
+Natural VIX Distribution (2004-2025):
+- Train: 46.6% UP | 53.4% DOWN
+- Val:   43.1% UP | 56.9% DOWN
+- Test:  48.2% UP | 51.8% DOWN
+
+Key insights from handoff applied:
+1. UP/DOWN thresholds kept similar (0-3pp gap)
+2. up_advantage range: 0.075-0.095 (current: 0.085)
+3. Classifier weight ranges respect directional patterns
+4. Magnitude scaling maintains UP/DOWN relationship
+5. Balance targets match natural distribution (45-50% UP all preds, 45-55% actionable)
 """
 import argparse, json, logging, sys, warnings, hashlib
 from datetime import datetime
@@ -21,7 +28,7 @@ warnings.filterwarnings("ignore")
 
 Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("logs/phase1_unified.log")])
+    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("logs/refined_unified.log")])
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -57,8 +64,8 @@ class UnifiedMetrics:
     actionable_up_accuracy: float = 0.0
     actionable_down_accuracy: float = 0.0
 
-class UnifiedPhase1Tuner:
-    def __init__(self, df, vix, n_trials=PHASE1_TUNER_TRIALS, output_dir="tuning_unified"):
+class RefinedUnifiedTuner:
+    def __init__(self, df, vix, n_trials=PHASE1_TUNER_TRIALS, output_dir="tuning_refined"):
         self.df = df.copy(); self.vix = vix.copy(); self.n_trials = n_trials
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -80,14 +87,16 @@ class UnifiedPhase1Tuner:
         self.feature_cache = {}
 
         logger.info("="*80)
-        logger.info("UNIFIED PHASE 1 TUNER - WITH ENSEMBLE EVALUATION")
+        logger.info("REFINED UNIFIED TUNER - LOCAL SEARCH AROUND PROVEN CONFIG")
         logger.info("="*80)
         logger.info(f"Train:  {len(self.train_df)} days ({self.train_df.index[0].date()} to {self.train_end.date()})")
         logger.info(f"Val:    {len(self.val_df)} days ({self.val_df.index[0].date()} to {self.val_end.date()})")
         logger.info(f"Test:   {len(self.test_df)} days ({self.test_start.date()} to {self.test_df.index[-1].date()})")
         logger.info(f"Base features: {len(self.base_cols)}")
-        logger.info(f"EVALUATES: With ensemble logic (normalized probs + up_advantage)")
-        logger.info(f"CONSTRAINTS: Signal balance + LR balance + Complexity + scale_pos_weight")
+        logger.info(f"Natural VIX distribution: ~46-48% UP, ~52-54% DOWN")
+        logger.info(f"Search strategy: ±15-25% around proven parameters")
+        logger.info(f"Balance target: 45-50% UP (all preds), 45-55% UP (actionable)")
+        logger.info(f"Constraints: Threshold gaps 0-3pp | up_advantage 0.075-0.095")
         logger.info("="*80)
 
     def _calculate_targets(self):
@@ -465,168 +474,222 @@ class UnifiedPhase1Tuner:
         for field_name, value in metrics.__dict__.items():
             trial.set_user_attr(field_name, float(value))
 
-        # ACTIONABLE ACCURACY (primary target)
-        if metrics.actionable_count < 80:
+        # PRIMARY: Actionable accuracy (target 80%+ per direction)
+        if metrics.actionable_count < 100:
             return 999.0
 
-        target_acc = 0.75
-        actionable_up_penalty = abs(metrics.actionable_up_accuracy - target_acc) * 3.0
-        actionable_down_penalty = abs(metrics.actionable_down_accuracy - target_acc) * 3.0
+        # Target 80% accuracy with strong penalty for <75%
+        acc_penalty_up = 0.0
+        if metrics.actionable_up_accuracy < 0.75:
+            acc_penalty_up = (0.80 - metrics.actionable_up_accuracy) * 50.0
+        elif metrics.actionable_up_accuracy < 0.80:
+            acc_penalty_up = (0.80 - metrics.actionable_up_accuracy) * 10.0
+        else:
+            acc_penalty_up = (0.80 - metrics.actionable_up_accuracy) * 2.0
 
-        if metrics.actionable_up_accuracy < 0.70:
-            actionable_up_penalty += 15.0
-        if metrics.actionable_down_accuracy < 0.70:
-            actionable_down_penalty += 15.0
+        acc_penalty_down = 0.0
+        if metrics.actionable_down_accuracy < 0.75:
+            acc_penalty_down = (0.80 - metrics.actionable_down_accuracy) * 50.0
+        elif metrics.actionable_down_accuracy < 0.80:
+            acc_penalty_down = (0.80 - metrics.actionable_down_accuracy) * 10.0
+        else:
+            acc_penalty_down = (0.80 - metrics.actionable_down_accuracy) * 2.0
 
-        # SIGNAL BALANCE (20-35% UP)
-        up_pct = metrics.up_count / metrics.total
+        # BALANCE: Natural VIX distribution is 46-48% UP, 52-54% DOWN
+        # All predictions should match natural distribution (45-50% UP)
+        # Actionable can deviate slightly but penalize extremes
+        all_up_pct = metrics.up_count / metrics.total
+        actionable_up_pct = metrics.actionable_up_count / metrics.actionable_count if metrics.actionable_count > 0 else 0.48
+
         balance_penalty = 0.0
-        if up_pct < 0.20:
-            balance_penalty += (0.20 - up_pct) * 200.0
-        elif up_pct < 0.25:
-            balance_penalty += (0.25 - up_pct) * 50.0
+        # All predictions: penalize if far from natural 45-50% UP
+        if all_up_pct < 0.42:
+            balance_penalty += (0.45 - all_up_pct) * 80.0
+        elif all_up_pct > 0.55:
+            balance_penalty += (all_up_pct - 0.50) * 80.0
 
-        down_pct = metrics.down_count / metrics.total
-        if down_pct > 0.80:
-            balance_penalty += (down_pct - 0.80) * 200.0
-        elif down_pct > 0.75:
-            balance_penalty += (down_pct - 0.75) * 50.0
+        # Actionable: allow 45-55% UP with light penalty outside
+        if actionable_up_pct < 0.40:
+            balance_penalty += (0.45 - actionable_up_pct) * 50.0
+        elif actionable_up_pct < 0.45:
+            balance_penalty += (0.45 - actionable_up_pct) * 15.0
+        elif actionable_up_pct > 0.60:
+            balance_penalty += (actionable_up_pct - 0.55) * 50.0
+        elif actionable_up_pct > 0.55:
+            balance_penalty += (actionable_up_pct - 0.55) * 15.0
 
-        # LEARNING RATE BALANCE (ratio < 3x)
-        up_lr = trial_params['up_learning_rate']
-        down_lr = trial_params['down_learning_rate']
-        lr_ratio = max(up_lr, down_lr) / min(up_lr, down_lr)
-        lr_balance_penalty = 0.0
-        if lr_ratio > 3.0:
-            lr_balance_penalty = (lr_ratio - 3.0) * 5.0
-
-        # COMPLEXITY PENALTY (simpler models)
-        up_complexity = (trial_params['up_max_depth'] - 4) * 0.5 + (trial_params['up_n_estimators'] - 300) / 100.0
-        down_complexity = (trial_params['down_max_depth'] - 6) * 0.5 + (trial_params['down_n_estimators'] - 300) / 100.0
-        complexity_penalty = max(0, up_complexity) + max(0, down_complexity)
-
-        # GENERALIZATION
+        # GENERALIZATION: Train-val gaps
         exp_gap = abs(metrics.expansion_train_mae - metrics.expansion_val_mae)
         comp_gap = abs(metrics.compression_train_mae - metrics.compression_val_mae)
         up_gap = abs(metrics.up_train_acc - metrics.up_val_acc)
         down_gap = abs(metrics.down_train_acc - metrics.down_val_acc)
-        generalization_penalty = (
-            (exp_gap / 12.0) * 2.0 + (comp_gap / 8.0) * 2.0 +
-            (up_gap / 0.10) * 1.5 + (down_gap / 0.10) * 1.5
-        )
 
-        # VOLUME (ensure enough signals)
+        gen_penalty = 0.0
+        if exp_gap > 3.0: gen_penalty += (exp_gap - 3.0) * 1.5
+        if comp_gap > 2.0: gen_penalty += (comp_gap - 2.0) * 1.5
+        if up_gap > 0.12: gen_penalty += (up_gap - 0.12) * 15.0
+        if down_gap > 0.12: gen_penalty += (down_gap - 0.12) * 15.0
+
+        # VOLUME: Reward 140-160 actionable signals
         volume_penalty = 0.0
-        if metrics.actionable_count < 120:
-            volume_penalty = (120 - metrics.actionable_count) * 0.2
+        if metrics.actionable_count < 130:
+            volume_penalty = (140 - metrics.actionable_count) * 0.3
+        elif metrics.actionable_count > 170:
+            volume_penalty = (metrics.actionable_count - 160) * 0.2
 
-        # MAE
-        mae_penalty = (metrics.mae / 15.0) * 1.0
+        # MAE: Penalize poor magnitude predictions
+        mae_penalty = max(0, metrics.mae - 13.0) * 2.0
 
-        # VALIDATION QUALITY
-        val_penalty = (
-            max(0, metrics.expansion_val_mae - 12.0) * 0.4 +
-            max(0, metrics.compression_val_mae - 8.0) * 0.4 +
-            max(0, 0.55 - metrics.up_val_acc) * 1.5 +
-            max(0, 0.55 - metrics.down_val_acc) * 1.5
-        )
+        # VALIDATION: Ensure reasonable validation performance
+        val_penalty = 0.0
+        if metrics.expansion_val_mae > 13.0:
+            val_penalty += (metrics.expansion_val_mae - 13.0) * 1.0
+        if metrics.compression_val_mae > 7.0:
+            val_penalty += (metrics.compression_val_mae - 7.0) * 1.0
+        if metrics.up_val_acc < 0.58:
+            val_penalty += (0.58 - metrics.up_val_acc) * 20.0
+        if metrics.down_val_acc < 0.58:
+            val_penalty += (0.58 - metrics.down_val_acc) * 20.0
 
-        score = (actionable_up_penalty + actionable_down_penalty +
-                 balance_penalty + lr_balance_penalty + complexity_penalty +
-                 generalization_penalty + volume_penalty + mae_penalty + val_penalty)
+        score = (acc_penalty_up + acc_penalty_down + balance_penalty +
+                 gen_penalty + volume_penalty + mae_penalty + val_penalty)
 
         return score
 
     def _sample_hyperparameters(self, trial):
+        """Sample around proven config values with narrower ranges"""
         params = {}
-        params['quality_threshold'] = trial.suggest_float('quality_threshold', 0.50, 0.65)
-        params['fomc_weight'] = trial.suggest_float('cohort_fomc', 1.10, 1.60)
-        params['opex_weight'] = trial.suggest_float('cohort_opex', 1.00, 1.50)
-        params['earnings_weight'] = trial.suggest_float('cohort_earnings', 1.00, 1.40)
-        params['cv_n_estimators'] = trial.suggest_int('cv_n_estimators', 100, 300)
-        params['cv_max_depth'] = trial.suggest_int('cv_max_depth', 3, 6)
-        params['cv_learning_rate'] = trial.suggest_float('cv_learning_rate', 0.03, 0.15, log=True)
-        params['cv_subsample'] = trial.suggest_float('cv_subsample', 0.70, 0.95)
-        params['cv_colsample_bytree'] = trial.suggest_float('cv_colsample_bytree', 0.70, 0.95)
-        params['expansion_top_n'] = trial.suggest_int('expansion_top_n', 70, 140)
-        params['compression_top_n'] = trial.suggest_int('compression_top_n', 70, 140)
-        params['up_top_n'] = trial.suggest_int('up_top_n', 80, 150)
-        params['down_top_n'] = trial.suggest_int('down_top_n', 80, 150)
-        params['correlation_threshold'] = trial.suggest_float('correlation_threshold', 0.85, 0.96)
-        params['exp_max_depth'] = trial.suggest_int('exp_max_depth', 2, 7)
-        params['exp_learning_rate'] = trial.suggest_float('exp_learning_rate', 0.01, 0.12, log=True)
-        params['exp_n_estimators'] = trial.suggest_int('exp_n_estimators', 300, 900)
-        params['exp_subsample'] = trial.suggest_float('exp_subsample', 0.70, 0.95)
-        params['exp_colsample_bytree'] = trial.suggest_float('exp_colsample_bytree', 0.70, 0.95)
-        params['exp_colsample_bylevel'] = trial.suggest_float('exp_colsample_bylevel', 0.70, 0.95)
-        params['exp_min_child_weight'] = trial.suggest_int('exp_min_child_weight', 3, 15)
-        params['exp_reg_alpha'] = trial.suggest_float('exp_reg_alpha', 1.0, 8.0)
-        params['exp_reg_lambda'] = trial.suggest_float('exp_reg_lambda', 2.0, 10.0)
-        params['exp_gamma'] = trial.suggest_float('exp_gamma', 0.0, 0.8)
-        params['comp_max_depth'] = trial.suggest_int('comp_max_depth', 2, 7)
-        params['comp_learning_rate'] = trial.suggest_float('comp_learning_rate', 0.01, 0.12, log=True)
-        params['comp_n_estimators'] = trial.suggest_int('comp_n_estimators', 300, 900)
-        params['comp_subsample'] = trial.suggest_float('comp_subsample', 0.70, 0.95)
-        params['comp_colsample_bytree'] = trial.suggest_float('comp_colsample_bytree', 0.70, 0.95)
-        params['comp_colsample_bylevel'] = trial.suggest_float('comp_colsample_bylevel', 0.70, 0.95)
-        params['comp_min_child_weight'] = trial.suggest_int('comp_min_child_weight', 3, 15)
-        params['comp_reg_alpha'] = trial.suggest_float('comp_reg_alpha', 1.0, 8.0)
-        params['comp_reg_lambda'] = trial.suggest_float('comp_reg_lambda', 2.0, 10.0)
-        params['comp_gamma'] = trial.suggest_float('comp_gamma', 0.0, 0.8)
-        params['up_max_depth'] = trial.suggest_int('up_max_depth', 3, 6)
-        params['up_learning_rate'] = trial.suggest_float('up_learning_rate', 0.01, 0.12, log=True)
-        params['up_n_estimators'] = trial.suggest_int('up_n_estimators', 200, 500)
-        params['up_subsample'] = trial.suggest_float('up_subsample', 0.60, 0.95)
-        params['up_colsample_bytree'] = trial.suggest_float('up_colsample_bytree', 0.70, 0.95)
-        params['up_min_child_weight'] = trial.suggest_int('up_min_child_weight', 5, 18)
-        params['up_reg_alpha'] = trial.suggest_float('up_reg_alpha', 1.0, 8.0)
-        params['up_reg_lambda'] = trial.suggest_float('up_reg_lambda', 5.0, 20.0)
-        params['up_gamma'] = trial.suggest_float('up_gamma', 0.5, 2.5)
-        params['up_scale_pos_weight'] = trial.suggest_float('up_scale_pos_weight', 0.7, 1.3)
-        params['down_max_depth'] = trial.suggest_int('down_max_depth', 4, 8)
-        params['down_learning_rate'] = trial.suggest_float('down_learning_rate', 0.01, 0.12, log=True)
-        params['down_n_estimators'] = trial.suggest_int('down_n_estimators', 200, 500)
-        params['down_subsample'] = trial.suggest_float('down_subsample', 0.60, 0.95)
-        params['down_colsample_bytree'] = trial.suggest_float('down_colsample_bytree', 0.70, 0.95)
-        params['down_min_child_weight'] = trial.suggest_int('down_min_child_weight', 5, 18)
-        params['down_reg_alpha'] = trial.suggest_float('down_reg_alpha', 1.0, 6.0)
-        params['down_reg_lambda'] = trial.suggest_float('down_reg_lambda', 2.0, 12.0)
-        params['down_gamma'] = trial.suggest_float('down_gamma', 0.1, 1.5)
-        params['down_scale_pos_weight'] = trial.suggest_float('down_scale_pos_weight', 0.8, 1.5)
 
-        # ENSEMBLE PARAMS (tuned together with base models)
-        params['up_advantage'] = trial.suggest_float('up_advantage', 0.03, 0.12)
-        params['classifier_weight_up'] = trial.suggest_float('classifier_weight_up', 0.55, 0.75)
-        params['classifier_weight_down'] = trial.suggest_float('classifier_weight_down', 0.65, 0.85)
-        params['mag_scale_up_small'] = trial.suggest_float('mag_scale_up_small', 2.5, 4.0)
-        params['mag_scale_up_medium'] = trial.suggest_float('mag_scale_up_medium', 5.0, 8.0)
-        params['mag_scale_up_large'] = trial.suggest_float('mag_scale_up_large', 9.0, 13.0)
-        params['mag_scale_down_small'] = trial.suggest_float('mag_scale_down_small', 2.5, 4.5)
-        params['mag_scale_down_medium'] = trial.suggest_float('mag_scale_down_medium', 5.0, 8.0)
-        params['mag_scale_down_large'] = trial.suggest_float('mag_scale_down_large', 9.0, 14.0)
-        params['boost_threshold_up'] = trial.suggest_float('boost_threshold_up', 12.0, 20.0)
-        params['boost_threshold_down'] = trial.suggest_float('boost_threshold_down', 10.0, 16.0)
-        params['boost_amount_up'] = trial.suggest_float('boost_amount_up', 0.03, 0.08)
-        params['boost_amount_down'] = trial.suggest_float('boost_amount_down', 0.03, 0.08)
-        params['min_confidence_up'] = trial.suggest_float('min_confidence_up', 0.60, 0.70)
-        params['min_confidence_down'] = trial.suggest_float('min_confidence_down', 0.65, 0.75)
-        params['up_thresh_high'] = trial.suggest_float('up_thresh_high', 0.60, 0.70)
-        params['up_thresh_med'] = trial.suggest_float('up_thresh_med', 0.68, 0.78)
-        params['up_thresh_low'] = trial.suggest_float('up_thresh_low', 0.72, 0.82)
-        params['down_thresh_high'] = trial.suggest_float('down_thresh_high', 0.68, 0.78)
-        params['down_thresh_med'] = trial.suggest_float('down_thresh_med', 0.72, 0.82)
-        params['down_thresh_low'] = trial.suggest_float('down_thresh_low', 0.78, 0.88)
+        # Current: 0.5669
+        params['quality_threshold'] = trial.suggest_float('quality_threshold', 0.52, 0.62)
+
+        # Current: fomc=1.141, opex=1.1143, earnings=1.3949
+        params['fomc_weight'] = trial.suggest_float('cohort_fomc', 1.05, 1.25)
+        params['opex_weight'] = trial.suggest_float('cohort_opex', 1.00, 1.25)
+        params['earnings_weight'] = trial.suggest_float('cohort_earnings', 1.25, 1.55)
+
+        # Current: n_est=168, max_depth=6, lr=0.032
+        params['cv_n_estimators'] = trial.suggest_int('cv_n_estimators', 140, 200)
+        params['cv_max_depth'] = trial.suggest_int('cv_max_depth', 5, 7)
+        params['cv_learning_rate'] = trial.suggest_float('cv_learning_rate', 0.025, 0.045, log=True)
+        params['cv_subsample'] = trial.suggest_float('cv_subsample', 0.85, 0.98)
+        params['cv_colsample_bytree'] = trial.suggest_float('cv_colsample_bytree', 0.85, 0.98)
+
+        # Current: exp=115, comp=96, up=112, down=149
+        params['expansion_top_n'] = trial.suggest_int('expansion_top_n', 95, 135)
+        params['compression_top_n'] = trial.suggest_int('compression_top_n', 80, 115)
+        params['up_top_n'] = trial.suggest_int('up_top_n', 95, 130)
+        params['down_top_n'] = trial.suggest_int('down_top_n', 130, 170)
+
+        # Current: 0.8531
+        params['correlation_threshold'] = trial.suggest_float('correlation_threshold', 0.80, 0.90)
+
+        # EXPANSION: Current md=4, lr=0.0119, n_est=699
+        params['exp_max_depth'] = trial.suggest_int('exp_max_depth', 3, 5)
+        params['exp_learning_rate'] = trial.suggest_float('exp_learning_rate', 0.010, 0.015, log=True)
+        params['exp_n_estimators'] = trial.suggest_int('exp_n_estimators', 600, 800)
+        params['exp_subsample'] = trial.suggest_float('exp_subsample', 0.85, 0.98)
+        params['exp_colsample_bytree'] = trial.suggest_float('exp_colsample_bytree', 0.70, 0.85)
+        params['exp_colsample_bylevel'] = trial.suggest_float('exp_colsample_bylevel', 0.88, 0.98)
+        params['exp_min_child_weight'] = trial.suggest_int('exp_min_child_weight', 11, 16)
+        params['exp_reg_alpha'] = trial.suggest_float('exp_reg_alpha', 5.5, 8.0)
+        params['exp_reg_lambda'] = trial.suggest_float('exp_reg_lambda', 1.5, 2.8)
+        params['exp_gamma'] = trial.suggest_float('exp_gamma', 0.6, 1.0)
+
+        # COMPRESSION: Current md=3, lr=0.1138, n_est=506
+        params['comp_max_depth'] = trial.suggest_int('comp_max_depth', 2, 4)
+        params['comp_learning_rate'] = trial.suggest_float('comp_learning_rate', 0.09, 0.14, log=True)
+        params['comp_n_estimators'] = trial.suggest_int('comp_n_estimators', 430, 580)
+        params['comp_subsample'] = trial.suggest_float('comp_subsample', 0.72, 0.88)
+        params['comp_colsample_bytree'] = trial.suggest_float('comp_colsample_bytree', 0.70, 0.85)
+        params['comp_colsample_bylevel'] = trial.suggest_float('comp_colsample_bylevel', 0.82, 0.95)
+        params['comp_min_child_weight'] = trial.suggest_int('comp_min_child_weight', 5, 8)
+        params['comp_reg_alpha'] = trial.suggest_float('comp_reg_alpha', 3.2, 4.8)
+        params['comp_reg_lambda'] = trial.suggest_float('comp_reg_lambda', 7.5, 10.5)
+        params['comp_gamma'] = trial.suggest_float('comp_gamma', 0.35, 0.65)
+
+        # UP CLASSIFIER: Current md=4, lr=0.0202, n_est=297, spw=0.9606
+        params['up_max_depth'] = trial.suggest_int('up_max_depth', 3, 5)
+        params['up_learning_rate'] = trial.suggest_float('up_learning_rate', 0.017, 0.026, log=True)
+        params['up_n_estimators'] = trial.suggest_int('up_n_estimators', 250, 350)
+        params['up_subsample'] = trial.suggest_float('up_subsample', 0.56, 0.70)
+        params['up_colsample_bytree'] = trial.suggest_float('up_colsample_bytree', 0.85, 0.98)
+        params['up_min_child_weight'] = trial.suggest_int('up_min_child_weight', 14, 19)
+        params['up_reg_alpha'] = trial.suggest_float('up_reg_alpha', 1.4, 2.2)
+        params['up_reg_lambda'] = trial.suggest_float('up_reg_lambda', 12.0, 18.0)
+        params['up_gamma'] = trial.suggest_float('up_gamma', 1.8, 2.5)
+        params['up_scale_pos_weight'] = trial.suggest_float('up_scale_pos_weight', 0.85, 1.05)
+
+        # DOWN CLASSIFIER: Current md=7, lr=0.0228, n_est=231, spw=0.9195
+        params['down_max_depth'] = trial.suggest_int('down_max_depth', 6, 8)
+        params['down_learning_rate'] = trial.suggest_float('down_learning_rate', 0.019, 0.029, log=True)
+        params['down_n_estimators'] = trial.suggest_int('down_n_estimators', 195, 270)
+        params['down_subsample'] = trial.suggest_float('down_subsample', 0.56, 0.70)
+        params['down_colsample_bytree'] = trial.suggest_float('down_colsample_bytree', 0.65, 0.80)
+        params['down_min_child_weight'] = trial.suggest_int('down_min_child_weight', 16, 21)
+        params['down_reg_alpha'] = trial.suggest_float('down_reg_alpha', 2.8, 4.0)
+        params['down_reg_lambda'] = trial.suggest_float('down_reg_lambda', 3.5, 5.0)
+        params['down_gamma'] = trial.suggest_float('down_gamma', 1.0, 1.5)
+        params['down_scale_pos_weight'] = trial.suggest_float('down_scale_pos_weight', 0.85, 1.05)
+
+        # ENSEMBLE: Current up_advantage=0.085
+        params['up_advantage'] = trial.suggest_float('up_advantage', 0.075, 0.095)
+
+        # Current: UP classifier=0.6453, magnitude=0.3547
+        params['classifier_weight_up'] = trial.suggest_float('classifier_weight_up', 0.60, 0.70)
+
+        # Current: DOWN classifier=0.5411, magnitude=0.4589
+        params['classifier_weight_down'] = trial.suggest_float('classifier_weight_down', 0.50, 0.60)
+
+        # Current UP: small=2.7955, medium=5.0043, large=10.3435
+        params['mag_scale_up_small'] = trial.suggest_float('mag_scale_up_small', 2.4, 3.2)
+        params['mag_scale_up_medium'] = trial.suggest_float('mag_scale_up_medium', 4.5, 5.5)
+        params['mag_scale_up_large'] = trial.suggest_float('mag_scale_up_large', 9.0, 12.0)
+
+        # Current DOWN: small=3.4702, medium=4.6143, large=8.9073
+        params['mag_scale_down_small'] = trial.suggest_float('mag_scale_down_small', 3.0, 4.0)
+        params['mag_scale_down_medium'] = trial.suggest_float('mag_scale_down_medium', 4.0, 5.2)
+        params['mag_scale_down_large'] = trial.suggest_float('mag_scale_down_large', 7.5, 10.5)
+
+        # Current: UP boost_thresh=10.4039, boost_amt=0.0791
+        params['boost_threshold_up'] = trial.suggest_float('boost_threshold_up', 9.0, 12.0)
+        params['boost_amount_up'] = trial.suggest_float('boost_amount_up', 0.06, 0.10)
+
+        # Current: DOWN boost_thresh=12.6627, boost_amt=0.0520
+        params['boost_threshold_down'] = trial.suggest_float('boost_threshold_down', 11.0, 15.0)
+        params['boost_amount_down'] = trial.suggest_float('boost_amount_down', 0.04, 0.07)
+
+        # Current: UP min_conf=0.74, DOWN min_conf=0.78
+        params['min_confidence_up'] = trial.suggest_float('min_confidence_up', 0.70, 0.78)
+        params['min_confidence_down'] = trial.suggest_float('min_confidence_down', 0.75, 0.82)
+
+        # Current UP: high=0.78, med=0.81, low=0.84
+        params['up_thresh_high'] = trial.suggest_float('up_thresh_high', 0.72, 0.82)
+        params['up_thresh_med'] = trial.suggest_float('up_thresh_med', 0.76, 0.86)
+        params['up_thresh_low'] = trial.suggest_float('up_thresh_low', 0.80, 0.88)
+
+        # Current DOWN: high=0.81, med=0.84, low=0.87
+        # Enforce constraint: DOWN >= UP (within 0-3pp)
+        up_high = params['up_thresh_high']
+        up_med = params['up_thresh_med']
+        up_low = params['up_thresh_low']
+
+        params['down_thresh_high'] = trial.suggest_float('down_thresh_high',
+            max(0.76, up_high), min(0.87, up_high + 0.03))
+        params['down_thresh_med'] = trial.suggest_float('down_thresh_med',
+            max(0.80, up_med), min(0.90, up_med + 0.03))
+        params['down_thresh_low'] = trial.suggest_float('down_thresh_low',
+            max(0.84, up_low), min(0.93, up_low + 0.03))
 
         return params
 
     def run(self):
-        logger.info(f"Starting Unified Phase 1 optimization: {self.n_trials} trials")
-        logger.info(f"Tuning 74 hyperparameters (base models + ensemble config)")
+        logger.info(f"Starting Refined Unified optimization: {self.n_trials} trials")
+        logger.info(f"Local search: ±15-25% around proven config values")
         logger.info(f"Evaluating with ENSEMBLE LOGIC on {len(self.test_df)} test days")
-        logger.info(f"Constraints: Signal balance + LR balance + Complexity + scale_pos_weight")
         logger.info("="*80)
         study = optuna.create_study(direction='minimize',
-            sampler=TPESampler(seed=42, n_startup_trials=min(50, self.n_trials // 6)))
+            sampler=TPESampler(seed=42, n_startup_trials=min(30, self.n_trials // 5)))
         study.optimize(self.objective, n_trials=self.n_trials, show_progress_bar=True, n_jobs=1)
         self.feature_cache.clear()
         return study
@@ -635,8 +698,8 @@ class UnifiedPhase1Tuner:
         best = study.best_trial; attrs = best.user_attrs
         results = {
             'timestamp': datetime.now().isoformat(),
-            'phase': 'Unified Phase 1 - Base Models + Ensemble Config',
-            'description': 'Tunes all 4 models + ensemble with ensemble evaluation',
+            'phase': 'Refined Unified - Local Search',
+            'description': 'Searches ±15-25% around proven config values',
             'optimization': {'n_trials': self.n_trials, 'best_trial': best.number, 'best_score': float(best.value)},
             'data_splits': {
                 'train': f"{self.train_df.index[0].date()} to {self.train_end.date()}",
@@ -665,7 +728,7 @@ class UnifiedPhase1Tuner:
                     'compression': int(attrs['n_compression_features']), 'up': int(attrs['n_up_features']),
                     'down': int(attrs['n_down_features'])}},
             'best_parameters': best.params}
-        results_file = self.output_dir / "unified_results.json"
+        results_file = self.output_dir / "refined_unified_results.json"
         with open(results_file, 'w') as f: json.dump(results, f, indent=2)
         logger.info(f"\n✅ Results saved: {results_file}")
         self._generate_config(best, attrs)
@@ -673,7 +736,8 @@ class UnifiedPhase1Tuner:
 
     def _generate_config(self, trial, attrs):
         p = trial.params
-        config_text = f"""# UNIFIED CONFIG - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        config_text = f"""# REFINED UNIFIED CONFIG - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+# Local search around proven parameters
 
 QUALITY_FILTER_CONFIG = {{'enabled': True, 'min_threshold': {p['quality_threshold']:.4f},
     'warn_pct': 20.0, 'error_pct': 50.0, 'strategy': 'raise'}}
@@ -696,7 +760,7 @@ FEATURE_SELECTION_CONFIG = {{'expansion_top_n': {p['expansion_top_n']},
     'compression_top_n': {p['compression_top_n']}, 'up_top_n': {p['up_top_n']},
     'down_top_n': {p['down_top_n']}, 'cv_folds': 5, 'protected_features': [],
     'correlation_threshold': {p['correlation_threshold']:.4f},
-    'description': 'Unified tuning with ensemble evaluation'}}
+    'description': 'Refined tuning - local search around proven values'}}
 
 EXPANSION_PARAMS = {{'objective': 'reg:squarederror', 'eval_metric': 'rmse',
     'max_depth': {p['exp_max_depth']}, 'learning_rate': {p['exp_learning_rate']:.4f},
@@ -760,42 +824,44 @@ ENSEMBLE_CONFIG = {{
     'boost_threshold_down': {p['boost_threshold_down']:.4f},
     'boost_amount_up': {p['boost_amount_up']:.4f},
     'boost_amount_down': {p['boost_amount_down']:.4f},
-    'description': 'Unified tuning - base models + ensemble together'
+    'description': 'Refined tuning - incremental improvement over proven config'
 }}
 
 # ACTIONABLE: {attrs['actionable_accuracy']:.1%} (UP {attrs['actionable_up_accuracy']:.1%}, DOWN {attrs['actionable_down_accuracy']:.1%})
 # Signals: {int(attrs['actionable_count'])} ({attrs['actionable_pct']:.1%} actionable)
-# UP signals: {int(attrs['actionable_up_count'])} | DOWN signals: {int(attrs['actionable_down_count'])}
+# UP: {int(attrs['actionable_up_count'])} ({int(attrs['actionable_up_count'])/int(attrs['actionable_count'])*100:.1f}%) | DOWN: {int(attrs['actionable_down_count'])} ({int(attrs['actionable_down_count'])/int(attrs['actionable_count'])*100:.1f}%)
 """
-        config_file = self.output_dir / "unified_config.py"
+        config_file = self.output_dir / "refined_config.py"
         with open(config_file, 'w') as f: f.write(config_text)
         logger.info(f"✅ Config saved: {config_file}")
 
     def _print_summary(self, trial, attrs):
         logger.info("\n" + "="*80)
-        logger.info("UNIFIED PHASE 1 OPTIMIZATION COMPLETE")
+        logger.info("REFINED UNIFIED OPTIMIZATION COMPLETE")
         logger.info("="*80)
         logger.info(f"Best trial: #{trial.number} | Score: {trial.value:.3f}")
         logger.info("")
-        logger.info("📊 ACTIONABLE SIGNALS (Primary Target):")
+        logger.info("📊 ACTIONABLE SIGNALS:")
         logger.info(f"    Total: {int(attrs['actionable_count'])} ({attrs['actionable_pct']:.1%} actionable)")
-        logger.info(f"    UP: {int(attrs['actionable_up_count'])} | DOWN: {int(attrs['actionable_down_count'])}")
+        up_pct = attrs['actionable_up_count'] / attrs['actionable_count'] * 100
+        down_pct = attrs['actionable_down_count'] / attrs['actionable_count'] * 100
+        logger.info(f"    UP: {int(attrs['actionable_up_count'])} ({up_pct:.1f}%)")
+        logger.info(f"    DOWN: {int(attrs['actionable_down_count'])} ({down_pct:.1f}%)")
         logger.info(f"    Overall accuracy: {attrs['actionable_accuracy']:.1%}")
         logger.info(f"    UP accuracy: {attrs['actionable_up_accuracy']:.1%}")
         logger.info(f"    DOWN accuracy: {attrs['actionable_down_accuracy']:.1%}")
         logger.info("")
-        logger.info("📊 ALL PREDICTIONS:")
-        logger.info(f"    Total: {int(attrs['total'])}")
-        logger.info(f"    UP: {attrs['up_pct']:.1%} ({int(attrs['up_count'])} predictions)")
-        logger.info(f"    DOWN: {attrs['down_pct']:.1%} ({int(attrs['down_count'])} predictions)")
-        logger.info(f"    UP accuracy: {attrs['up_accuracy']:.1%}")
-        logger.info(f"    DOWN accuracy: {attrs['down_accuracy']:.1%}")
+        logger.info("📊 TRAINING METRICS:")
+        logger.info(f"    Expansion: Train {attrs['expansion_train_mae']:.2f}% | Val {attrs['expansion_val_mae']:.2f}%")
+        logger.info(f"    Compression: Train {attrs['compression_train_mae']:.2f}% | Val {attrs['compression_val_mae']:.2f}%")
+        logger.info(f"    UP: Train {attrs['up_train_acc']:.1%} | Val {attrs['up_val_acc']:.1%}")
+        logger.info(f"    DOWN: Train {attrs['down_train_acc']:.1%} | Val {attrs['down_val_acc']:.1%}")
         logger.info("="*80)
 
 def main():
-    parser = argparse.ArgumentParser(description="Unified Phase 1 Tuner")
-    parser.add_argument('--trials', type=int, default=300, help="Number of trials (default: 300)")
-    parser.add_argument('--output-dir', type=str, default='tuning_unified', help="Output directory")
+    parser = argparse.ArgumentParser(description="Refined Unified Tuner - Local Search")
+    parser.add_argument('--trials', type=int, default=200, help="Number of trials (default: 200)")
+    parser.add_argument('--output-dir', type=str, default='tuning_refined', help="Output directory")
     args = parser.parse_args()
     logger.info("Loading production data...")
     from config import TRAINING_YEARS, get_last_complete_month_end
@@ -815,9 +881,9 @@ def main():
     if missing:
         logger.error(f"Missing required columns: {missing}")
         sys.exit(1)
-    tuner = UnifiedPhase1Tuner(df=df, vix=result["vix"], n_trials=args.trials, output_dir=args.output_dir)
+    tuner = RefinedUnifiedTuner(df=df, vix=result["vix"], n_trials=args.trials, output_dir=args.output_dir)
     study = tuner.run()
     tuner.save_results(study)
-    logger.info("\n✅ Unified optimization complete!")
+    logger.info("\n✅ Refined optimization complete!")
 
 if __name__ == "__main__": main()

@@ -1,89 +1,0 @@
-2025-12-05 15:48:15,143 - INFO - Loading production data...
-
-================================================================================
-🏗️  Building 20y feature set | Temporal Safety: ON
-================================================================================
-Mode: RECENT
-Date Ranges: Warmup Start -> Warmup End (usable period) -> Training End Date: 2004-09-11 → 2005-12-05 → 2025-11-30
-   → Building VX futures features from cached contracts...
-   → Building VX futures from cache
-   ✓ Loaded 6 contracts
-   ✓ Loaded 6 continuous contracts
-   → Generating legacy spread & ratio features...
-   → Generating term structure features...
-   → Generating positioning features...
-   → Generating roll characteristics...
-   → Generating regime indicators...
-   ✓ Generated 35 VX features | Coverage: 5343 days
-⚠️  Replaced sparse Yahoo 2Y (20.3% coverage) with FRED DGS2
-
-✅ Complete: 362 features | 5343 rows
-   Date range: 2004-09-13 → 2025-12-04
-================================================================================
-
-2025-12-05 15:48:27,838 - INFO - Dataset: 5343 samples, 363 features
-2025-12-05 15:48:27,839 - INFO - Date range: 2004-09-13 to 2025-12-04
-2025-12-05 15:48:27,839 - INFO - 
-2025-12-05 15:48:28,169 - INFO - ✅ Loaded 4 models: 73 exp, 94 comp, 96 up, 99 down features
-2025-12-05 15:48:28,169 - INFO - ✅ Loaded Phase 1 models: 73 exp, 94 comp, 96 up, 99 down features
-2025-12-05 15:48:28,169 - INFO - ================================================================================
-2025-12-05 15:48:28,169 - INFO - PHASE 2: ENSEMBLE CONFIG TUNER
-2025-12-05 15:48:28,169 - INFO - ================================================================================
-2025-12-05 15:48:28,169 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
-2025-12-05 15:48:28,169 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
-2025-12-05 15:48:28,169 - INFO - Test:   484 days (2024-01-01 to 2025-12-04)
-2025-12-05 15:48:28,169 - INFO - Using Phase 1 optimized models from models/ directory
-2025-12-05 15:48:28,169 - INFO - ================================================================================
-2025-12-05 15:48:28,169 - INFO - Starting Phase 2 optimization: 5 trials
-2025-12-05 15:48:28,169 - INFO - Tuning ensemble config (up_advantage, thresholds, weights, etc.)
-2025-12-05 15:48:28,169 - INFO - Evaluating on 484 test days
-2025-12-05 15:48:28,169 - INFO - Objective: HIGH PRECISION - target 85% accuracy for both UP and DOWN
-2025-12-05 15:48:28,169 - INFO - Actionable rate will fall naturally (quality over quantity)
-2025-12-05 15:48:28,169 - INFO - ================================================================================
-[I 2025-12-05 15:48:28,170] A new study created in memory with name: no-name-1716e4b3-ad8e-4b11-bfcd-6f406329aa36
-  0%|          | 0/5 [00:00<?, ?it/s]2025-12-05 15:48:28,189 - INFO - Generating base predictions (once)...
-                                       0%|          | 0/5 [00:03<?, ?it/s]Best trial: 0. Best value: 999:   0%|          | 0/5 [00:03<?, ?it/s]Best trial: 0. Best value: 999:  20%|██        | 1/5 [00:03<00:15,  3.83s/it]                                                                             Best trial: 0. Best value: 999:  20%|██        | 1/5 [00:03<00:15,  3.83s/it]Best trial: 0. Best value: 999:  20%|██        | 1/5 [00:03<00:15,  3.83s/it]                                                                             Best trial: 0. Best value: 999:  40%|████      | 2/5 [00:03<00:11,  3.83s/it]Best trial: 0. Best value: 999:  40%|████      | 2/5 [00:03<00:11,  3.83s/it]                                                                             Best trial: 0. Best value: 999:  60%|██████    | 3/5 [00:03<00:07,  3.83s/it]Best trial: 0. Best value: 999:  60%|██████    | 3/5 [00:03<00:07,  3.83s/it]                                                                             Best trial: 0. Best value: 999:  80%|████████  | 4/5 [00:03<00:03,  3.83s/it]Best trial: 0. Best value: 999:  80%|████████  | 4/5 [00:03<00:03,  3.83s/it]Best trial: 0. Best value: 999: 100%|██████████| 5/5 [00:03<00:00,  1.28it/s]
-[I 2025-12-05 15:48:32,014] Trial 0 finished with value: 999.0 and parameters: {'up_advantage': 0.09578212521220471, 'up_thresh_high': 0.4808396056138144, 'up_thresh_med_offset': 0.06797090974552658, 'up_thresh_low_offset': 0.022632718587582493, 'down_thresh_high': 0.5764264520226607, 'down_thresh_med_offset': 0.07223169824259323, 'down_thresh_low_offset': 0.02164327333844338, 'classifier_weight_up': 0.6177358676307898, 'classifier_weight_down': 0.7698445218135815, 'mag_scale_up_small': 2.524622339129875, 'mag_scale_up_medium': 6.695634499378131, 'mag_scale_up_large': 12.199373729904693, 'mag_scale_down_small': 2.353362800722666, 'mag_scale_down_medium': 5.953061128215872, 'mag_scale_down_large': 9.182818796723042, 'boost_threshold_up': 11.920532665109228, 'boost_threshold_down': 14.045218248821259, 'boost_amount_up': 0.030709611514574818, 'boost_amount_down': 0.0352763767759468, 'min_confidence_up': 0.5029856932188008, 'min_confidence_down': 0.6081212496647084}. Best is trial 0 with value: 999.0.
-[I 2025-12-05 15:48:32,034] Trial 1 finished with value: 999.0 and parameters: {'up_advantage': 0.10001590614545415, 'up_thresh_high': 0.484842969548992, 'up_thresh_med_offset': 0.07058729160651932, 'up_thresh_low_offset': 0.02294974460565262, 'down_thresh_high': 0.5746697673776728, 'down_thresh_med_offset': 0.07950635770225972, 'down_thresh_low_offset': 0.021984227735971536, 'classifier_weight_up': 0.6168299032992401, 'classifier_weight_down': 0.7936885888484635, 'mag_scale_up_small': 2.5125073562545195, 'mag_scale_up_medium': 6.772459005205014, 'mag_scale_up_large': 12.26891846592113, 'mag_scale_down_small': 2.248878668623353, 'mag_scale_down_medium': 6.0239472958827855, 'mag_scale_down_large': 9.240148908422405, 'boost_threshold_up': 11.741250660513899, 'boost_threshold_down': 14.703174611235916, 'boost_amount_up': 0.03128937042263739, 'boost_amount_down': 0.03190257643918425, 'min_confidence_up': 0.510608802008534, 'min_confidence_down': 0.6127420137223684}. Best is trial 0 with value: 999.0.
-[I 2025-12-05 15:48:32,053] Trial 2 finished with value: 999.0 and parameters: {'up_advantage': 0.05723402828934873, 'up_thresh_high': 0.6108576921020241, 'up_thresh_med_offset': 0.04121146423404467, 'up_thresh_low_offset': 0.07603703530700642, 'down_thresh_high': 0.6401279020477998, 'down_thresh_med_offset': 0.06093981872952426, 'down_thresh_low_offset': 0.07625366956196136, 'classifier_weight_up': 0.7650924219803364, 'classifier_weight_down': 0.7195254685479783, 'mag_scale_up_small': 2.962703427197811, 'mag_scale_up_medium': 5.546629816156768, 'mag_scale_up_large': 10.519094681475588, 'mag_scale_down_small': 2.7308810094699902, 'mag_scale_down_medium': 4.68760159203096, 'mag_scale_down_large': 8.005886936085805, 'boost_threshold_up': 15.38617432611728, 'boost_threshold_down': 10.810642426510032, 'boost_amount_up': 0.07734024632067818, 'boost_amount_down': 0.042636521549326685, 'min_confidence_up': 0.6414852673375991, 'min_confidence_down': 0.538722400241608}. Best is trial 0 with value: 999.0.
-[I 2025-12-05 15:48:32,073] Trial 3 finished with value: 999.0 and parameters: {'up_advantage': 0.14282528679310286, 'up_thresh_high': 0.48126404914621496, 'up_thresh_med_offset': 0.07590900920882004, 'up_thresh_low_offset': 0.02366510009605463, 'down_thresh_high': 0.5327464373689327, 'down_thresh_med_offset': 0.024406367007931574, 'down_thresh_low_offset': 0.024926294267836054, 'classifier_weight_up': 0.5108914439696355, 'classifier_weight_down': 0.5525255121737926, 'mag_scale_up_small': 4.2590167066474045, 'mag_scale_up_medium': 7.413081294697987, 'mag_scale_up_large': 13.791402246238697, 'mag_scale_down_small': 3.80531429743068, 'mag_scale_down_medium': 6.371331088950746, 'mag_scale_down_large': 11.723912628774798, 'boost_threshold_up': 10.069870540524867, 'boost_threshold_down': 17.094412903123292, 'boost_amount_up': 0.03125177965466547, 'boost_amount_down': 0.0740931710695623, 'min_confidence_up': 0.5018383876690276, 'min_confidence_down': 0.636838199073695}. Best is trial 0 with value: 999.0.
-[I 2025-12-05 15:48:32,092] Trial 4 finished with value: 999.0 and parameters: {'up_advantage': 0.0931857785999677, 'up_thresh_high': 0.5445864240851728, 'up_thresh_med_offset': 0.056747234995559975, 'up_thresh_low_offset': 0.04876119064341456, 'down_thresh_high': 0.5935124750050402, 'down_thresh_med_offset': 0.0781181060850252, 'down_thresh_low_offset': 0.046785128315349936, 'classifier_weight_up': 0.6470179094441497, 'classifier_weight_down': 0.6425512243172693, 'mag_scale_up_small': 3.6294608050622603, 'mag_scale_up_medium': 6.135974816607686, 'mag_scale_up_large': 12.147171238109795, 'mag_scale_down_small': 2.069863686514816, 'mag_scale_down_medium': 5.469170128885998, 'mag_scale_down_large': 9.812322281201041, 'boost_threshold_up': 13.0522728679911, 'boost_threshold_down': 12.862224429839836, 'boost_amount_up': 0.05351396865390427, 'boost_amount_down': 0.05547513882295084, 'min_confidence_up': 0.5714146663022991, 'min_confidence_down': 0.5796758394224023}. Best is trial 0 with value: 999.0.
-2025-12-05 15:48:32,093 - INFO - 
-✅ Results saved: tuning_phase2/phase2_results.json
-2025-12-05 15:48:32,093 - INFO - ✅ Config saved: tuning_phase2/phase2_optimized_config.py
-2025-12-05 15:48:32,093 - INFO - 
-================================================================================
-2025-12-05 15:48:32,093 - INFO - PHASE 2 OPTIMIZATION COMPLETE
-2025-12-05 15:48:32,093 - INFO - ================================================================================
-2025-12-05 15:48:32,093 - INFO - Best trial: #0 | Score: 999.000
-2025-12-05 15:48:32,093 - INFO - 
-2025-12-05 15:48:32,093 - INFO - 📊 TEST SET PERFORMANCE (2024-2025):
-2025-12-05 15:48:32,093 - INFO - 
-2025-12-05 15:48:32,093 - INFO -   RAW PREDICTIONS:
-2025-12-05 15:48:32,093 - INFO -     Total: 484
-2025-12-05 15:48:32,093 - INFO -     UP: 69.4% (336 signals)
-2025-12-05 15:48:32,093 - INFO -     DOWN: 30.6% (148 signals)
-2025-12-05 15:48:32,093 - INFO -     Accuracy: 56.8% | UP: 53.0% | DOWN: 65.5%
-2025-12-05 15:48:32,093 - INFO - 
-2025-12-05 15:48:32,093 - INFO -   ACTIONABLE SIGNALS (high precision ensemble):
-2025-12-05 15:48:32,093 - INFO -     Total: 467 signals (96.5% actionable)
-2025-12-05 15:48:32,093 - INFO -     UP: 71.9% (336 signals)
-2025-12-05 15:48:32,093 - INFO -     DOWN: 28.1% (131 signals)
-2025-12-05 15:48:32,094 - INFO -     Accuracy: 56.7% | UP: 53.0% | DOWN: 66.4%
-2025-12-05 15:48:32,094 - INFO -     Magnitude MAE: 15.06% (UP: 14.31%, DOWN: 16.95%)
-2025-12-05 15:48:32,094 - INFO - ================================================================================
-2025-12-05 15:48:32,094 - INFO - 
-2025-12-05 15:48:32,094 - INFO - 🎯 HIGH PRECISION TARGET: 85% accuracy
-2025-12-05 15:48:32,094 - INFO -    ✗ UP:   53.0% (-32.0% from target)
-2025-12-05 15:48:32,094 - INFO -    ✗ DOWN: 66.4% (-18.6% from target)
-2025-12-05 15:48:32,094 - INFO - 
-2025-12-05 15:48:32,094 - INFO - 📈 TRADING FREQUENCY: ~4.7 signals/week (quality over quantity)
-2025-12-05 15:48:32,094 - INFO - ================================================================================
-2025-12-05 15:48:32,094 - INFO - 
-2025-12-05 15:48:32,094 - INFO - 📝 NEXT STEPS:
-2025-12-05 15:48:32,094 - INFO -   1. Review results in tuning_phase2/phase2_results.json
-2025-12-05 15:48:32,094 - INFO -   2. Apply ENSEMBLE_CONFIG from phase2_optimized_config.py to your config.py
-2025-12-05 15:48:32,094 - INFO -   3. Run: py integrated_system.py
-2025-12-05 15:48:32,094 - INFO - ================================================================================
-2025-12-05 15:48:32,094 - INFO - 
-✅ Phase 2 complete!
