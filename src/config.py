@@ -63,36 +63,36 @@ DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max
 ENSEMBLE_CONFIG = {
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
-    'up_advantage': 0.0850,  # Was 0.0913 in Config A - lower to get more DOWN signals
+    'up_advantage': 0.0850,
 
     'confidence_weights': {
-        'up': {'classifier': 0.6453, 'magnitude': 0.3547},      # Config A proven - UP favors classifier
-        'down': {'classifier': 0.5411, 'magnitude': 0.4589}     # Config A proven - DOWN more balanced
+        'up': {'classifier': 0.6453, 'magnitude': 0.3547},
+        'down': {'classifier': 0.5411, 'magnitude': 0.4589}
     },
 
     'magnitude_scaling': {
-        'up': {'small': 2.7955, 'medium': 5.0043, 'large': 10.3435},   # Config A proven
-        'down': {'small': 3.4702, 'medium': 4.6143, 'large': 8.9073}   # Config A proven
+        'up': {'small': 2.7955, 'medium': 5.0043, 'large': 10.3435},
+        'down': {'small': 3.4702, 'medium': 4.6143, 'large': 8.9073}
     },
 
     'dynamic_thresholds': {
         'up': {
-            'high_magnitude': 0.6500,    # Config A proven
-            'medium_magnitude': 0.7200,  # Config A proven
-            'low_magnitude': 0.7600      # Config A proven
+            'high_magnitude': 0.7800,
+            'medium_magnitude': 0.8100,
+            'low_magnitude': 0.8400
         },
         'down': {
-            'high_magnitude': 0.8300,    # Was 0.85 - lower by 2pp for more DOWN signals
-            'medium_magnitude': 0.8600,  # Was 0.88 - lower by 2pp
-            'low_magnitude': 0.8900      # Was 0.91 - lower by 2pp
+            'high_magnitude': 0.8100,    # Raised to match UP - filter weak signals
+            'medium_magnitude': 0.8400,  # Match UP to enforce quality
+            'low_magnitude': 0.8700      # Higher than UP for stricter filtering
         }
     },
 
-    'min_confidence_up': 0.6200,      # Config A proven
-    'min_confidence_down': 0.7600,    # Was 0.78 - lower by 2pp for more DOWN signals
-    'boost_threshold_up': 10.4039,    # Config A proven
-    'boost_threshold_down': 12.6627,  # Config A proven
-    'boost_amount_up': 0.0791,        # Config A proven
-    'boost_amount_down': 0.0520,      # Config A proven
-    'description': 'Config A base targeting 50/50 signal balance'
+    'min_confidence_up': 0.7400,
+    'min_confidence_down': 0.7800,    # Raised to filter 0.7-0.8 noise
+    'boost_threshold_up': 10.4039,
+    'boost_threshold_down': 12.6627,
+    'boost_amount_up': 0.0791,
+    'boost_amount_down': 0.0520,
+    'description': 'Balanced thresholds for 50/50 signal split'
 }

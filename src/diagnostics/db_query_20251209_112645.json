@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-12-09T10:53:47.814648",
+  "timestamp": "2025-12-09T11:26:45.701637",
   "date_range": {
     "start": "2024-01-07",
     "end": "2025-12-01"
@@ -15,73 +15,73 @@
     "mae": 15.191601837226616
   },
   "actionable": {
-    "total": 282,
-    "rate": 0.5887265135699373,
-    "up_count": 220,
-    "down_count": 62,
-    "accuracy": 0.7588652482269503,
-    "up_accuracy": 0.75,
-    "down_accuracy": 0.7903225806451613,
-    "mae": 13.759152585840052
+    "total": 142,
+    "rate": 0.2964509394572025,
+    "up_count": 74,
+    "down_count": 68,
+    "accuracy": 0.8169014084507042,
+    "up_accuracy": 0.8378378378378378,
+    "down_accuracy": 0.7941176470588235,
+    "mae": 13.65520002627738
   },
   "cohorts": [
     {
       "cohort": "earnings_heavy",
       "total": 21,
-      "actionable": 12,
-      "actionable_rate": 0.5714285714285714,
+      "actionable": 6,
+      "actionable_rate": 0.2857142857142857,
       "accuracy_all": 0.6666666666666665,
-      "accuracy_actionable": 0.9166666666666665,
+      "accuracy_actionable": 1.0,
       "mae": 26.49205669344814
     },
     {
       "cohort": "fomc_period",
       "total": 276,
-      "actionable": 171,
-      "actionable_rate": 0.6195652173913043,
+      "actionable": 78,
+      "actionable_rate": 0.2826086956521739,
       "accuracy_all": 0.673913043478261,
-      "accuracy_actionable": 0.7251461988304093,
+      "accuracy_actionable": 0.782051282051282,
       "mae": 15.307153657614897
     },
     {
       "cohort": "mid_cycle",
       "total": 104,
-      "actionable": 53,
-      "actionable_rate": 0.5096153846153846,
+      "actionable": 28,
+      "actionable_rate": 0.2692307692307692,
       "accuracy_all": 0.701923076923077,
-      "accuracy_actionable": 0.7924528301886792,
+      "accuracy_actionable": 0.8571428571428571,
       "mae": 16.334330994431415
     },
     {
       "cohort": "opex_week",
       "total": 78,
-      "actionable": 46,
-      "actionable_rate": 0.5897435897435898,
+      "actionable": 30,
+      "actionable_rate": 0.38461538461538464,
       "accuracy_all": 0.782051282051282,
-      "accuracy_actionable": 0.8043478260869565,
+      "accuracy_actionable": 0.8333333333333335,
       "mae": 10.216657135212298
     }
   ],
   "confidence_stats": {
-    "min": 0.7295429843430985,
-    "mean": 0.7872866252206471,
-    "median": 0.7772155258330731,
+    "min": 0.7800163971340404,
+    "mean": 0.8211844250780569,
+    "median": 0.8208205741159975,
     "max": 0.863000309333384
   },
   "confidence_breakdown": [
     {
       "range": "0.7-0.8",
-      "count": 188,
-      "up_count": 188,
+      "count": 42,
+      "up_count": 42,
       "down_count": 0,
-      "accuracy": 0.7287234042553191
+      "accuracy": 0.8095238095238095
     },
     {
       "range": "0.8-0.9",
-      "count": 94,
+      "count": 100,
       "up_count": 32,
-      "down_count": 62,
-      "accuracy": 0.8191489361702128
+      "down_count": 68,
+      "accuracy": 0.82
     }
   ]
 }
