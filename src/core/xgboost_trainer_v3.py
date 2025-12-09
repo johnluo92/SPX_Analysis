@@ -333,7 +333,7 @@ class AsymmetricVIXForecaster:
             actionable = True  # All predictions actionable in Phase 1 mode
         else:
             # PHASE 2 MODE: Asymmetric ensemble with up_advantage
-            if p_down > (p_up + self.up_advantage):
+            if p_down_norm > (p_up_norm + self.up_advantage):
                 direction="DOWN"
                 magnitude_pct=compression_pct
                 magnitude_log=compression_log

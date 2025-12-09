@@ -1,33 +1,33 @@
 {
-  "correlation_threshold": 0.9246,
-  "n_removed_correlation": 8,
+  "correlation_threshold": 0.8531,
+  "n_removed_correlation": 31,
   "n_samples": 2613,
-  "n_selected": 94,
+  "n_selected": 96,
   "random_state": 42,
   "target_type": "compression",
   "top_10_features": [
     "vix_vs_ma63",
+    "joint_regime_expected_return",
     "vix_percentile_126d",
     "vix_vs_ma21",
-    "vix_skew_joint_regime",
     "vix_velocity_5d_regime_adj",
-    "reversion_strength_63d",
-    "vix_vel_spx_rv_ratio",
-    "bb_position_20d",
-    "joint_regime_expected_return",
-    "vix_stretch_ma63"
+    "vix_skew_joint_regime",
+    "gold_zscore_63d",
+    "vvix_velocity_10d",
+    "vix_zscore_63d",
+    "vix_vel_spx_rv_ratio"
   ],
   "top_10_importance": [
-    0.043995537981390956,
-    0.016237499192357063,
-    0.016098863165825605,
-    0.015012375405058264,
-    0.01311339382082224,
-    0.011988288210704922,
-    0.008905818266794086,
-    0.008904407452791929,
-    0.008680679625831545,
-    0.008383870543912052
+    0.06791057959198951,
+    0.02751796185038984,
+    0.01762352017685771,
+    0.016155952913686634,
+    0.013868305459618568,
+    0.009642267599701881,
+    0.009327172581106425,
+    0.008973616291768849,
+    0.008713924791663885,
+    0.007703983969986439
   ],
-  "top_n": 94
+  "top_n": 96
 }

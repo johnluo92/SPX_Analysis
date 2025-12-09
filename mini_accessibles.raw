@@ -1,23 +1,23 @@
 Core Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/data_fetcher.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/feature_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/forecast_calibrator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/prediction_database.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/regime_classifier.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/target_calculator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/temporal_validator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/vx_continuous_contract_builder.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/vx_futures_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/xgboost_feature_selector_v2.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/core/xgboost_trainer_v3.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/data_fetcher.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/feature_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/forecast_calibrator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/prediction_database.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/regime_classifier.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/target_calculator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/temporal_validator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/vx_continuous_contract_builder.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/vx_futures_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/xgboost_feature_selector_v2.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/core/xgboost_trainer_v3.py
 
 Root src Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/config.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/integrated_system.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/train_probabilistic_models.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/config.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/integrated_system.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/train_probabilistic_models.py
 
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/phase1_model_tuner.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/cf9baf4/src/phase2_ensemble_tuner.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/phase1_model_tuner.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/14efd5b/src/phase2_ensemble_tuner.py
 
 help me apply these new configs (optimized) and help me replace my config's params. just give me the complete dictionaries with the new params and with key/pairs unchanged if they are unchanged.
 

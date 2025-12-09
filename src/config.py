@@ -51,13 +51,48 @@ REGIME_NAMES={0:"Low Vol",1:"Normal",2:"Elevated",3:"Crisis"}
 
 HYPERPARAMETER_TUNING_CONFIG={"enabled":False,"method":"optuna","n_trials":500,"cv_folds":5,"timeout_hours":24,"magnitude_param_space":{"max_depth":(2,8),"learning_rate":(0.005,0.1),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"colsample_bylevel":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0)},"direction_param_space":{"max_depth":(3,10),"learning_rate":(0.01,0.15),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0),"scale_pos_weight":(0.8,2.0)},"description":"Hyperparameter optimization with Optuna - run after ensemble implementation"}
 
-QUALITY_FILTER_CONFIG={'enabled':True,'min_threshold':0.5750,'warn_pct':20.0,'error_pct':50.0,'strategy':'raise'}
-CALENDAR_COHORTS={'fomc_period':{'condition':'macro_event_period','range':(-7,2),'weight':1.3272,'description':'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},'opex_week':{'condition':'days_to_monthly_opex','range':(-7,0),'weight':1.1126,'description':'Options expiration week + VIX futures rollover'},'earnings_heavy':{'condition':'spx_earnings_pct','range':(0.15,1.0),'weight':1.3391,'description':'Peak earnings season (Jan, Apr, Jul, Oct)'},'mid_cycle':{'condition':'default','range':None,'weight':1.0,'description':'Regular market conditions'}}
-FEATURE_SELECTION_CV_PARAMS={'n_estimators':100,'max_depth':4,'learning_rate':0.0443,'subsample':0.8943,'colsample_bytree':0.9286,'n_jobs':1,'random_state':42}
-FEATURE_SELECTION_CONFIG={'expansion_top_n':73,'compression_top_n':94,'up_top_n':96,'down_top_n':99,'cv_folds':5,'protected_features':[],'correlation_threshold':0.9246,'description':'Phase 1 optimized on RAW predictions (no ensemble filtering)'}
-EXPANSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.0205,'n_estimators':709,'subsample':0.8139,'colsample_bytree':0.7334,'colsample_bylevel':0.9399,'min_child_weight':14,'reg_alpha':2.7827,'reg_lambda':9.2059,'gamma':0.1368,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
-COMPRESSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':4,'learning_rate':0.0850,'n_estimators':440,'subsample':0.7546,'colsample_bytree':0.7527,'colsample_bylevel':0.7170,'min_child_weight':11,'reg_alpha':5.3725,'reg_lambda':9.4165,'gamma':0.5212,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
-UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'logloss','tree_method':'hist','random_state':42,'n_jobs':1,'early_stopping_rounds':50,'max_depth':4,'min_child_weight':11,'learning_rate':0.06825836613431377,'n_estimators':254,'subsample':0.8648468875183308,'colsample_bytree':0.8133095368971551,'colsample_bylevel':0.7327935602828973,'reg_alpha':5.222395289650929,'reg_lambda':14.76410282090296,'gamma':1.9410661116370704,'scale_pos_weight':0.7870292181063863,'seed':42}
-DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'logloss','tree_method':'hist','random_state':42,'n_jobs':1,'early_stopping_rounds':50,'max_depth':6,'min_child_weight':17,'learning_rate':0.11116596065524766,'n_estimators':200,'subsample':0.6264791106172106,'colsample_bytree':0.8378686171271782,'colsample_bylevel':0.7384380500653533,'reg_alpha':4.633138083481186,'reg_lambda':5.292776004480156,'gamma':0.5068886858548289,'scale_pos_weight':1.2762843628490819,'seed':42}
+QUALITY_FILTER_CONFIG={'enabled':True,'min_threshold':0.5669,'warn_pct':20.0,'error_pct':50.0,'strategy':'raise'}
+CALENDAR_COHORTS={'fomc_period':{'condition':'macro_event_period','range':(-7,2),'weight':1.1410,'description':'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},'opex_week':{'condition':'days_to_monthly_opex','range':(-7,0),'weight':1.1143,'description':'Options expiration week + VIX futures rollover'},'earnings_heavy':{'condition':'spx_earnings_pct','range':(0.15,1.0),'weight':1.3949,'description':'Peak earnings season (Jan, Apr, Jul, Oct)'},'mid_cycle':{'condition':'default','range':None,'weight':1.0,'description':'Regular market conditions'}}
+FEATURE_SELECTION_CV_PARAMS={'n_estimators':168,'max_depth':6,'learning_rate':0.0320,'subsample':0.9318,'colsample_bytree':0.9203,'n_jobs':1,'random_state':42}
+FEATURE_SELECTION_CONFIG={'expansion_top_n':115,'compression_top_n':96,'up_top_n':112,'down_top_n':149,'cv_folds':5,'protected_features':[],'correlation_threshold':0.8531,'description':'Unified tuning with ensemble evaluation'}
+EXPANSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':4,'learning_rate':0.0119,'n_estimators':699,'subsample':0.9268,'colsample_bytree':0.7740,'colsample_bylevel':0.9367,'min_child_weight':13,'reg_alpha':6.6587,'reg_lambda':2.0007,'gamma':0.7695,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+COMPRESSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':3,'learning_rate':0.1138,'n_estimators':506,'subsample':0.7987,'colsample_bytree':0.7655,'colsample_bylevel':0.8903,'min_child_weight':6,'reg_alpha':3.9449,'reg_lambda':8.9603,'gamma':0.4900,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':4,'learning_rate':0.0202,'n_estimators':297,'subsample':0.6315,'colsample_bytree':0.9279,'min_child_weight':16,'reg_alpha':1.7430,'reg_lambda':14.6926,'gamma':2.1211,'scale_pos_weight':0.9606,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':7,'learning_rate':0.0228,'n_estimators':231,'subsample':0.6327,'colsample_bytree':0.7150,'min_child_weight':18,'reg_alpha':3.3460,'reg_lambda':4.1332,'gamma':1.2398,'scale_pos_weight':0.9195,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
 
-ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','up_advantage':0.0913,'confidence_weights':{'up':{'classifier':0.6453,'magnitude':0.3547},'down':{'classifier':0.5411,'magnitude':0.4589}},'magnitude_scaling':{'up':{'small':2.7955,'medium':5.0043,'large':10.3435},'down':{'small':3.4702,'medium':4.6143,'large':8.9073}},'dynamic_thresholds':{'up':{'high_magnitude':0.6500,'medium_magnitude':0.7200,'low_magnitude':0.7600},'down':{'high_magnitude':0.8500,'medium_magnitude':0.8800,'low_magnitude':0.9100}},'min_confidence_up':0.6200,'min_confidence_down':0.7800,'boost_threshold_up':10.4039,'boost_threshold_down':12.6627,'boost_amount_up':0.0791,'boost_amount_down':0.0520,'description':'Extreme precision v2: 90%+ UP, 85%+ DOWN target'}
+ENSEMBLE_CONFIG = {
+    'enabled': True,
+    'reconciliation_method': 'winner_takes_all',
+    'up_advantage': 0.0850,  # Was 0.0913 in Config A - lower to get more DOWN signals
+
+    'confidence_weights': {
+        'up': {'classifier': 0.6453, 'magnitude': 0.3547},      # Config A proven - UP favors classifier
+        'down': {'classifier': 0.5411, 'magnitude': 0.4589}     # Config A proven - DOWN more balanced
+    },
+
+    'magnitude_scaling': {
+        'up': {'small': 2.7955, 'medium': 5.0043, 'large': 10.3435},   # Config A proven
+        'down': {'small': 3.4702, 'medium': 4.6143, 'large': 8.9073}   # Config A proven
+    },
+
+    'dynamic_thresholds': {
+        'up': {
+            'high_magnitude': 0.6500,    # Config A proven
+            'medium_magnitude': 0.7200,  # Config A proven
+            'low_magnitude': 0.7600      # Config A proven
+        },
+        'down': {
+            'high_magnitude': 0.8300,    # Was 0.85 - lower by 2pp for more DOWN signals
+            'medium_magnitude': 0.8600,  # Was 0.88 - lower by 2pp
+            'low_magnitude': 0.8900      # Was 0.91 - lower by 2pp
+        }
+    },
+
+    'min_confidence_up': 0.6200,      # Config A proven
+    'min_confidence_down': 0.7600,    # Was 0.78 - lower by 2pp for more DOWN signals
+    'boost_threshold_up': 10.4039,    # Config A proven
+    'boost_threshold_down': 12.6627,  # Config A proven
+    'boost_amount_up': 0.0791,        # Config A proven
+    'boost_amount_down': 0.0520,      # Config A proven
+    'description': 'Config A base targeting 50/50 signal balance'
+}
