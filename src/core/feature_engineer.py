@@ -3,12 +3,13 @@ from datetime import datetime,timedelta
 from typing import Dict,List,Optional,Tuple
 import numpy as np
 import pandas as pd
-from config import TRAINING_YEARS,CALENDAR_COHORTS,COHORT_PRIORITY,ENABLE_TEMPORAL_SAFETY,PUBLICATION_LAGS,MACRO_EVENT_CONFIG,FORWARD_FILL_LIMITS
+from config import TRAINING_YEARS,ENABLE_TEMPORAL_SAFETY,PUBLICATION_LAGS,FORWARD_FILL_LIMITS
 from core.calculations import calculate_robust_zscore,calculate_regime_with_validation,calculate_percentile_with_validation,SKEW_REGIME_BINS,SKEW_REGIME_LABELS
 from core.temporal_validator import TemporalSafetyValidator
 from core.regime_classifier import RegimeClassifier,compute_skew_vix_features
 from core.vx_futures_engineer import VXFuturesEngineer
 from core.commodity_volatility_engineer import CommodityVolatilityEngineer
+from core.cohort_feature_engineer import CohortFeatureEngineer
 warnings.filterwarnings("ignore")
 class LaborMarketFeatureEngine:
     @staticmethod
@@ -178,88 +179,7 @@ class FuturesFeatureEngine:
         return f
 class FeatureEngineer:
     def __init__(self,data_fetcher):
-        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.labor_engine=LaborMarketFeatureEngine();self.stress_engine=FinancialStressFeatureEngine();self.credit_engine=CreditSpreadFeatureEngine();self.vx_engineer=VXFuturesEngineer();self.commodity_vol_engineer=CommodityVolatilityEngineer(data_fetcher);self.vix_term_engine=VIXTermStructureEngine();self.interaction_engine=InteractionFeatureEngine();self.regime_conditional_engine=RegimeConditionalEngine();self.transformation_engine=TransformationEngine();self.validator=TemporalSafetyValidator();self.regime_classifier=RegimeClassifier();self.fomc_calendar=None;self.opex_calendar=None;self.earnings_calendar=None;self.vix_futures_expiry=None;self._cohort_cache={}
-    def _load_calendar_data(self):
-        if self.fomc_calendar is None:
-            try:sy,ey=self.training_start_date.year,self.training_end_date.year+1;self.fomc_calendar=self.fetcher.fetch_fomc_calendar(start_year=sy,end_year=ey)
-            except Exception as e:print(f"⚠️ FOMC calendar unavailable, using stub");self.fomc_calendar=pd.DataFrame()
-        if self.opex_calendar is None:self.opex_calendar=self._generate_opex_calendar()
-        if self.vix_futures_expiry is None:self.vix_futures_expiry=self._generate_vix_futures_expiry()
-        if self.earnings_calendar is None:self.earnings_calendar=pd.DataFrame()
-    def _generate_opex_calendar(self,sy=None,ey=None):
-        if sy is None:sy=self.training_start_date.year
-        if ey is None:ey=self.training_end_date.year+1
-        od=[]
-        for yr in range(sy,ey+1):
-            for mo in range(1,13):
-                fp=pd.Timestamp(yr,mo,15);da=(4-fp.weekday())%7
-                if da==0 and fp.day>15:da=7
-                tf=fp+pd.Timedelta(days=da);od.append({"date":tf,"expiry_type":"monthly_opex"})
-        return pd.DataFrame(od).set_index("date").sort_index()
-    def _generate_vix_futures_expiry(self):
-        if self.opex_calendar is None:self._generate_opex_calendar()
-        ve=[]
-        for od in self.opex_calendar.index:
-            ad=od-pd.Timedelta(days=30);dtw=(2-ad.weekday())%7;vd=ad+pd.Timedelta(days=dtw);ve.append({"date":vd,"expiry_type":"vix_futures"})
-        return pd.DataFrame(ve).set_index("date").sort_index()
-    def get_calendar_cohort(self,date):
-        date=pd.Timestamp(date)
-        if date in self._cohort_cache:return self._cohort_cache[date]
-        if self.opex_calendar is None:self._load_calendar_data()
-        dto=self._days_to_monthly_opex(date);dtf=self._days_to_fomc(date);dtve=self._days_to_vix_futures_expiry(date);ep=self._spx_earnings_intensity(date);is_cpi=self._is_cpi_release_day(date);is_pce=self._is_pce_release_day(date);is_fomc_minutes=self._is_fomc_minutes_day(date)
-        for cn in COHORT_PRIORITY:
-            cd=CALENDAR_COHORTS[cn];cond=cd["condition"]
-            if cond=="macro_event_period":
-                if dtf is not None:
-                    rmin,rmax=cd["range"]
-                    if rmin<=dtf<=rmax:res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
-                if is_cpi or is_pce or is_fomc_minutes:res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
-            elif cond=="days_to_monthly_opex":
-                if dto is not None or dtve is not None:
-                    rmin,rmax=cd["range"]
-                    if(dto is not None and rmin<=dto<=rmax)or(dtve is not None and rmin<=dtve<=rmax):res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
-            elif cond=="spx_earnings_pct":
-                if ep is not None:
-                    rmin,rmax=cd["range"]
-                    if rmin<=ep<=rmax:res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
-            elif cond=="default":res=(cn,cd["weight"]);self._cohort_cache[date]=res;return res
-        raise ValueError(f"No cohort matched for date {date}")
-    def _days_to_monthly_opex(self,date):
-        if self.opex_calendar is None or len(self.opex_calendar)==0:return None
-        fo=self.opex_calendar[self.opex_calendar.index>=date]
-        if len(fo)==0:return None
-        nxt=fo.index[0];dd=(nxt-date).days
-        if dd==0:return 0
-        return -dd if dd>0 else dd
-    def _days_to_fomc(self,date):
-        if self.fomc_calendar is None or len(self.fomc_calendar)==0:return None
-        ff=self.fomc_calendar[self.fomc_calendar.index>=date]
-        if len(ff)==0:return None
-        return -(ff.index[0]-date).days
-    def _days_to_vix_futures_expiry(self,date):
-        if self.vix_futures_expiry is None or len(self.vix_futures_expiry)==0:return None
-        fe=self.vix_futures_expiry[self.vix_futures_expiry.index>=date]
-        if len(fe)==0:return None
-        return -(fe.index[0]-date).days
-    def _spx_earnings_intensity(self,date):
-        mo=date.month
-        if mo in [1,4,7,10]:
-            wom=(date.day-1)//7+1
-            if wom in [2,3,4]:return 0.25
-        return 0.05
-    def _is_cpi_release_day(self,date):
-        target=MACRO_EVENT_CONFIG["cpi_release"]["day_of_month_target"];window=MACRO_EVENT_CONFIG["cpi_release"]["window_days"]
-        return abs(date.day-target)<=window
-    def _is_pce_release_day(self,date):
-        target=MACRO_EVENT_CONFIG["pce_release"]["day_of_month_target"];window=MACRO_EVENT_CONFIG["pce_release"]["window_days"]
-        return abs(date.day-target)<=window
-    def _is_fomc_minutes_day(self,date):
-        if self.fomc_calendar is None or len(self.fomc_calendar)==0:return False
-        days_after=MACRO_EVENT_CONFIG["fomc_minutes"]["days_after_meeting"];window=MACRO_EVENT_CONFIG["fomc_minutes"]["window_days"]
-        for fomc_date in self.fomc_calendar.index:
-            minutes_date=fomc_date+pd.Timedelta(days=days_after)
-            if abs((date-minutes_date).days)<=window:return True
-        return False
+        self.fetcher=data_fetcher;self.meta_engine=MetaFeatureEngine();self.futures_engine=FuturesFeatureEngine();self.treasury_engine=TreasuryYieldFeatureEngine();self.labor_engine=LaborMarketFeatureEngine();self.stress_engine=FinancialStressFeatureEngine();self.credit_engine=CreditSpreadFeatureEngine();self.vx_engineer=VXFuturesEngineer();self.commodity_vol_engineer=CommodityVolatilityEngineer(data_fetcher);self.vix_term_engine=VIXTermStructureEngine();self.interaction_engine=InteractionFeatureEngine();self.regime_conditional_engine=RegimeConditionalEngine();self.transformation_engine=TransformationEngine();self.validator=TemporalSafetyValidator();self.regime_classifier=RegimeClassifier();self.cohort_engineer=CohortFeatureEngineer(data_fetcher)
     def _apply_publication_lags(self,data:Dict[str,pd.Series],idx:pd.DatetimeIndex)->Dict[str,pd.Series]:
         lagged={}
         for name,series in data.items():
@@ -287,7 +207,7 @@ class FeatureEngineer:
             ed=pd.Timestamp(end_date)
             if force_historical:mode="HISTORICAL"
             else:ir=ed>(datetime.now()-timedelta(days=7));mode="RECENT" if ir else"HISTORICAL"
-        sd=ed-timedelta(days=years*365+450);self.training_start_date=sd;self.training_end_date=ed;ss=sd.strftime("%Y-%m-%d");es=ed.strftime("%Y-%m-%d")
+        sd=ed-timedelta(days=years*365+450);self.training_start_date=sd;self.training_end_date=ed;self.cohort_engineer.set_date_range(sd,ed);ss=sd.strftime("%Y-%m-%d");es=ed.strftime("%Y-%m-%d")
         print(f"Mode: {mode}");print(f"Date Ranges: Warmup Start -> Warmup End (usable period) -> Training End Date: {ss} → {(sd+timedelta(days=450)).strftime('%Y-%m-%d')} → {es}")
         spx_df=self.fetcher.fetch_yahoo("^GSPC",ss,es);vix=self.fetcher.fetch_yahoo("^VIX",ss,es);vvix=self.fetcher.fetch_yahoo("^VVIX",ss,es);skew_df=self.fetcher.fetch_yahoo("^SKEW",ss,es)
         vix_term_df=self.fetcher.fetch_vix_term(["^VIX","^VIX3M","^VIX6M"],ss,es)
@@ -319,7 +239,7 @@ class FeatureEngineer:
         log_transf=self.transformation_engine.add_log_transforms(transform_feats)
         binary_transf=self.transformation_engine.add_binary_extremes(transform_feats)
         af=pd.concat([bf,cbf,ff,mf,ef,tf,vvf,mtf,intf,vol_cluster_f,credit_vol_f,regime_cond_f,regime_adj_mom,log_transf,binary_transf,calf],axis=1);af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)
-        self._load_calendar_data();cohd=[{"calendar_cohort":self.get_calendar_cohort(dt)[0],"cohort_weight":self.get_calendar_cohort(dt)[1]} for dt in af.index];cohdf=pd.DataFrame(cohd,index=af.index);cohdf["is_fomc_period"]=(cohdf["calendar_cohort"]=="fomc_period").astype(int);cohdf["is_opex_week"]=(cohdf["calendar_cohort"]=="opex_week").astype(int);cohdf["is_earnings_heavy"]=(cohdf["calendar_cohort"]=="earnings_heavy").astype(int);af=pd.concat([af,cohdf],axis=1)
+        cohdf=self.cohort_engineer.build_cohort_features(af.index);af=pd.concat([af,cohdf],axis=1)
         af["feature_quality"]=self.validator.compute_feature_quality_batch(af);af=self.apply_quality_control(af)
         if ENABLE_TEMPORAL_SAFETY and not cb.empty:self._validate_term_structure_timing(vix,cb)
         print(f"\n✅ Complete: {len(af.columns)} features | {len(af)} rows");print(f"   Date range: {af.index[0].date()} → {af.index[-1].date()}");print(f"{'='*80}\n");return {"features":af,"spx":spx,"vix":vix,"cboe_data":cb if cbd else None,"vvix":vvix_series}
