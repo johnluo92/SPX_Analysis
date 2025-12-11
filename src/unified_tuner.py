@@ -866,7 +866,7 @@ def main():
     logger.info("Loading production data...")
     from config import TRAINING_YEARS, get_last_complete_month_end
     from core.data_fetcher import UnifiedDataFetcher
-    from core.feature_engineer import FeatureEngineer
+    from features.feature_engineer import FeatureEngineer
     training_end = get_last_complete_month_end()
     fetcher = UnifiedDataFetcher()
     engineer = FeatureEngineer(fetcher)

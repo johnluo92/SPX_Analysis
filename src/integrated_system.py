@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np,pandas as pd
 from config import CALIBRATION_WINDOW_DAYS,MIN_SAMPLES_FOR_CORRECTION,TARGET_CONFIG,TRAINING_YEARS,ENSEMBLE_CONFIG
 from core.data_fetcher import UnifiedDataFetcher
-from core.feature_engineer import FeatureEngineer as UnifiedFeatureEngine
+from features.feature_engineer import FeatureEngineer as UnifiedFeatureEngine
 from core.forecast_calibrator import ForecastCalibrator
 from core.prediction_database import PredictionDatabase
 from core.temporal_validator import TemporalSafetyValidator as TemporalValidator

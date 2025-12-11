@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np,pandas as pd
 from sklearn.linear_model import HuberRegressor
 from config import CALIBRATION_WINDOW_DAYS,CALIBRATION_DECAY_LAMBDA,MIN_SAMPLES_FOR_CORRECTION
-from core.regime_classifier import classify_vix_regime
+from features.regime_classifier import classify_vix_regime
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 class ForecastCalibrator:

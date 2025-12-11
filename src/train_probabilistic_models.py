@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 from config import TARGET_CONFIG,TRAINING_YEARS,FEATURE_SELECTION_CONFIG,XGBOOST_CONFIG,get_last_complete_month_end,DATA_SPLIT_CONFIG
 from core.data_fetcher import UnifiedDataFetcher
-from core.feature_engineer import FeatureEngineer
+from features.feature_engineer import FeatureEngineer
 from core.xgboost_feature_selector_v2 import FeatureSelector
 from core.xgboost_trainer_v3 import train_asymmetric_forecaster
 
