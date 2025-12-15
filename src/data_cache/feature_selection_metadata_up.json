@@ -1,8 +1,8 @@
 {
   "correlation_threshold": 0.9585,
-  "n_removed_correlation": 13,
+  "n_removed_correlation": 12,
   "n_samples": 4859,
-  "n_selected": 97,
+  "n_selected": 90,
   "random_state": 42,
   "target_type": "up",
   "top_10_features": [
@@ -29,5 +29,5 @@
     0.0054960557725280525,
     0.005261309980414808
   ],
-  "top_n": 97
+  "top_n": 90
 }

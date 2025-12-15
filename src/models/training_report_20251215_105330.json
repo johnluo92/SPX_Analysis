@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-12-15T02:45:41.114859",
+  "timestamp": "2025-12-15T10:53:30.135887",
   "system_version": "v6.1_unified_selector",
   "training_end": "2025-11-30",
   "data_splits": {
@@ -194,8 +194,8 @@
       ]
     },
     "up": {
-      "top_n": 97,
-      "selected": 97,
+      "top_n": 90,
+      "selected": 90,
       "features": [
         "6m_vol_63d_fred",
         "SKEW_extreme_low_63d",
@@ -218,11 +218,9 @@
         "dxy_zscore_21d",
         "dxy_zscore_63d",
         "earnings_intensity",
-        "gold_ret_5d",
         "gold_vol_21d",
         "gold_zscore_63d",
         "growth_concern_signal",
-        "gvz_gold_rv_ratio",
         "hy_spread",
         "month",
         "multi_event_stress",
@@ -242,7 +240,6 @@
         "skew_vix_ratio",
         "skew_vix_ratio_percentile_252d",
         "skew_vix_ratio_velocity_10d",
-        "spx_lag1",
         "spx_mom_x_earnings",
         "spx_realized_vol_21d",
         "spx_realized_vol_21d_log",
@@ -259,15 +256,11 @@
         "vix_percentile_126d",
         "vix_ret_5d",
         "vix_skew_correlation_regime",
-        "vix_skew_joint_regime",
-        "vix_skew_level_corr_21d",
         "vix_skew_velocity_corr_21d",
         "vix_stretch_ma63",
         "vix_term_ratio_zscore_63d",
         "vix_term_slope_short",
         "vix_vel_x_earnings",
-        "vix_vel_x_macro_event",
-        "vix_velocity_10d",
         "vix_velocity_5d",
         "vix_velocity_5d_regime_adj",
         "vix_velocity_5d_x_regime_0",
@@ -297,8 +290,8 @@
       ]
     },
     "down": {
-      "top_n": 85,
-      "selected": 85,
+      "top_n": 80,
+      "selected": 80,
       "features": [
         "6m_vol_63d_fred",
         "SKEW_extreme_low_63d",
@@ -310,11 +303,9 @@
         "crude_oil_vol_21d",
         "day_of_month",
         "days_in_regime",
-        "dxy_gold_corr_126d",
         "dxy_gold_corr_63d",
         "dxy_ret_21d",
         "dxy_ret_63d",
-        "dxy_velocity_10d",
         "dxy_vs_ma21",
         "dxy_vs_ma252",
         "dxy_zscore_21d",
@@ -322,7 +313,6 @@
         "earnings_intensity",
         "gold_vol_21d",
         "gold_zscore_63d",
-        "growth_concern_signal",
         "hy_spread",
         "month",
         "multi_event_stress",
@@ -339,14 +329,12 @@
         "skew_regime_transition_direction",
         "skew_vix_ratio",
         "skew_vix_ratio_percentile_252d",
-        "skew_vix_ratio_velocity_10d",
         "spx_mom_x_earnings",
         "spx_realized_vol_21d",
         "spx_realized_vol_21d_log",
         "spx_realized_vol_63d",
         "spx_realized_vol_63d_x_regime_1",
         "spx_realized_vol_63d_x_regime_3",
-        "spx_skew_21d",
         "spx_vix_corr_126d",
         "spx_vs_ma200",
         "vix1m_vix3m_ratio",
@@ -437,36 +425,36 @@
     },
     "up_classifier": {
       "train": {
-        "accuracy": 0.7661234794583429,
-        "avg_confidence": 0.6330934762954712
+        "accuracy": 0.7631397750745926,
+        "avg_confidence": 0.6438668966293335
       },
       "val": {
-        "accuracy": 0.5588822355289421,
-        "avg_confidence": 0.6321669816970825
+        "accuracy": 0.5868263473053892,
+        "avg_confidence": 0.6498695015907288
       },
       "test": {
-        "accuracy": 0.6541666666666667,
-        "precision": 0.6863905325443787,
-        "recall": 0.5065502183406113,
-        "f1": 0.5829145728643216,
-        "avg_confidence": 0.6413026452064514
+        "accuracy": 0.6458333333333334,
+        "precision": 0.7034482758620689,
+        "recall": 0.44541484716157204,
+        "f1": 0.5454545454545454,
+        "avg_confidence": 0.6636728644371033
       }
     },
     "down_classifier": {
       "train": {
-        "accuracy": 0.7023181087904522,
-        "avg_confidence": 0.610873818397522
+        "accuracy": 0.6373651595134266,
+        "avg_confidence": 0.5918320417404175
       },
       "val": {
-        "accuracy": 0.5588822355289421,
-        "avg_confidence": 0.6001930236816406
+        "accuracy": 0.5269461077844312,
+        "avg_confidence": 0.5851489901542664
       },
       "test": {
-        "accuracy": 0.65625,
-        "precision": 0.6580882352941176,
-        "recall": 0.7131474103585658,
-        "f1": 0.6845124282982792,
-        "avg_confidence": 0.6236633062362671
+        "accuracy": 0.6354166666666666,
+        "precision": 0.6652173913043479,
+        "recall": 0.6095617529880478,
+        "f1": 0.6361746361746362,
+        "avg_confidence": 0.5935248136520386
       }
     }
   }

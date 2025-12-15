@@ -1,9 +1,8 @@
 {
-  "features_kept": 97,
-  "features_removed": 13,
+  "features_kept": 90,
+  "features_removed": 12,
   "random_state": 42,
   "removed_features": [
-    "10y_vol_63d",
     "Gold_zscore_63d",
     "dxy_bb_position_20d",
     "dxy_percentile_21d",
@@ -18,5 +17,5 @@
     "yield_curve_vol_avg_fred"
   ],
   "threshold": 0.9585,
-  "total_features_before": 145
+  "total_features_before": 135
 }

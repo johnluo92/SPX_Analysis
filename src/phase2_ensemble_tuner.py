@@ -8,8 +8,8 @@ from optuna.samplers import TPESampler
 from sklearn.metrics import mean_absolute_error
 from config import QUALITY_FILTER_CONFIG
 warnings.filterwarnings("ignore")
-trials=500
-min_acc=.65
+trials=300
+min_acc=.70
 
 Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",

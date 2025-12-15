@@ -1,13 +1,11 @@
 {
-  "features_kept": 85,
-  "features_removed": 11,
+  "features_kept": 80,
+  "features_removed": 9,
   "random_state": 42,
   "removed_features": [
     "Gold_zscore_63d",
     "dxy_bb_position_20d",
-    "dxy_percentile_21d",
     "dxy_percentile_63d",
-    "dxy_velocity_21d",
     "hy_b_spread",
     "hy_bb_spread",
     "vix_vel_spx_rv_ratio",
@@ -16,5 +14,5 @@
     "yield_curve_vol_avg_fred"
   ],
   "threshold": 0.9585,
-  "total_features_before": 127
+  "total_features_before": 120
 }

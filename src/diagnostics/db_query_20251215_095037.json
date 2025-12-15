@@ -1,0 +1,94 @@
+{
+  "timestamp": "2025-12-15T09:50:37.596709",
+  "date_range": {
+    "start": "2024-01-07",
+    "end": "2025-12-08"
+  },
+  "total_predictions": 483,
+  "all_predictions": {
+    "total": 483,
+    "up_count": 231,
+    "down_count": 252,
+    "accuracy": 0.6873706004140787,
+    "up_accuracy": 0.7272727272727273,
+    "down_accuracy": 0.6507936507936508,
+    "mae": 15.229382888064958
+  },
+  "actionable": {
+    "total": 139,
+    "rate": 0.28778467908902694,
+    "up_count": 52,
+    "down_count": 87,
+    "accuracy": 0.8129496402877698,
+    "up_accuracy": 0.8846153846153846,
+    "down_accuracy": 0.7701149425287356,
+    "mae": 14.84675573815663
+  },
+  "cohorts": [
+    {
+      "cohort": "earnings_heavy",
+      "total": 21,
+      "actionable": 4,
+      "actionable_rate": 0.19047619047619047,
+      "accuracy_all": 0.6190476190476191,
+      "accuracy_actionable": 1.0,
+      "mae": 27.9532105390744
+    },
+    {
+      "cohort": "fomc_period",
+      "total": 279,
+      "actionable": 82,
+      "actionable_rate": 0.2939068100358423,
+      "accuracy_all": 0.6594982078853048,
+      "accuracy_actionable": 0.7926829268292682,
+      "mae": 15.339724353588617
+    },
+    {
+      "cohort": "mid_cycle",
+      "total": 105,
+      "actionable": 27,
+      "actionable_rate": 0.2571428571428571,
+      "accuracy_all": 0.7238095238095238,
+      "accuracy_actionable": 0.7777777777777779,
+      "mae": 15.904561646417537
+    },
+    {
+      "cohort": "opex_week",
+      "total": 78,
+      "actionable": 26,
+      "actionable_rate": 0.3333333333333333,
+      "accuracy_all": 0.7564102564102564,
+      "accuracy_actionable": 0.8846153846153846,
+      "mae": 10.500159565253158
+    }
+  ],
+  "confidence_stats": {
+    "min": 0.7357139515586493,
+    "mean": 0.8229095692523594,
+    "median": 0.8202384705354062,
+    "max": 0.939911261169967
+  },
+  "confidence_breakdown": [
+    {
+      "range": "0.7-0.8",
+      "count": 49,
+      "up_count": 24,
+      "down_count": 25,
+      "accuracy": 0.6122448979591837
+    },
+    {
+      "range": "0.8-0.9",
+      "count": 80,
+      "up_count": 28,
+      "down_count": 52,
+      "accuracy": 0.9125
+    },
+    {
+      "range": "0.9-1.0",
+      "count": 10,
+      "up_count": 0,
+      "down_count": 10,
+      "accuracy": 1.0
+    }
+  ]
+}
