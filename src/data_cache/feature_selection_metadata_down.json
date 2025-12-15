@@ -1,33 +1,33 @@
 {
-  "correlation_threshold": 0.8531,
-  "n_removed_correlation": 61,
+  "correlation_threshold": 0.9585,
+  "n_removed_correlation": 15,
   "n_samples": 4859,
-  "n_selected": 149,
+  "n_selected": 128,
   "random_state": 42,
   "target_type": "down",
   "top_10_features": [
-    "hy_spread",
     "vix_velocity_5d_regime_adj",
-    "vix_vs_ma10",
     "vix_velocity_5d",
-    "skew_vix_ratio_percentile_252d",
-    "dxy_zscore_21d",
-    "dxy_velocity_21d",
-    "natgas_vol_21d",
-    "dxy_extreme_high",
-    "rsi_14"
+    "spx_realized_vol_63d_x_regime_3",
+    "month",
+    "vix_vs_ma10",
+    "multi_event_stress",
+    "yield_30y10y",
+    "hy_spread",
+    "vix_zscore_252d_x_regime_0",
+    "yield_curve_vol_avg"
   ],
   "top_10_importance": [
-    0.007305113738402725,
-    0.007013222947716713,
-    0.006783292256295681,
-    0.006142605608329177,
-    0.0053829625248909,
-    0.005250178556889295,
-    0.004451920138671994,
-    0.0044384163338691,
-    0.004322065738961101,
-    0.0043178755324333904
+    0.008909598877653479,
+    0.00751282162964344,
+    0.006849341467022896,
+    0.0068410339299589396,
+    0.0067777894902974365,
+    0.006627565249800682,
+    0.006220175651833415,
+    0.0061998914927244185,
+    0.005496055725961924,
+    0.005261310411151498
   ],
-  "top_n": 149
+  "top_n": 128
 }

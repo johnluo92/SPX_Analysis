@@ -1,93 +1,93 @@
-# UNIFIED CONFIG - 2025-12-09 07:58:21
+# UNIFIED CONFIG - 2025-12-15 00:27:56
 
-QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.5669,
+QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.6047,
     'warn_pct': 20.0, 'error_pct': 50.0, 'strategy': 'raise'}
 
 CALENDAR_COHORTS = {
     'fomc_period': {'condition': 'macro_event_period', 'range': (-7, 2),
-        'weight': 1.1410, 'description': 'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},
+        'weight': 1.0, 'description': 'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},
     'opex_week': {'condition': 'days_to_monthly_opex', 'range': (-7, 0),
-        'weight': 1.1143, 'description': 'Options expiration week + VIX futures rollover'},
+        'weight': 1.0, 'description': 'Options expiration week + VIX futures rollover'},
     'earnings_heavy': {'condition': 'spx_earnings_pct', 'range': (0.15, 1.0),
-        'weight': 1.3949, 'description': 'Peak earnings season (Jan, Apr, Jul, Oct)'},
+        'weight': 1.0, 'description': 'Peak earnings season (Jan, Apr, Jul, Oct)'},
     'mid_cycle': {'condition': 'default', 'range': None, 'weight': 1.0, 'description': 'Regular market conditions'}}
 
-FEATURE_SELECTION_CV_PARAMS = {'n_estimators': 168,
-    'max_depth': 6, 'learning_rate': 0.0320,
-    'subsample': 0.9318, 'colsample_bytree': 0.9203,
+FEATURE_SELECTION_CV_PARAMS = {'n_estimators': 265,
+    'max_depth': 6, 'learning_rate': 0.1311,
+    'subsample': 0.8452, 'colsample_bytree': 0.7442,
     'n_jobs': 1, 'random_state': 42}
 
-FEATURE_SELECTION_CONFIG = {'expansion_top_n': 115,
-    'compression_top_n': 96, 'up_top_n': 112,
-    'down_top_n': 149, 'cv_folds': 5, 'protected_features': [],
-    'correlation_threshold': 0.8531,
+FEATURE_SELECTION_CONFIG = {'expansion_top_n': 76,
+    'compression_top_n': 91, 'up_top_n': 97,
+    'down_top_n': 128, 'cv_folds': 5, 'protected_features': [],
+    'correlation_threshold': 0.9585,
     'description': 'Unified tuning with ensemble evaluation'}
 
 EXPANSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 4, 'learning_rate': 0.0119,
-    'n_estimators': 699, 'subsample': 0.9268,
-    'colsample_bytree': 0.7740, 'colsample_bylevel': 0.9367,
-    'min_child_weight': 13, 'reg_alpha': 6.6587,
-    'reg_lambda': 2.0007, 'gamma': 0.7695,
+    'max_depth': 6, 'learning_rate': 0.0524,
+    'n_estimators': 406, 'subsample': 0.9060,
+    'colsample_bytree': 0.8707, 'colsample_bylevel': 0.9485,
+    'min_child_weight': 13, 'reg_alpha': 6.3692,
+    'reg_lambda': 9.9966, 'gamma': 0.5903,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 COMPRESSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 3, 'learning_rate': 0.1138,
-    'n_estimators': 506, 'subsample': 0.7987,
-    'colsample_bytree': 0.7655, 'colsample_bylevel': 0.8903,
-    'min_child_weight': 6, 'reg_alpha': 3.9449,
-    'reg_lambda': 8.9603, 'gamma': 0.4900,
+    'max_depth': 7, 'learning_rate': 0.0328,
+    'n_estimators': 750, 'subsample': 0.8689,
+    'colsample_bytree': 0.8657, 'colsample_bylevel': 0.7930,
+    'min_child_weight': 6, 'reg_alpha': 6.1072,
+    'reg_lambda': 4.1598, 'gamma': 0.1893,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 UP_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'aucpr',
-    'max_depth': 4, 'learning_rate': 0.0202,
-    'n_estimators': 297, 'subsample': 0.6315,
-    'colsample_bytree': 0.9279, 'min_child_weight': 16,
-    'reg_alpha': 1.7430, 'reg_lambda': 14.6926,
-    'gamma': 2.1211, 'scale_pos_weight': 0.9606,
+    'max_depth': 4, 'learning_rate': 0.0492,
+    'n_estimators': 347, 'subsample': 0.6782,
+    'colsample_bytree': 0.9437, 'min_child_weight': 5,
+    'reg_alpha': 6.0565, 'reg_lambda': 15.1840,
+    'gamma': 1.7485, 'scale_pos_weight': 1.0063,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 DOWN_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'aucpr',
-    'max_depth': 7, 'learning_rate': 0.0228,
-    'n_estimators': 231, 'subsample': 0.6327,
-    'colsample_bytree': 0.7150, 'min_child_weight': 18,
-    'reg_alpha': 3.3460, 'reg_lambda': 4.1332,
-    'gamma': 1.2398, 'scale_pos_weight': 0.9195,
+    'max_depth': 7, 'learning_rate': 0.0484,
+    'n_estimators': 404, 'subsample': 0.8578,
+    'colsample_bytree': 0.7370, 'min_child_weight': 10,
+    'reg_alpha': 3.4329, 'reg_lambda': 11.3462,
+    'gamma': 1.3584, 'scale_pos_weight': 1.1525,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 ENSEMBLE_CONFIG = {
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
-    'up_advantage': 0.0398,
+    'up_advantage': 0.0898,
     'confidence_weights': {
-        'up': {'classifier': 0.5506, 'magnitude': 0.4494},
-        'down': {'classifier': 0.6777, 'magnitude': 0.3223}
+        'up': {'classifier': 0.6899, 'magnitude': 0.3101},
+        'down': {'classifier': 0.6786, 'magnitude': 0.3214}
     },
     'magnitude_scaling': {
-        'up': {'small': 3.6145, 'medium': 6.2227, 'large': 10.5611},
-        'down': {'small': 4.2454, 'medium': 7.1775, 'large': 13.3878}
+        'up': {'small': 3.3474, 'medium': 5.8518, 'large': 10.3848},
+        'down': {'small': 3.0771, 'medium': 7.0879, 'large': 12.5706}
     },
     'dynamic_thresholds': {
         'up': {
-            'high_magnitude': 0.6200,
-            'medium_magnitude': 0.7418,
-            'low_magnitude': 0.7783
+            'high_magnitude': 0.6455,
+            'medium_magnitude': 0.7421,
+            'low_magnitude': 0.7457
         },
         'down': {
-            'high_magnitude': 0.7424,
-            'medium_magnitude': 0.8093,
-            'low_magnitude': 0.8023
+            'high_magnitude': 0.7038,
+            'medium_magnitude': 0.7615,
+            'low_magnitude': 0.8002
         }
     },
-    'min_confidence_up': 0.6075,
-    'min_confidence_down': 0.6775,
-    'boost_threshold_up': 17.5297,
-    'boost_threshold_down': 11.8896,
-    'boost_amount_up': 0.0536,
-    'boost_amount_down': 0.0564,
+    'min_confidence_up': 0.6081,
+    'min_confidence_down': 0.6817,
+    'boost_threshold_up': 14.6153,
+    'boost_threshold_down': 12.4955,
+    'boost_amount_up': 0.0768,
+    'boost_amount_down': 0.0730,
     'description': 'Unified tuning - base models + ensemble together'
 }
 
-# ACTIONABLE: 75.0% (UP 75.4%, DOWN 74.1%)
-# Signals: 188 (39.2% actionable)
-# UP signals: 130 | DOWN signals: 58
+# ACTIONABLE: 75.5% (UP 74.7%, DOWN 76.4%)
+# Signals: 155 (32.3% actionable)
+# UP signals: 83 | DOWN signals: 72

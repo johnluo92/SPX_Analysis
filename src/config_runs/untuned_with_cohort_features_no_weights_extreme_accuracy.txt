@@ -1,0 +1,48 @@
+ENSEMBLE_CONFIG = {
+    'enabled': True,
+    'reconciliation_method': 'winner_takes_all',
+    'up_advantage': 0.0646,
+    'confidence_weights': {
+        'up': {'classifier': 0.5207, 'magnitude': 0.4793},
+        'down': {'classifier': 0.7399, 'magnitude': 0.2601}
+    },
+    'magnitude_scaling': {
+        'up': {'small': 4.4380, 'medium': 5.5688, 'large': 12.8342},
+        'down': {'small': 3.9065, 'medium': 4.5442, 'large': 10.9927}
+    },
+    'dynamic_thresholds': {
+        'up': {
+            'high_magnitude': 0.6949,
+            'medium_magnitude': 0.7685,
+            'low_magnitude': 0.8069
+        },
+        'down': {
+            'high_magnitude': 0.7757,
+            'medium_magnitude': 0.8539,
+            'low_magnitude': 0.8985
+        }
+    },
+    'min_confidence_up': 0.6849,
+    'min_confidence_down': 0.7187,
+    'boost_threshold_up': 16.3856,
+    'boost_threshold_down': 14.3325,
+    'boost_amount_up': 0.0790,
+    'boost_amount_down': 0.0393,
+    'description': 'Phase 2 optimized for 70%+ balanced accuracy'
+}
+
+ASYMMETRIC 4-MODEL TRAINING SUMMARY
+Models: Expansion + Compression Regressors | UP + DOWN Classifiers | Training through: 2025-11-30
+✓ Asymmetric ensemble: DOWN must beat UP by 8% to win
+Expansion: Train=9.81% | Val=8.73% | Test=11.19% | Bias=-3.53%
+Compression: Train=4.96% | Val=4.82% | Test=5.85% | Bias=+0.69%
+UP: Train=76.1% | Val=61.1% | Test=65.0% | Prec=68.5% | Rec=49.3% | F1=57.4%
+DOWN: Train=73.7% | Val=61.5% | Test=65.2% | Prec=62.7% | Rec=82.5% | F1=71.3%
+
+
+# TEST PERFORMANCE WITH OPTIMIZED ENSEMBLE:
+# Actionable 86.4% (UP 88.9%, DOWN 84.4%)
+# Balance gap: 4.5%
+# MAE 12.91% | Signals: 59 (12.3% actionable)
+# UP signals: 27 | DOWN signals: 32
+# Trading frequency: ~0.6 signals/week

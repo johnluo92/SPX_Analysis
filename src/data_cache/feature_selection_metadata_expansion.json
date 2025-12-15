@@ -1,33 +1,33 @@
 {
-  "correlation_threshold": 0.8531,
-  "n_removed_correlation": 38,
+  "correlation_threshold": 0.9585,
+  "n_removed_correlation": 7,
   "n_samples": 2246,
-  "n_selected": 115,
+  "n_selected": 76,
   "random_state": 42,
   "target_type": "expansion",
   "top_10_features": [
     "days_in_regime",
+    "vx_spread_x_vix_expiry",
+    "yield_10y3m_inversion_depth",
     "vix_percentile_126d",
-    "fin_stress_index",
-    "hy_velocity_21d",
+    "hy_spread",
     "vx_oi_surge",
-    "copper_ret_63d",
-    "vix_vol_10d",
-    "risk_premium_percentile_126d",
-    "vol_stress_dispersion",
-    "liquidity_stress_composite"
+    "hy_velocity_21d",
+    "joint_regime_expected_return",
+    "hy_ccc_spread",
+    "VXTLT_vs_ma21"
   ],
   "top_10_importance": [
-    0.01589855020865798,
-    0.01219713562168181,
-    0.011462605791166425,
-    0.011030334501992912,
-    0.010384210199117661,
-    0.009687681123614312,
-    0.008279920974746346,
-    0.006569428136572242,
-    0.006531376577913761,
-    0.006474263337440789
+    0.027109022624790667,
+    0.024089548093985513,
+    0.023575003352016212,
+    0.022798250522464515,
+    0.015235871745971963,
+    0.014935823778432677,
+    0.010677241813391447,
+    0.010656880864917184,
+    0.010473508475115523,
+    0.009901029150933027
   ],
-  "top_n": 115
+  "top_n": 76
 }

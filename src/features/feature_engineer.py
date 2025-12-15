@@ -240,6 +240,8 @@ class FeatureEngineer:
         binary_transf=self.transformation_engine.add_binary_extremes(transform_feats)
         af=pd.concat([bf,cbf,ff,mf,ef,tf,vvf,mtf,intf,vol_cluster_f,credit_vol_f,regime_cond_f,regime_adj_mom,log_transf,binary_transf,calf],axis=1);af=af.loc[:,~af.columns.duplicated()];af=self._ensure_numeric_dtypes(af)
         cohdf=self.cohort_engineer.build_cohort_features(af.index);af=pd.concat([af,cohdf],axis=1)
+        proximity_features=self.cohort_engineer.build_cohort_proximity_features(af.index);af=pd.concat([af,proximity_features],axis=1)
+        interaction_features=self.cohort_engineer.build_cohort_interaction_features(af.index,af);af=pd.concat([af,interaction_features],axis=1)
         af["feature_quality"]=self.validator.compute_feature_quality_batch(af);af=self.apply_quality_control(af)
         if ENABLE_TEMPORAL_SAFETY and not cb.empty:self._validate_term_structure_timing(vix,cb)
         print(f"\n✅ Complete: {len(af.columns)} features | {len(af)} rows");print(f"   Date range: {af.index[0].date()} → {af.index[-1].date()}");print(f"{'='*80}\n");return {"features":af,"spx":spx,"vix":vix,"cboe_data":cb if cbd else None,"vvix":vvix_series}

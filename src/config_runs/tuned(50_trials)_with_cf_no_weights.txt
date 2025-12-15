@@ -1,0 +1,51 @@
+QUALITY_FILTER_CONFIG={'enabled':True,'min_threshold':0.5212,'warn_pct':20.0,'error_pct':50.0,'strategy':'raise'}
+CALENDAR_COHORTS={'fomc_period':{'condition':'macro_event_period','range':(-7,2),'weight':1,'description':'FOMC meetings, CPI releases, PCE releases, FOMC minutes'},'opex_week':{'condition':'days_to_monthly_opex','range':(-7,0),'weight':1,'description':'Options expiration week + VIX futures rollover'},'earnings_heavy':{'condition':'spx_earnings_pct','range':(0.15,1.0),'weight':1,'description':'Peak earnings season (Jan, Apr, Jul, Oct)'},'mid_cycle':{'condition':'default','range':None,'weight':1,'description':'Regular market conditions'}}
+FEATURE_SELECTION_CV_PARAMS={'n_estimators':153,'max_depth':4,'learning_rate':0.0342,'subsample':0.7889,'colsample_bytree':0.8590,'n_jobs':1,'random_state':42}
+FEATURE_SELECTION_CONFIG={'expansion_top_n':88,'compression_top_n':70,'up_top_n':125,'down_top_n':107,'cv_folds':5,'protected_features':[],'correlation_threshold':0.9062,'description':'Unified tuning with ensemble evaluation'}
+EXPANSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':4,'learning_rate':0.0548,'n_estimators':553,'subsample':0.8552,'colsample_bytree':0.7776,'colsample_bylevel':0.8772,'min_child_weight':7,'reg_alpha':1.0540,'reg_lambda':9.0753,'gamma':0.1902,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+COMPRESSION_PARAMS={'objective':'reg:squarederror','eval_metric':'rmse','max_depth':6,'learning_rate':0.0705,'n_estimators':894,'subsample':0.9079,'colsample_bytree':0.7665,'colsample_bylevel':0.8487,'min_child_weight':6,'reg_alpha':3.6361,'reg_lambda':8.6705,'gamma':0.4488,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+UP_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':5,'learning_rate':0.0380,'n_estimators':496,'subsample':0.8169,'colsample_bytree':0.7624,'min_child_weight':11,'reg_alpha':2.5858,'reg_lambda':7.0742,'gamma':0.5348,'scale_pos_weight':0.9738,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+DOWN_CLASSIFIER_PARAMS={'objective':'binary:logistic','eval_metric':'aucpr','max_depth':6,'learning_rate':0.0571,'n_estimators':280,'subsample':0.8512,'colsample_bytree':0.7825,'min_child_weight':5,'reg_alpha':2.4214,'reg_lambda':5.0097,'gamma':0.6106,'scale_pos_weight':1.1912,'early_stopping_rounds':50,'seed':42,'n_jobs':1,'random_state':42}
+ENSEMBLE_CONFIG={'enabled':True,'reconciliation_method':'winner_takes_all','up_advantage':0.0779,'confidence_weights':{'up':{'classifier':0.5786,'magnitude':0.4214},'down':{'classifier':0.6783,'magnitude':0.3217}},'magnitude_scaling':{'up':{'small':3.0950,'medium':7.9163,'large':12.0521},'down':{'small':3.5162,'medium':5.9754,'large':12.5220}},'dynamic_thresholds':{'up':{'high_magnitude':0.6687,'medium_magnitude':0.7088,'low_magnitude':0.7403},'down':{'high_magnitude':0.7543,'medium_magnitude':0.7833,'low_magnitude':0.7929}},'min_confidence_up':0.6680,'min_confidence_down':0.6747,'boost_threshold_up':19.8994,'boost_threshold_down':12.7163,'boost_amount_up':0.0727,'boost_amount_down':0.0386,'description':'Unified tuning - base models + ensemble together'}
+
+
+
+ASYMMETRIC 4-MODEL TRAINING SUMMARY
+Models: Expansion + Compression Regressors | UP + DOWN Classifiers | Training through: 2025-11-30
+✓ Asymmetric ensemble: DOWN must beat UP by 8% to win
+Expansion: Train=9.75% | Val=8.77% | Test=11.17% | Bias=-3.24%
+Compression: Train=4.94% | Val=4.84% | Test=5.81% | Bias=+0.64%
+UP: Train=70.4% | Val=61.1% | Test=62.9% | Prec=78.0% | Rec=31.0% | F1=44.4%
+DOWN: Train=75.2% | Val=60.1% | Test=63.3% | Prec=59.8% | Rec=90.8% | F1=72.2%
+
+Database: 480 predictions (2024-01-07 to 2025-12-03)
+
+ALL PREDICTIONS:
+  Total: 480
+  UP: 156 (32.5%) | Accuracy: 80.1%
+  DOWN: 324 (67.5%) | Accuracy: 59.9%
+  Overall Accuracy: 66.5%
+  MAE: 15.33%
+
+ACTIONABLE SIGNALS:
+  Total: 168 (35.0%)
+  UP: 107 (63.7%) | Accuracy: 86.9%
+  DOWN: 61 (36.3%) | Accuracy: 80.3%
+  Overall Accuracy: 84.5%
+  MAE: 13.18%
+
+BY COHORT:
+  earnings_heavy   n= 21 acc=61.9% mae=26.35% | actionable=  9 (42.9%) acc=88.9%
+  fomc_period      n=277 acc=66.4% mae=15.08% | actionable= 94 (33.9%) acc=80.9%
+  mid_cycle        n=104 acc=67.3% mae=16.35% | actionable= 34 (32.7%) acc=94.1%
+  opex_week        n= 78 acc=66.7% mae=11.91% | actionable= 31 (39.7%) acc=83.9%
+
+CONFIDENCE BY 0.10 (Actionable Only):
+  0.6-0.7   n= 10 up/dn= 10/0   acc=90.0%
+  0.7-0.8   n=153 up/dn= 97/56  acc=83.7%
+  0.8-0.9   n=  5 up/dn=  0/5   acc=100.0%
+
+  Stats: min=0.688 mean=0.752 median=0.755 max=0.805
+
+THRESHOLD STATS (Actionable Only):
+  min=0.669 mean=0.721 median=0.709 max=0.754

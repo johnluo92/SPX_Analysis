@@ -1,0 +1,68 @@
+{
+  "timestamp": "2025-12-12T00:29:21.736683",
+  "phase": "Phase 2 - Ensemble Config Tuner (IMPROVED)",
+  "description": "Optimizes post-hoc ensemble decision logic using Phase 1 models. Prioritizes balanced accuracy.",
+  "optimization": {
+    "n_trials": 2000,
+    "best_trial": 1581,
+    "best_score": 14.652569982102817,
+    "min_accuracy_target": 0.7
+  },
+  "data_splits": {
+    "train": "2004-09-13 to 2021-12-31",
+    "val": "2022-01-03 to 2023-12-31",
+    "test": "2024-01-01 to 2025-11-28",
+    "train_size": 4358,
+    "val_size": 501,
+    "test_size": 480
+  },
+  "test_metrics": {
+    "raw_predictions": {
+      "total": 480,
+      "up_count": 200,
+      "down_count": 280,
+      "up_pct": 0.4166666666666667,
+      "down_pct": 0.5833333333333334,
+      "accuracy": 0.6729166666666667,
+      "up_accuracy": 0.68,
+      "down_accuracy": 0.6678571428571428
+    },
+    "actionable_signals": {
+      "total": 59,
+      "rate": 0.12291666666666666,
+      "up_count": 27,
+      "down_count": 32,
+      "up_pct": 0.4576271186440678,
+      "down_pct": 0.5423728813559322,
+      "accuracy": 0.864406779661017,
+      "up_accuracy": 0.8888888888888888,
+      "down_accuracy": 0.84375,
+      "mag_mae": 12.91253067288789,
+      "mag_mae_up": 8.002372415472214,
+      "mag_mae_down": 17.05547670258236
+    }
+  },
+  "best_parameters": {
+    "up_advantage": 0.06458663906300982,
+    "up_thresh_high": 0.6949243685625112,
+    "up_thresh_med": 0.768477601074504,
+    "up_thresh_low": 0.8068628995860426,
+    "down_thresh_high": 0.7756927014778345,
+    "down_thresh_med": 0.8539240688810902,
+    "down_thresh_low": 0.8984732443985466,
+    "classifier_weight_up": 0.5206870223892832,
+    "classifier_weight_down": 0.7398708546532891,
+    "mag_scale_up_small": 4.437991653471131,
+    "mag_scale_up_medium": 5.568769897266958,
+    "mag_scale_up_large": 12.834167404405354,
+    "mag_scale_down_small": 3.906475963114481,
+    "mag_scale_down_medium": 4.544183236280352,
+    "mag_scale_down_large": 10.992729823894013,
+    "boost_threshold_up": 16.3855871916647,
+    "boost_threshold_down": 14.332453211464907,
+    "boost_amount_up": 0.07902647824632085,
+    "boost_amount_down": 0.039268530944563125,
+    "min_confidence_up": 0.6849167158688835,
+    "min_confidence_down": 0.7186764867335808
+  }
+}
