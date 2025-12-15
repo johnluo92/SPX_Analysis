@@ -24,19 +24,19 @@
   },
   "down_classifier": {
     "test": {
-      "accuracy": 0.5645833333333333,
-      "avg_confidence": 0.5714950561523438,
-      "f1": 0.7027027027027027,
-      "precision": 0.5464601769911505,
-      "recall": 0.9840637450199203
+      "accuracy": 0.65625,
+      "avg_confidence": 0.6236633062362671,
+      "f1": 0.6845124282982792,
+      "precision": 0.6580882352941176,
+      "recall": 0.7131474103585658
     },
     "train": {
-      "accuracy": 0.594216203809961,
-      "avg_confidence": 0.5711835026741028
+      "accuracy": 0.7023181087904522,
+      "avg_confidence": 0.610873818397522
     },
     "val": {
-      "accuracy": 0.5808383233532934,
-      "avg_confidence": 0.571407675743103
+      "accuracy": 0.5588822355289421,
+      "avg_confidence": 0.6001930236816406
     }
   },
   "expansion": {

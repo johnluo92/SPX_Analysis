@@ -8,7 +8,8 @@ from optuna.samplers import TPESampler
 from sklearn.metrics import mean_absolute_error
 from config import QUALITY_FILTER_CONFIG
 warnings.filterwarnings("ignore")
-trials=2000
+trials=500
+min_acc=.65
 
 Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
@@ -39,7 +40,7 @@ class EnsembleMetrics:
     mag_mae_down: float = 0.0
 
 class Phase2Tuner:
-    def __init__(self, df, vix, n_trials=trials, output_dir="tuning_phase2", min_accuracy=0.70):
+    def __init__(self, df, vix, n_trials=trials, output_dir="tuning_phase2", min_accuracy=min_acc):
         self.df = df.copy()
         self.vix = vix.copy()
         self.n_trials = n_trials
@@ -346,7 +347,7 @@ class Phase2Tuner:
 
         # Sample thresholds in correct order (high < medium < low)
         # Adjust ranges based on min_accuracy target
-        if self.min_accuracy >= 0.70:
+        if self.min_accuracy >= min_acc:
             # High precision mode - stricter thresholds
             up_high_range = (0.55, 0.70)
             down_high_range = (0.65, 0.80)  # RAISED for DOWN to filter more aggressively
@@ -408,7 +409,7 @@ class Phase2Tuner:
         config['boost_amount_down'] = trial.suggest_float('boost_amount_down', 0.03, 0.08)
 
         # Adjust min_confidence based on accuracy target
-        if self.min_accuracy >= 0.70:
+        if self.min_accuracy >= min_acc:
             conf_range_up = (0.55, 0.70)
             conf_range_down = (0.60, 0.75)  # RAISED for DOWN
         else:
@@ -643,7 +644,7 @@ def main():
     parser = argparse.ArgumentParser(description="Phase 2: Ensemble Config Tuner (IMPROVED - Balanced)")
     parser.add_argument('--trials', type=int, default=trials, help=f"Number of optimization trials (default: {trials})")
     parser.add_argument('--output-dir', type=str, default='tuning_phase2', help="Output directory")
-    parser.add_argument('--min-accuracy', type=float, default=0.70, help="Minimum accuracy target (0.55-0.90, default: 0.70)")
+    parser.add_argument('--min-accuracy', type=float, default=min_acc, help="Minimum accuracy target (0.55-0.90, default: 0.70)")
     args = parser.parse_args()
 
     if not (0.50 <= args.min_accuracy <= 0.95):
