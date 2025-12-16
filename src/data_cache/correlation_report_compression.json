@@ -1,14 +1,13 @@
 {
-  "features_kept": 91,
-  "features_removed": 5,
+  "features_kept": 42,
+  "features_removed": 4,
   "random_state": 42,
   "removed_features": [
-    "opex_proximity",
+    "reversion_strength_63d",
     "skew_vix_ratio_percentile_252d",
-    "vix_bb_position_20d",
-    "vvix_ret_21d",
-    "yield_10y2y_zscore"
+    "vix_percentile_63d",
+    "vix_vs_ma252"
   ],
-  "threshold": 0.9585,
-  "total_features_before": 136
+  "threshold": 0.9,
+  "total_features_before": 63
 }

@@ -8,8 +8,8 @@ from optuna.samplers import TPESampler
 from sklearn.metrics import mean_absolute_error
 from config import QUALITY_FILTER_CONFIG
 warnings.filterwarnings("ignore")
-trials=300
-min_acc=.70
+trials=500
+min_acc=.68
 
 Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
@@ -281,58 +281,71 @@ class Phase2Tuner:
             down_acc = metrics.act_down_accuracy
 
             # Hard constraints (fail fast)
-            min_signals = max(10, int(30 * (self.min_accuracy / 0.75)))
+            TARGET_MIN_SIGNALS = 60  # Each direction needs 60+ signals
+            TARGET_MIN_RATE = 0.28   # At least 28% actionable
+            TARGET_RATE_RANGE = (0.32, 0.40)  # Ideal range: 32-40%
 
             if up_acc < self.min_accuracy:
                 return 999.0
             if down_acc < self.min_accuracy:
                 return 999.0
-            if metrics.act_up_count < min_signals or metrics.act_down_count < min_signals:
+            if metrics.act_up_count < TARGET_MIN_SIGNALS or metrics.act_down_count < TARGET_MIN_SIGNALS:
                 return 999.0
-            if metrics.act_total < (min_signals * 2):
+            if metrics.act_rate < TARGET_MIN_RATE:
                 return 999.0
 
-            # === IMPROVED OBJECTIVE: BALANCED ACCURACY WITH NATURAL 50/50 CONVERGENCE ===
+            # === IMPROVED OBJECTIVE: BALANCE ACCURACY WITH VOLUME ===
 
-            # 1. PRIMARY: Minimize the WORST direction's error (force both to improve)
-            #    This prevents one direction being 87% while other is 56%
+            # 1. Accuracy penalties
             worst_acc = min(up_acc, down_acc)
             worst_error = 1.0 - worst_acc
-            worst_penalty = worst_error * 50.0  # HEAVY penalty for weak direction
+            worst_penalty = worst_error * 50.0
 
-            # 2. SECONDARY: Minimize average error (push both higher)
             avg_acc = (up_acc + down_acc) / 2.0
             avg_error = 1.0 - avg_acc
             avg_penalty = avg_error * 20.0
 
-            # 3. TERTIARY: Strong penalty for imbalanced accuracy
-            #    31% gap (87% vs 56%) should be VERY expensive
             accuracy_gap = abs(up_acc - down_acc)
-            balance_penalty = (accuracy_gap ** 2) * 100.0  # Squared penalty grows fast
+            balance_penalty = (accuracy_gap ** 2) * 100.0
 
-            # 4. QUATERNARY: Reward balanced signal distribution (natural 50/50)
-            #    But lighter weight - let it emerge from balanced accuracy
+            # 2. Signal distribution balance (50/50 split)
             signal_imbalance = abs(metrics.act_up_pct - 0.50)
-            signal_penalty = signal_imbalance * 5.0  # Only 5x vs old 3x
+            signal_penalty = signal_imbalance * 5.0
 
-            # 5. QUINARY: Prefer lower MAE
+            # 3. VOLUME PENALTY - heavily reward 32-40% actionable rate
+            #    This prevents optimizer from being ultra-conservative
+            if metrics.act_rate < TARGET_RATE_RANGE[0]:
+                # Below 32%: strong penalty (80% @ 25% rate is BAD)
+                volume_penalty = (TARGET_RATE_RANGE[0] - metrics.act_rate) * 150.0
+            elif metrics.act_rate > TARGET_RATE_RANGE[1]:
+                # Above 40%: mild penalty (too many signals)
+                volume_penalty = (metrics.act_rate - TARGET_RATE_RANGE[1]) * 50.0
+            else:
+                # In sweet spot (32-40%): bonus reward
+                volume_penalty = -10.0
+
+            # 4. Magnitude accuracy
             mag_penalty = metrics.mag_mae * 0.3
 
-            # 6. SENARY: Slight reward for higher actionable rate
-            actionable_reward = -metrics.act_rate * 1.0  # Reduced from 2.0
-
-            # TOTAL SCORE: Prioritize worst direction first, then balance, then distribution
-            # This forces optimizer to improve DOWN (currently 56%) before trying to optimize UP further
+            # TOTAL SCORE
+            # The 150x volume penalty means:
+            # - 80% @ 35% rate scores ~25 (10 + 4 + 0 + 2.5 - 10 + 4 = 10.5)
+            # - 90% @ 25% rate scores ~15.5 (5 + 2 + 0 + 2.5 + 10.5 + 4 = 24)
+            # Wait, that's still wrong. Let me recalculate...
+            # - 80% @ 35% rate: worst=10, avg=4, bal=0, sig=2.5, vol=-10, mae=4 = 10.5
+            # - 90% @ 25% rate: worst=5, avg=2, bal=0, sig=2.5, vol=(0.32-0.25)*150=10.5, mae=4 = 24
+            # Good! Now 35% rate at 80% beats 25% rate at 90%
             score = (
-                worst_penalty +      # 50x weight: fix the weak direction FIRST
-                avg_penalty +        # 20x weight: then push both higher
-                balance_penalty +    # 100x weight: heavily punish gaps
-                signal_penalty +     # 5x weight: natural 50/50 convergence
-                mag_penalty +        # 0.3x weight: magnitude accuracy matters less
-                actionable_reward    # -1x weight: small bonus for more signals
+                worst_penalty +      # 50x: fix weak direction
+                avg_penalty +        # 20x: push both higher
+                balance_penalty +    # 100x: punish gaps
+                signal_penalty +     # 5x: 50/50 distribution
+                volume_penalty +     # 150x/-10: STRONGLY favor 32-40% rate
+                mag_penalty          # 0.3x: magnitude accuracy
             )
 
             return score
+
 
         except Exception as e:
             logger.error(f"Trial {trial.number} failed: {e}")

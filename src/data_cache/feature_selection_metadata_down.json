@@ -1,33 +1,33 @@
 {
-  "correlation_threshold": 0.9585,
-  "n_removed_correlation": 9,
+  "correlation_threshold": 0.9,
+  "n_removed_correlation": 5,
   "n_samples": 4859,
-  "n_selected": 80,
+  "n_selected": 31,
   "random_state": 42,
   "target_type": "down",
   "top_10_features": [
     "vix_velocity_5d_regime_adj",
     "vix_velocity_5d",
-    "spx_realized_vol_63d_x_regime_3",
-    "month",
     "vix_vs_ma10",
-    "multi_event_stress",
-    "yield_30y10y",
     "hy_spread",
-    "vix_zscore_252d_x_regime_0",
-    "yield_curve_vol_avg"
+    "skew_vix_ratio_percentile_252d",
+    "dxy_bb_position_20d",
+    "rsi_14",
+    "skew_vix_ratio",
+    "vix_percentile_126d",
+    "dxy_vs_ma21"
   ],
   "top_10_importance": [
-    0.008909598877653479,
-    0.00751282162964344,
-    0.006849341467022896,
-    0.0068410339299589396,
-    0.0067777894902974365,
-    0.006627565249800682,
-    0.006220175651833415,
-    0.0061998914927244185,
-    0.005496055725961924,
-    0.005261310411151498
+    0.008837489504367113,
+    0.006780717987567186,
+    0.00648765335790813,
+    0.006119644409045577,
+    0.00553500591777265,
+    0.0049656818620860575,
+    0.0049097560811787845,
+    0.004898990644142032,
+    0.00479619309771806,
+    0.004688453301787377
   ],
-  "top_n": 80
+  "top_n": 31
 }

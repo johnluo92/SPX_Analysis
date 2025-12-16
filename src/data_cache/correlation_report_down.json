@@ -1,18 +1,14 @@
 {
-  "features_kept": 80,
-  "features_removed": 9,
+  "features_kept": 31,
+  "features_removed": 5,
   "random_state": 42,
   "removed_features": [
-    "Gold_zscore_63d",
-    "dxy_bb_position_20d",
-    "dxy_percentile_63d",
+    "dxy_velocity_10d",
+    "dxy_zscore_21d",
     "hy_b_spread",
-    "hy_bb_spread",
-    "vix_vel_spx_rv_ratio",
-    "vix_zscore_21d",
-    "vvix_zscore_21d",
-    "yield_curve_vol_avg_fred"
+    "vix_percentile_252d",
+    "vix_ret_5d"
   ],
-  "threshold": 0.9585,
-  "total_features_before": 120
+  "threshold": 0.9,
+  "total_features_before": 46
 }

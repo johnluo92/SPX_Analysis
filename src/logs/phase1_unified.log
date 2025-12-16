@@ -12985,3 +12985,1257 @@
 2025-12-15 00:27:56,187 - INFO - ================================================================================
 2025-12-15 00:27:56,187 - INFO - 
 ✅ Unified optimization complete!
+2025-12-15 16:09:08,083 - INFO - Loading production data...
+2025-12-15 16:09:29,259 - INFO - Dataset: 5339 samples, 510 features
+2025-12-15 16:09:29,260 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-15 16:09:29,260 - INFO - 
+2025-12-15 16:09:29,345 - INFO - ================================================================================
+2025-12-15 16:09:29,345 - INFO - UNIFIED PHASE 1 TUNER - WITH ENSEMBLE EVALUATION
+2025-12-15 16:09:29,345 - INFO - ================================================================================
+2025-12-15 16:09:29,345 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
+2025-12-15 16:09:29,345 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
+2025-12-15 16:09:29,345 - INFO - Test:   480 days (2024-01-01 to 2025-11-28)
+2025-12-15 16:09:29,345 - INFO - Base features: 505
+2025-12-15 16:09:29,345 - INFO - EVALUATES: With ensemble logic (normalized probs + up_advantage)
+2025-12-15 16:09:29,345 - INFO - CONSTRAINTS: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-15 16:09:29,345 - INFO - ================================================================================
+2025-12-15 16:09:29,346 - INFO - Starting Unified Phase 1 optimization: 200 trials
+2025-12-15 16:09:29,346 - INFO - Tuning 74 hyperparameters (base models + ensemble config)
+2025-12-15 16:09:29,346 - INFO - Evaluating with ENSEMBLE LOGIC on 480 test days
+2025-12-15 16:09:29,346 - INFO - Constraints: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-15 16:09:29,346 - INFO - ================================================================================
+2025-12-15 16:09:30,247 - INFO - Feature selection: expansion | top_n=74 | corr_threshold=0.8522642943725383
+2025-12-15 16:09:30,305 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:09:30,312 - INFO -   Training samples: 2241
+2025-12-15 16:10:01,064 - INFO -   Candidate features: 111
+2025-12-15 16:10:01,173 - INFO -   Removed 28 correlated features
+2025-12-15 16:10:01,174 - INFO -   Final selection: 74 features
+2025-12-15 16:10:01,174 - INFO -   Top 5: ['days_in_regime', 'vix_percentile_126d', 'hy_spread', 'vx_roll_cost_5d', 'yield_10y3m_inversion_depth']
+2025-12-15 16:10:01,187 - INFO - Feature selection: compression | top_n=131 | corr_threshold=0.8522642943725383
+2025-12-15 16:10:01,214 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:10:01,219 - INFO -   Training samples: 2613
+2025-12-15 16:10:35,121 - INFO -   Candidate features: 196
+2025-12-15 16:10:35,524 - INFO -   Removed 50 correlated features
+2025-12-15 16:10:35,525 - INFO -   Final selection: 131 features
+2025-12-15 16:10:35,525 - INFO -   Top 5: ['vix_vs_ma63', 'joint_regime_expected_return', 'vix_vs_ma21', 'vix_percentile_126d', 'vix_velocity_5d_regime_adj']
+2025-12-15 16:10:35,548 - INFO - Feature selection: up | top_n=122 | corr_threshold=0.8522642943725383
+2025-12-15 16:10:35,603 - INFO -   Using all samples (UP classification)
+2025-12-15 16:10:35,612 - INFO -   Training samples: 4859
+2025-12-15 16:11:16,039 - INFO -   Candidate features: 183
+2025-12-15 16:11:16,396 - INFO -   Removed 43 correlated features
+2025-12-15 16:11:16,396 - INFO -   Final selection: 122 features
+2025-12-15 16:11:16,396 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'hy_spread', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d', 'yield_curve_vol_avg']
+2025-12-15 16:11:16,413 - INFO - Feature selection: down | top_n=130 | corr_threshold=0.8522642943725383
+2025-12-15 16:11:16,452 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:11:16,459 - INFO -   Training samples: 4859
+2025-12-15 16:11:46,772 - INFO -   Candidate features: 195
+2025-12-15 16:11:47,130 - INFO -   Removed 46 correlated features
+2025-12-15 16:11:47,130 - INFO -   Final selection: 130 features
+2025-12-15 16:11:47,130 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'hy_spread', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d', 'yield_curve_vol_avg']
+2025-12-15 16:11:53,983 - INFO - Feature selection: expansion | top_n=95 | corr_threshold=0.8863987827337914
+2025-12-15 16:11:54,013 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:11:54,020 - INFO -   Training samples: 2241
+2025-12-15 16:12:20,146 - INFO -   Candidate features: 142
+2025-12-15 16:12:20,317 - INFO -   Removed 23 correlated features
+2025-12-15 16:12:20,317 - INFO -   Final selection: 95 features
+2025-12-15 16:12:20,317 - INFO -   Top 5: ['days_in_regime', 'vix_percentile_126d', 'vx_spread_x_vix_expiry', 'hy_spread', 'yield_10y3m_inversion_depth']
+2025-12-15 16:12:20,325 - INFO - Feature selection: compression | top_n=78 | corr_threshold=0.8863987827337914
+2025-12-15 16:12:20,350 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:12:20,355 - INFO -   Training samples: 2613
+2025-12-15 16:12:48,542 - INFO -   Candidate features: 117
+2025-12-15 16:12:48,664 - INFO -   Removed 17 correlated features
+2025-12-15 16:12:48,664 - INFO -   Final selection: 78 features
+2025-12-15 16:12:48,664 - INFO -   Top 5: ['vix_vs_ma63', 'vix_velocity_5d_regime_adj', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_vel_spx_rv_ratio']
+2025-12-15 16:12:48,673 - INFO - Feature selection: up | top_n=141 | corr_threshold=0.8863987827337914
+2025-12-15 16:12:48,696 - INFO -   Using all samples (UP classification)
+2025-12-15 16:12:48,699 - INFO -   Training samples: 4859
+2025-12-15 16:13:15,780 - INFO -   Candidate features: 211
+2025-12-15 16:13:16,166 - INFO -   Removed 38 correlated features
+2025-12-15 16:13:16,166 - INFO -   Final selection: 141 features
+2025-12-15 16:13:16,166 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'hy_spread', 'vix_vs_ma10', 'vix_zscore_252d_x_regime_0', 'vix_term_ratio_zscore_63d']
+2025-12-15 16:13:16,181 - INFO - Feature selection: down | top_n=124 | corr_threshold=0.8863987827337914
+2025-12-15 16:13:16,204 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:13:16,208 - INFO -   Training samples: 4859
+2025-12-15 16:13:46,569 - INFO -   Candidate features: 186
+2025-12-15 16:13:46,978 - INFO -   Removed 30 correlated features
+2025-12-15 16:13:46,978 - INFO -   Final selection: 124 features
+2025-12-15 16:13:46,978 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'hy_spread', 'vix_vs_ma10', 'vix_zscore_252d_x_regime_0', 'vix_term_ratio_zscore_63d']
+2025-12-15 16:13:56,753 - INFO - Feature selection: expansion | top_n=134 | corr_threshold=0.958421549952166
+2025-12-15 16:13:56,792 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:13:56,810 - INFO -   Training samples: 2241
+2025-12-15 16:14:11,943 - INFO -   Candidate features: 201
+2025-12-15 16:14:12,538 - INFO -   Removed 19 correlated features
+2025-12-15 16:14:12,540 - INFO -   Final selection: 134 features
+2025-12-15 16:14:12,540 - INFO -   Top 5: ['days_in_regime', 'fin_stress_index', 'hy_spread', 'hy_bb_velocity_21d', 'vx_oi_5d_change']
+2025-12-15 16:14:12,604 - INFO - Feature selection: compression | top_n=87 | corr_threshold=0.958421549952166
+2025-12-15 16:14:12,679 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:14:12,689 - INFO -   Training samples: 2613
+2025-12-15 16:14:28,239 - INFO -   Candidate features: 130
+2025-12-15 16:14:28,394 - INFO -   Removed 3 correlated features
+2025-12-15 16:14:28,394 - INFO -   Final selection: 87 features
+2025-12-15 16:14:28,394 - INFO -   Top 5: ['vix_vs_ma63', 'vix_skew_joint_regime', 'vix_vs_ma21', 'joint_regime_expected_return', 'vix_percentile_126d']
+2025-12-15 16:14:28,407 - INFO - Feature selection: up | top_n=90 | corr_threshold=0.958421549952166
+2025-12-15 16:14:28,448 - INFO -   Using all samples (UP classification)
+2025-12-15 16:14:28,453 - INFO -   Training samples: 4859
+2025-12-15 16:14:42,779 - INFO -   Candidate features: 135
+2025-12-15 16:14:42,961 - INFO -   Removed 11 correlated features
+2025-12-15 16:14:42,961 - INFO -   Final selection: 90 features
+2025-12-15 16:14:42,961 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'yield_curve_vol_avg', 'dxy_vs_ma21', 'skew_vix_ratio_percentile_252d']
+2025-12-15 16:14:42,972 - INFO - Feature selection: down | top_n=114 | corr_threshold=0.958421549952166
+2025-12-15 16:14:42,995 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:14:42,999 - INFO -   Training samples: 4859
+2025-12-15 16:14:55,916 - INFO -   Candidate features: 171
+2025-12-15 16:14:56,167 - INFO -   Removed 14 correlated features
+2025-12-15 16:14:56,167 - INFO -   Final selection: 114 features
+2025-12-15 16:14:56,167 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'yield_curve_vol_avg', 'dxy_vs_ma21', 'skew_vix_ratio_percentile_252d']
+2025-12-15 16:15:04,191 - INFO - Feature selection: expansion | top_n=76 | corr_threshold=0.957031161022769
+2025-12-15 16:15:04,228 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:15:04,251 - INFO -   Training samples: 2241
+2025-12-15 16:15:39,123 - INFO -   Candidate features: 114
+2025-12-15 16:15:39,292 - INFO -   Removed 6 correlated features
+2025-12-15 16:15:39,292 - INFO -   Final selection: 76 features
+2025-12-15 16:15:39,292 - INFO -   Top 5: ['days_in_regime', 'vix_percentile_126d', 'vx_spread_x_vix_expiry', 'vx_oi_surge', 'yield_10y3m_inversion_depth']
+2025-12-15 16:15:39,342 - INFO - Feature selection: compression | top_n=96 | corr_threshold=0.957031161022769
+2025-12-15 16:15:39,405 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:15:39,414 - INFO -   Training samples: 2613
+2025-12-15 16:16:12,013 - INFO -   Candidate features: 144
+2025-12-15 16:16:12,196 - INFO -   Removed 6 correlated features
+2025-12-15 16:16:12,196 - INFO -   Final selection: 96 features
+2025-12-15 16:16:12,196 - INFO -   Top 5: ['vix_vs_ma63', 'vix_skew_joint_regime', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_velocity_5d_regime_adj']
+2025-12-15 16:16:12,220 - INFO - Feature selection: up | top_n=98 | corr_threshold=0.957031161022769
+2025-12-15 16:16:12,254 - INFO -   Using all samples (UP classification)
+2025-12-15 16:16:12,259 - INFO -   Training samples: 4859
+2025-12-15 16:16:39,946 - INFO -   Candidate features: 147
+2025-12-15 16:16:40,140 - INFO -   Removed 11 correlated features
+2025-12-15 16:16:40,140 - INFO -   Final selection: 98 features
+2025-12-15 16:16:40,140 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'vix_zscore_252d_x_regime_0', 'vix_velocity_5d', 'yield_30y10y']
+2025-12-15 16:16:40,159 - INFO - Feature selection: down | top_n=97 | corr_threshold=0.957031161022769
+2025-12-15 16:16:40,188 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:16:40,194 - INFO -   Training samples: 4859
+2025-12-15 16:17:09,257 - INFO -   Candidate features: 145
+2025-12-15 16:17:09,461 - INFO -   Removed 11 correlated features
+2025-12-15 16:17:09,461 - INFO -   Final selection: 97 features
+2025-12-15 16:17:09,461 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'vix_zscore_252d_x_regime_0', 'vix_velocity_5d', 'yield_30y10y']
+2025-12-15 16:17:15,468 - INFO - Feature selection: expansion | top_n=79 | corr_threshold=0.91851795234009
+2025-12-15 16:17:15,496 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:17:15,516 - INFO -   Training samples: 2241
+2025-12-15 16:17:25,745 - INFO -   Candidate features: 118
+2025-12-15 16:17:25,896 - INFO -   Removed 14 correlated features
+2025-12-15 16:17:25,896 - INFO -   Final selection: 79 features
+2025-12-15 16:17:25,896 - INFO -   Top 5: ['days_in_regime', 'copper_ret_63d', 'vix_percentile_126d', 'hy_velocity_21d', 'yield_10y3m_inversion_depth']
+2025-12-15 16:17:25,911 - INFO - Feature selection: compression | top_n=107 | corr_threshold=0.91851795234009
+2025-12-15 16:17:25,949 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:17:25,957 - INFO -   Training samples: 2613
+2025-12-15 16:17:36,542 - INFO -   Candidate features: 160
+2025-12-15 16:17:36,780 - INFO -   Removed 11 correlated features
+2025-12-15 16:17:36,780 - INFO -   Final selection: 107 features
+2025-12-15 16:17:36,780 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_percentile_126d', 'vvix', 'vix_velocity_5d_regime_adj']
+2025-12-15 16:17:36,789 - INFO - Feature selection: up | top_n=134 | corr_threshold=0.91851795234009
+2025-12-15 16:17:36,817 - INFO -   Using all samples (UP classification)
+2025-12-15 16:17:36,821 - INFO -   Training samples: 4859
+2025-12-15 16:17:52,469 - INFO -   Candidate features: 201
+2025-12-15 16:17:52,857 - INFO -   Removed 21 correlated features
+2025-12-15 16:17:52,858 - INFO -   Final selection: 134 features
+2025-12-15 16:17:52,858 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'vix_velocity_5d', 'skew_vix_ratio_percentile_252d', 'dxy_zscore_21d']
+2025-12-15 16:17:52,879 - INFO - Feature selection: down | top_n=95 | corr_threshold=0.91851795234009
+2025-12-15 16:17:52,898 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:17:52,902 - INFO -   Training samples: 4859
+2025-12-15 16:18:05,637 - INFO -   Candidate features: 142
+2025-12-15 16:18:05,812 - INFO -   Removed 11 correlated features
+2025-12-15 16:18:05,812 - INFO -   Final selection: 95 features
+2025-12-15 16:18:05,812 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'vix_velocity_5d', 'skew_vix_ratio_percentile_252d', 'dxy_zscore_21d']
+2025-12-15 16:18:10,866 - INFO - Feature selection: expansion | top_n=138 | corr_threshold=0.8610855801515169
+2025-12-15 16:18:10,879 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:18:10,882 - INFO -   Training samples: 2241
+2025-12-15 16:18:26,340 - INFO -   Candidate features: 207
+2025-12-15 16:18:26,694 - INFO -   Removed 41 correlated features
+2025-12-15 16:18:26,694 - INFO -   Final selection: 138 features
+2025-12-15 16:18:26,694 - INFO -   Top 5: ['days_in_regime', 'vix_percentile_126d', 'fin_stress_index', 'hy_velocity_21d', 'vx_oi_surge']
+2025-12-15 16:18:26,697 - INFO - Feature selection: compression | top_n=134 | corr_threshold=0.8610855801515169
+2025-12-15 16:18:26,710 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:18:26,715 - INFO -   Training samples: 2613
+2025-12-15 16:18:43,519 - INFO -   Candidate features: 201
+2025-12-15 16:18:43,854 - INFO -   Removed 35 correlated features
+2025-12-15 16:18:43,854 - INFO -   Final selection: 134 features
+2025-12-15 16:18:43,854 - INFO -   Top 5: ['vix_vs_ma63', 'joint_regime_expected_return', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_velocity_5d_regime_adj']
+2025-12-15 16:18:43,858 - INFO - Feature selection: up | top_n=93 | corr_threshold=0.8610855801515169
+2025-12-15 16:18:43,872 - INFO -   Using all samples (UP classification)
+2025-12-15 16:18:43,875 - INFO -   Training samples: 4859
+2025-12-15 16:19:03,429 - INFO -   Candidate features: 139
+2025-12-15 16:19:03,603 - INFO -   Removed 32 correlated features
+2025-12-15 16:19:03,604 - INFO -   Final selection: 93 features
+2025-12-15 16:19:03,604 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_velocity_5d', 'skew_vix_ratio_percentile_252d', 'vix_vs_ma10', 'month']
+2025-12-15 16:19:03,613 - INFO - Feature selection: down | top_n=84 | corr_threshold=0.8610855801515169
+2025-12-15 16:19:03,634 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:19:03,641 - INFO -   Training samples: 4859
+2025-12-15 16:19:22,021 - INFO -   Candidate features: 126
+2025-12-15 16:19:22,160 - INFO -   Removed 32 correlated features
+2025-12-15 16:19:22,160 - INFO -   Final selection: 84 features
+2025-12-15 16:19:22,160 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_velocity_5d', 'skew_vix_ratio_percentile_252d', 'vix_vs_ma10', 'month']
+2025-12-15 16:19:27,662 - INFO - Feature selection: expansion | top_n=120 | corr_threshold=0.8911697875331732
+2025-12-15 16:19:27,675 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:19:27,678 - INFO -   Training samples: 2240
+2025-12-15 16:19:33,367 - INFO -   Candidate features: 180
+2025-12-15 16:19:33,637 - INFO -   Removed 23 correlated features
+2025-12-15 16:19:33,637 - INFO -   Final selection: 120 features
+2025-12-15 16:19:33,637 - INFO -   Top 5: ['days_in_regime', 'vix_percentile_126d', 'fin_stress_index', 'hy_bb_velocity_21d', 'copper_momentum_63d']
+2025-12-15 16:19:33,641 - INFO - Feature selection: compression | top_n=75 | corr_threshold=0.8911697875331732
+2025-12-15 16:19:33,655 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:19:33,660 - INFO -   Training samples: 2613
+2025-12-15 16:19:39,713 - INFO -   Candidate features: 112
+2025-12-15 16:19:39,820 - INFO -   Removed 11 correlated features
+2025-12-15 16:19:39,820 - INFO -   Final selection: 75 features
+2025-12-15 16:19:39,820 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'joint_regime_expected_return', 'vix_percentile_126d', 'vix_velocity_5d_regime_adj']
+2025-12-15 16:19:39,823 - INFO - Feature selection: up | top_n=86 | corr_threshold=0.8911697875331732
+2025-12-15 16:19:39,835 - INFO -   Using all samples (UP classification)
+2025-12-15 16:19:39,838 - INFO -   Training samples: 4858
+2025-12-15 16:19:47,138 - INFO -   Candidate features: 129
+2025-12-15 16:19:47,282 - INFO -   Removed 14 correlated features
+2025-12-15 16:19:47,282 - INFO -   Final selection: 86 features
+2025-12-15 16:19:47,282 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio_percentile_252d', 'vix_ret_5d', 'bb_position_20d', 'dxy_bb_position_20d']
+2025-12-15 16:19:47,286 - INFO - Feature selection: down | top_n=150 | corr_threshold=0.8911697875331732
+2025-12-15 16:19:47,296 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:19:47,299 - INFO -   Training samples: 4858
+2025-12-15 16:19:54,551 - INFO -   Candidate features: 225
+2025-12-15 16:19:54,978 - INFO -   Removed 39 correlated features
+2025-12-15 16:19:54,978 - INFO -   Final selection: 150 features
+2025-12-15 16:19:54,978 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio_percentile_252d', 'vix_ret_5d', 'bb_position_20d', 'dxy_bb_position_20d']
+2025-12-15 16:20:00,708 - INFO - Feature selection: expansion | top_n=113 | corr_threshold=0.8549740537116808
+2025-12-15 16:20:00,720 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:20:00,722 - INFO -   Training samples: 2240
+2025-12-15 16:20:23,681 - INFO -   Candidate features: 169
+2025-12-15 16:20:23,917 - INFO -   Removed 35 correlated features
+2025-12-15 16:20:23,917 - INFO -   Final selection: 113 features
+2025-12-15 16:20:23,918 - INFO -   Top 5: ['days_in_regime', 'hy_velocity_21d', 'vx_oi_surge', 'vix_percentile_126d', 'yield_10y3m_inversion_depth']
+2025-12-15 16:20:23,921 - INFO - Feature selection: compression | top_n=99 | corr_threshold=0.8549740537116808
+2025-12-15 16:20:23,933 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:20:23,937 - INFO -   Training samples: 2613
+2025-12-15 16:20:49,816 - INFO -   Candidate features: 148
+2025-12-15 16:20:50,003 - INFO -   Removed 24 correlated features
+2025-12-15 16:20:50,003 - INFO -   Final selection: 99 features
+2025-12-15 16:20:50,003 - INFO -   Top 5: ['vix_vs_ma63', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_velocity_5d_regime_adj', 'gold_zscore_63d']
+2025-12-15 16:20:50,008 - INFO - Feature selection: up | top_n=146 | corr_threshold=0.8549740537116808
+2025-12-15 16:20:50,024 - INFO -   Using all samples (UP classification)
+2025-12-15 16:20:50,027 - INFO -   Training samples: 4858
+2025-12-15 16:21:11,951 - INFO -   Candidate features: 219
+2025-12-15 16:21:12,351 - INFO -   Removed 54 correlated features
+2025-12-15 16:21:12,351 - INFO -   Final selection: 146 features
+2025-12-15 16:21:12,351 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'credit_stress_composite', 'skew_vix_ratio_percentile_252d', 'claims_4wk_ma', 'vix_vs_ma10']
+2025-12-15 16:21:12,355 - INFO - Feature selection: down | top_n=141 | corr_threshold=0.8549740537116808
+2025-12-15 16:21:12,366 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:21:12,369 - INFO -   Training samples: 4858
+2025-12-15 16:21:33,649 - INFO -   Candidate features: 211
+2025-12-15 16:21:34,066 - INFO -   Removed 53 correlated features
+2025-12-15 16:21:34,066 - INFO -   Final selection: 141 features
+2025-12-15 16:21:34,066 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'credit_stress_composite', 'skew_vix_ratio_percentile_252d', 'claims_4wk_ma', 'vix_vs_ma10']
+2025-12-15 16:21:40,236 - INFO - Feature selection: expansion | top_n=104 | corr_threshold=0.858344966091953
+2025-12-15 16:21:40,250 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:21:40,255 - INFO -   Training samples: 2241
+2025-12-15 16:22:02,053 - INFO -   Candidate features: 156
+2025-12-15 16:22:02,254 - INFO -   Removed 33 correlated features
+2025-12-15 16:22:02,254 - INFO -   Final selection: 104 features
+2025-12-15 16:22:02,255 - INFO -   Top 5: ['days_in_regime', 'vx_spread_x_vix_expiry', 'fin_stress_index', 'vix_percentile_126d', 'hy_bb_velocity_21d']
+2025-12-15 16:22:02,258 - INFO - Feature selection: compression | top_n=93 | corr_threshold=0.858344966091953
+2025-12-15 16:22:02,270 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:22:02,274 - INFO -   Training samples: 2613
+2025-12-15 16:22:25,499 - INFO -   Candidate features: 139
+2025-12-15 16:22:25,662 - INFO -   Removed 26 correlated features
+2025-12-15 16:22:25,662 - INFO -   Final selection: 93 features
+2025-12-15 16:22:25,662 - INFO -   Top 5: ['vix_vs_ma63', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_skew_joint_regime', 'joint_regime_expected_return']
+2025-12-15 16:22:25,667 - INFO - Feature selection: up | top_n=124 | corr_threshold=0.858344966091953
+2025-12-15 16:22:25,678 - INFO -   Using all samples (UP classification)
+2025-12-15 16:22:25,681 - INFO -   Training samples: 4859
+2025-12-15 16:22:51,076 - INFO -   Candidate features: 186
+2025-12-15 16:22:51,372 - INFO -   Removed 49 correlated features
+2025-12-15 16:22:51,372 - INFO -   Final selection: 124 features
+2025-12-15 16:22:51,372 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'yield_curve_vol_avg', 'vix_vs_ma10', 'vix_velocity_5d', 'hy_spread']
+2025-12-15 16:22:51,375 - INFO - Feature selection: down | top_n=97 | corr_threshold=0.858344966091953
+2025-12-15 16:22:51,387 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:22:51,390 - INFO -   Training samples: 4859
+2025-12-15 16:23:16,679 - INFO -   Candidate features: 145
+2025-12-15 16:23:16,859 - INFO -   Removed 35 correlated features
+2025-12-15 16:23:16,859 - INFO -   Final selection: 97 features
+2025-12-15 16:23:16,859 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'yield_curve_vol_avg', 'vix_vs_ma10', 'vix_velocity_5d', 'hy_spread']
+2025-12-15 16:23:21,547 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9210508965464761
+2025-12-15 16:23:21,559 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:23:21,561 - INFO -   Training samples: 2226
+2025-12-15 16:23:29,871 - INFO -   Candidate features: 150
+2025-12-15 16:23:30,055 - INFO -   Removed 18 correlated features
+2025-12-15 16:23:30,056 - INFO -   Final selection: 100 features
+2025-12-15 16:23:30,056 - INFO -   Top 5: ['days_in_regime', 'hy_velocity_21d', 'fin_stress_index', 'credit_stress_composite', 'vvix']
+2025-12-15 16:23:30,059 - INFO - Feature selection: compression | top_n=79 | corr_threshold=0.9210508965464761
+2025-12-15 16:23:30,071 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:23:30,075 - INFO -   Training samples: 2607
+2025-12-15 16:23:39,046 - INFO -   Candidate features: 118
+2025-12-15 16:23:39,163 - INFO -   Removed 8 correlated features
+2025-12-15 16:23:39,163 - INFO -   Final selection: 79 features
+2025-12-15 16:23:39,163 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vvix', 'vix_percentile_126d', 'vix_velocity_5d_regime_adj']
+2025-12-15 16:23:39,165 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9210508965464761
+2025-12-15 16:23:39,177 - INFO -   Using all samples (UP classification)
+2025-12-15 16:23:39,179 - INFO -   Training samples: 4838
+2025-12-15 16:23:49,938 - INFO -   Candidate features: 150
+2025-12-15 16:23:50,130 - INFO -   Removed 16 correlated features
+2025-12-15 16:23:50,130 - INFO -   Final selection: 100 features
+2025-12-15 16:23:50,130 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio_percentile_252d', 'vix_velocity_5d', 'skew_vix_ratio', 'dxy_vs_ma21']
+2025-12-15 16:23:50,134 - INFO - Feature selection: down | top_n=105 | corr_threshold=0.9210508965464761
+2025-12-15 16:23:50,146 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:23:50,149 - INFO -   Training samples: 4838
+2025-12-15 16:24:00,963 - INFO -   Candidate features: 157
+2025-12-15 16:24:01,174 - INFO -   Removed 17 correlated features
+2025-12-15 16:24:01,175 - INFO -   Final selection: 105 features
+2025-12-15 16:24:01,175 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio_percentile_252d', 'vix_velocity_5d', 'skew_vix_ratio', 'dxy_vs_ma21']
+2025-12-15 16:24:05,846 - INFO - Feature selection: expansion | top_n=79 | corr_threshold=0.8680692377724092
+2025-12-15 16:24:05,857 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:24:05,860 - INFO -   Training samples: 2226
+2025-12-15 16:24:11,770 - INFO -   Candidate features: 118
+2025-12-15 16:24:11,886 - INFO -   Removed 15 correlated features
+2025-12-15 16:24:11,886 - INFO -   Final selection: 79 features
+2025-12-15 16:24:11,886 - INFO -   Top 5: ['days_in_regime', 'hy_velocity_21d', 'natgas_zscore_63d', 'credit_stress_composite', 'dxy_zscore_252d']
+2025-12-15 16:24:11,889 - INFO - Feature selection: compression | top_n=126 | corr_threshold=0.8680692377724092
+2025-12-15 16:24:11,900 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:24:11,903 - INFO -   Training samples: 2607
+2025-12-15 16:24:18,334 - INFO -   Candidate features: 189
+2025-12-15 16:24:18,639 - INFO -   Removed 26 correlated features
+2025-12-15 16:24:18,639 - INFO -   Final selection: 126 features
+2025-12-15 16:24:18,639 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_velocity_5d_regime_adj', 'vix_percentile_126d', 'vvix_vs_ma21']
+2025-12-15 16:24:18,642 - INFO - Feature selection: up | top_n=94 | corr_threshold=0.8680692377724092
+2025-12-15 16:24:18,654 - INFO -   Using all samples (UP classification)
+2025-12-15 16:24:18,657 - INFO -   Training samples: 4838
+2025-12-15 16:24:26,467 - INFO -   Candidate features: 141
+2025-12-15 16:24:26,637 - INFO -   Removed 20 correlated features
+2025-12-15 16:24:26,637 - INFO -   Final selection: 94 features
+2025-12-15 16:24:26,637 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio_percentile_252d', 'macd_signal', 'vix_vel_spx_rv_ratio', 'dxy_zscore_21d']
+2025-12-15 16:24:26,640 - INFO - Feature selection: down | top_n=91 | corr_threshold=0.8680692377724092
+2025-12-15 16:24:26,653 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:24:26,655 - INFO -   Training samples: 4838
+2025-12-15 16:24:34,396 - INFO -   Candidate features: 136
+2025-12-15 16:24:34,554 - INFO -   Removed 18 correlated features
+2025-12-15 16:24:34,554 - INFO -   Final selection: 91 features
+2025-12-15 16:24:34,554 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio_percentile_252d', 'macd_signal', 'vix_vel_spx_rv_ratio', 'dxy_zscore_21d']
+2025-12-15 16:24:39,296 - INFO - Feature selection: expansion | top_n=119 | corr_threshold=0.9133917196183494
+2025-12-15 16:24:39,307 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:24:39,310 - INFO -   Training samples: 2240
+2025-12-15 16:24:49,188 - INFO -   Candidate features: 178
+2025-12-15 16:24:49,449 - INFO -   Removed 20 correlated features
+2025-12-15 16:24:49,449 - INFO -   Final selection: 119 features
+2025-12-15 16:24:49,449 - INFO -   Top 5: ['days_in_regime', 'vix_percentile_126d', 'fin_stress_index', 'hy_velocity_21d', 'credit_stress_composite']
+2025-12-15 16:24:49,453 - INFO - Feature selection: compression | top_n=135 | corr_threshold=0.9133917196183494
+2025-12-15 16:24:49,464 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:24:49,468 - INFO -   Training samples: 2613
+2025-12-15 16:24:59,842 - INFO -   Candidate features: 202
+2025-12-15 16:25:00,180 - INFO -   Removed 21 correlated features
+2025-12-15 16:25:00,180 - INFO -   Final selection: 135 features
+2025-12-15 16:25:00,180 - INFO -   Top 5: ['vix_vs_ma63', 'joint_regime_expected_return', 'vix_vs_ma21', 'vix_percentile_126d', 'vix_vel_spx_rv_ratio']
+2025-12-15 16:25:00,184 - INFO - Feature selection: up | top_n=130 | corr_threshold=0.9133917196183494
+2025-12-15 16:25:00,196 - INFO -   Using all samples (UP classification)
+2025-12-15 16:25:00,199 - INFO -   Training samples: 4858
+2025-12-15 16:25:12,544 - INFO -   Candidate features: 195
+2025-12-15 16:25:12,869 - INFO -   Removed 23 correlated features
+2025-12-15 16:25:12,869 - INFO -   Final selection: 130 features
+2025-12-15 16:25:12,869 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_bb_position_20d', 'vix_vs_ma10', 'dxy_bb_position_20d', 'skew_vix_ratio_percentile_252d']
+2025-12-15 16:25:12,872 - INFO - Feature selection: down | top_n=90 | corr_threshold=0.9133917196183494
+2025-12-15 16:25:12,884 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:25:12,887 - INFO -   Training samples: 4858
+2025-12-15 16:25:25,281 - INFO -   Candidate features: 135
+2025-12-15 16:25:25,436 - INFO -   Removed 13 correlated features
+2025-12-15 16:25:25,436 - INFO -   Final selection: 90 features
+2025-12-15 16:25:25,436 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_bb_position_20d', 'vix_vs_ma10', 'dxy_bb_position_20d', 'skew_vix_ratio_percentile_252d']
+2025-12-15 16:25:30,866 - INFO - Feature selection: expansion | top_n=96 | corr_threshold=0.8527924991226379
+2025-12-15 16:25:30,878 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:25:30,880 - INFO -   Training samples: 2241
+2025-12-15 16:25:41,053 - INFO -   Candidate features: 144
+2025-12-15 16:25:41,260 - INFO -   Removed 27 correlated features
+2025-12-15 16:25:41,260 - INFO -   Final selection: 96 features
+2025-12-15 16:25:41,260 - INFO -   Top 5: ['days_in_regime', 'copper_momentum_63d', 'fin_stress_index', 'vix_percentile_126d', 'claims_4wk_ma']
+2025-12-15 16:25:41,264 - INFO - Feature selection: compression | top_n=89 | corr_threshold=0.8527924991226379
+2025-12-15 16:25:41,276 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:25:41,279 - INFO -   Training samples: 2613
+2025-12-15 16:25:52,045 - INFO -   Candidate features: 133
+2025-12-15 16:25:52,195 - INFO -   Removed 23 correlated features
+2025-12-15 16:25:52,195 - INFO -   Final selection: 89 features
+2025-12-15 16:25:52,195 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'joint_regime_expected_return', 'vix_percentile_126d', 'vix_velocity_5d_regime_adj']
+2025-12-15 16:25:52,198 - INFO - Feature selection: up | top_n=125 | corr_threshold=0.8527924991226379
+2025-12-15 16:25:52,216 - INFO -   Using all samples (UP classification)
+2025-12-15 16:25:52,219 - INFO -   Training samples: 4859
+2025-12-15 16:26:05,258 - INFO -   Candidate features: 187
+2025-12-15 16:26:05,558 - INFO -   Removed 41 correlated features
+2025-12-15 16:26:05,558 - INFO -   Final selection: 125 features
+2025-12-15 16:26:05,558 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_velocity_5d', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d', 'skew_vix_ratio']
+2025-12-15 16:26:05,562 - INFO - Feature selection: down | top_n=109 | corr_threshold=0.8527924991226379
+2025-12-15 16:26:05,575 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:26:05,577 - INFO -   Training samples: 4859
+2025-12-15 16:26:18,653 - INFO -   Candidate features: 163
+2025-12-15 16:26:18,883 - INFO -   Removed 32 correlated features
+2025-12-15 16:26:18,883 - INFO -   Final selection: 109 features
+2025-12-15 16:26:18,883 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_velocity_5d', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d', 'skew_vix_ratio']
+2025-12-15 16:26:23,560 - INFO - Feature selection: expansion | top_n=116 | corr_threshold=0.8650574193075687
+2025-12-15 16:26:23,572 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:26:23,575 - INFO -   Training samples: 2241
+2025-12-15 16:26:36,210 - INFO -   Candidate features: 174
+2025-12-15 16:26:36,464 - INFO -   Removed 30 correlated features
+2025-12-15 16:26:36,464 - INFO -   Final selection: 116 features
+2025-12-15 16:26:36,464 - INFO -   Top 5: ['hy_spread', 'vix_percentile_126d', 'days_in_regime', 'vvix_percentile_63d', 'vx_oi_5d_change']
+2025-12-15 16:26:36,468 - INFO - Feature selection: compression | top_n=128 | corr_threshold=0.8650574193075687
+2025-12-15 16:26:36,480 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:26:36,484 - INFO -   Training samples: 2613
+2025-12-15 16:26:49,482 - INFO -   Candidate features: 192
+2025-12-15 16:26:49,788 - INFO -   Removed 27 correlated features
+2025-12-15 16:26:49,788 - INFO -   Final selection: 128 features
+2025-12-15 16:26:49,788 - INFO -   Top 5: ['vix_vs_ma63', 'vix_skew_joint_regime', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_vel_spx_rv_ratio']
+2025-12-15 16:26:49,792 - INFO - Feature selection: up | top_n=94 | corr_threshold=0.8650574193075687
+2025-12-15 16:26:49,803 - INFO -   Using all samples (UP classification)
+2025-12-15 16:26:49,806 - INFO -   Training samples: 4859
+2025-12-15 16:27:05,806 - INFO -   Candidate features: 141
+2025-12-15 16:27:05,975 - INFO -   Removed 29 correlated features
+2025-12-15 16:27:05,975 - INFO -   Final selection: 94 features
+2025-12-15 16:27:05,975 - INFO -   Top 5: ['vix_velocity_5d', 'vix_velocity_5d_regime_adj', 'hy_spread', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d']
+2025-12-15 16:27:05,979 - INFO - Feature selection: down | top_n=80 | corr_threshold=0.8650574193075687
+2025-12-15 16:27:05,992 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:27:05,995 - INFO -   Training samples: 4859
+2025-12-15 16:27:22,009 - INFO -   Candidate features: 120
+2025-12-15 16:27:22,134 - INFO -   Removed 22 correlated features
+2025-12-15 16:27:22,134 - INFO -   Final selection: 80 features
+2025-12-15 16:27:22,134 - INFO -   Top 5: ['vix_velocity_5d', 'vix_velocity_5d_regime_adj', 'hy_spread', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d']
+2025-12-15 16:27:26,971 - INFO - Feature selection: expansion | top_n=120 | corr_threshold=0.9507037127346846
+2025-12-15 16:27:26,984 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:27:26,986 - INFO -   Training samples: 2241
+2025-12-15 16:27:35,054 - INFO -   Candidate features: 180
+2025-12-15 16:27:35,328 - INFO -   Removed 12 correlated features
+2025-12-15 16:27:35,328 - INFO -   Final selection: 120 features
+2025-12-15 16:27:35,328 - INFO -   Top 5: ['days_in_regime', 'vix_percentile_126d', 'credit_stress_composite', 'hy_velocity_21d', 'vvix']
+2025-12-15 16:27:35,331 - INFO - Feature selection: compression | top_n=135 | corr_threshold=0.9507037127346846
+2025-12-15 16:27:35,343 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:27:35,346 - INFO -   Training samples: 2613
+2025-12-15 16:27:43,679 - INFO -   Candidate features: 202
+2025-12-15 16:27:44,011 - INFO -   Removed 10 correlated features
+2025-12-15 16:27:44,011 - INFO -   Final selection: 135 features
+2025-12-15 16:27:44,011 - INFO -   Top 5: ['vix_vs_ma63', 'joint_regime_expected_return', 'vix_percentile_126d', 'vix_vs_ma21', 'vvix']
+2025-12-15 16:27:44,014 - INFO - Feature selection: up | top_n=92 | corr_threshold=0.9507037127346846
+2025-12-15 16:27:44,027 - INFO -   Using all samples (UP classification)
+2025-12-15 16:27:44,029 - INFO -   Training samples: 4859
+2025-12-15 16:27:54,301 - INFO -   Candidate features: 138
+2025-12-15 16:27:54,462 - INFO -   Removed 14 correlated features
+2025-12-15 16:27:54,462 - INFO -   Final selection: 92 features
+2025-12-15 16:27:54,463 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_velocity_5d', 'macd_signal', 'skew_vix_ratio_percentile_252d', 'vix_vs_ma10']
+2025-12-15 16:27:54,466 - INFO - Feature selection: down | top_n=120 | corr_threshold=0.9507037127346846
+2025-12-15 16:27:54,479 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:27:54,482 - INFO -   Training samples: 4859
+2025-12-15 16:28:04,743 - INFO -   Candidate features: 180
+2025-12-15 16:28:05,019 - INFO -   Removed 19 correlated features
+2025-12-15 16:28:05,020 - INFO -   Final selection: 120 features
+2025-12-15 16:28:05,020 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_velocity_5d', 'macd_signal', 'skew_vix_ratio_percentile_252d', 'vix_vs_ma10']
+2025-12-15 16:28:10,533 - INFO - Feature selection: expansion | top_n=113 | corr_threshold=0.9537004951548638
+2025-12-15 16:28:10,545 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:28:10,547 - INFO -   Training samples: 2226
+2025-12-15 16:28:18,212 - INFO -   Candidate features: 169
+2025-12-15 16:28:18,447 - INFO -   Removed 13 correlated features
+2025-12-15 16:28:18,447 - INFO -   Final selection: 113 features
+2025-12-15 16:28:18,447 - INFO -   Top 5: ['vix_percentile_126d', 'days_in_regime', 'hy_velocity_21d', 'vx_oi_surge', 'hy_spread']
+2025-12-15 16:28:18,450 - INFO - Feature selection: compression | top_n=81 | corr_threshold=0.9537004951548638
+2025-12-15 16:28:18,463 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:28:18,467 - INFO -   Training samples: 2607
+2025-12-15 16:28:26,591 - INFO -   Candidate features: 121
+2025-12-15 16:28:26,713 - INFO -   Removed 5 correlated features
+2025-12-15 16:28:26,713 - INFO -   Final selection: 81 features
+2025-12-15 16:28:26,713 - INFO -   Top 5: ['vix_vs_ma63', 'vix_percentile_126d', 'vix_skew_joint_regime', 'vix_vs_ma21', 'vix_vel_spx_rv_ratio']
+2025-12-15 16:28:26,716 - INFO - Feature selection: up | top_n=150 | corr_threshold=0.9537004951548638
+2025-12-15 16:28:26,730 - INFO -   Using all samples (UP classification)
+2025-12-15 16:28:26,732 - INFO -   Training samples: 4838
+2025-12-15 16:28:35,793 - INFO -   Candidate features: 225
+2025-12-15 16:28:36,219 - INFO -   Removed 17 correlated features
+2025-12-15 16:28:36,219 - INFO -   Final selection: 150 features
+2025-12-15 16:28:36,219 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'hy_spread', 'dxy_zscore_21d', 'gold_zscore_63d', 'vix_accel_x_opex_prox']
+2025-12-15 16:28:36,223 - INFO - Feature selection: down | top_n=96 | corr_threshold=0.9537004951548638
+2025-12-15 16:28:36,235 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:28:36,238 - INFO -   Training samples: 4838
+2025-12-15 16:28:45,332 - INFO -   Candidate features: 144
+2025-12-15 16:28:45,509 - INFO -   Removed 10 correlated features
+2025-12-15 16:28:45,509 - INFO -   Final selection: 96 features
+2025-12-15 16:28:45,509 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'hy_spread', 'dxy_zscore_21d', 'gold_zscore_63d', 'vix_accel_x_opex_prox']
+2025-12-15 16:28:51,111 - INFO - Feature selection: expansion | top_n=131 | corr_threshold=0.8868630739685056
+2025-12-15 16:28:51,127 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:28:51,131 - INFO -   Training samples: 2240
+2025-12-15 16:29:19,274 - INFO -   Candidate features: 196
+2025-12-15 16:29:19,592 - INFO -   Removed 28 correlated features
+2025-12-15 16:29:19,592 - INFO -   Final selection: 131 features
+2025-12-15 16:29:19,592 - INFO -   Top 5: ['days_in_regime', 'vx_spread_x_vix_expiry', 'hy_spread', 'vix_percentile_126d', 'yield_10y3m_inversion_depth']
+2025-12-15 16:29:19,597 - INFO - Feature selection: compression | top_n=72 | corr_threshold=0.8868630739685056
+2025-12-15 16:29:19,610 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:29:19,614 - INFO -   Training samples: 2613
+2025-12-15 16:29:50,122 - INFO -   Candidate features: 108
+2025-12-15 16:29:50,220 - INFO -   Removed 16 correlated features
+2025-12-15 16:29:50,220 - INFO -   Final selection: 72 features
+2025-12-15 16:29:50,220 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_percentile_126d', 'joint_regime_expected_return', 'regime_x_opex_prox']
+2025-12-15 16:29:50,223 - INFO - Feature selection: up | top_n=138 | corr_threshold=0.8868630739685056
+2025-12-15 16:29:50,243 - INFO -   Using all samples (UP classification)
+2025-12-15 16:29:50,247 - INFO -   Training samples: 4858
+2025-12-15 16:30:19,373 - INFO -   Candidate features: 207
+2025-12-15 16:30:19,751 - INFO -   Removed 41 correlated features
+2025-12-15 16:30:19,751 - INFO -   Final selection: 138 features
+2025-12-15 16:30:19,751 - INFO -   Top 5: ['yield_curve_vol_avg', 'vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'vix_x_earnings', 'dxy_vs_ma21']
+2025-12-15 16:30:19,756 - INFO - Feature selection: down | top_n=89 | corr_threshold=0.8868630739685056
+2025-12-15 16:30:19,770 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:30:19,773 - INFO -   Training samples: 4858
+2025-12-15 16:30:50,067 - INFO -   Candidate features: 133
+2025-12-15 16:30:50,227 - INFO -   Removed 21 correlated features
+2025-12-15 16:30:50,227 - INFO -   Final selection: 89 features
+2025-12-15 16:30:50,227 - INFO -   Top 5: ['yield_curve_vol_avg', 'vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'vix_x_earnings', 'dxy_vs_ma21']
+2025-12-15 16:30:57,157 - INFO - Feature selection: expansion | top_n=133 | corr_threshold=0.9216833507913473
+2025-12-15 16:30:57,173 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:30:57,177 - INFO -   Training samples: 2241
+2025-12-15 16:31:14,573 - INFO -   Candidate features: 199
+2025-12-15 16:31:14,926 - INFO -   Removed 28 correlated features
+2025-12-15 16:31:14,926 - INFO -   Final selection: 133 features
+2025-12-15 16:31:14,926 - INFO -   Top 5: ['days_in_regime', 'vix_percentile_126d', 'fin_stress_index', 'vx_oi_surge', 'hy_b_spread']
+2025-12-15 16:31:14,930 - INFO - Feature selection: compression | top_n=86 | corr_threshold=0.9216833507913473
+2025-12-15 16:31:14,947 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:31:14,952 - INFO -   Training samples: 2613
+2025-12-15 16:31:33,707 - INFO -   Candidate features: 129
+2025-12-15 16:31:33,857 - INFO -   Removed 11 correlated features
+2025-12-15 16:31:33,857 - INFO -   Final selection: 86 features
+2025-12-15 16:31:33,857 - INFO -   Top 5: ['vix_vs_ma63', 'vix_percentile_126d', 'vix_skew_joint_regime', 'vix_velocity_5d_regime_adj', 'vix_vs_ma21']
+2025-12-15 16:31:33,862 - INFO - Feature selection: up | top_n=95 | corr_threshold=0.9216833507913473
+2025-12-15 16:31:33,880 - INFO -   Using all samples (UP classification)
+2025-12-15 16:31:33,884 - INFO -   Training samples: 4859
+2025-12-15 16:31:55,016 - INFO -   Candidate features: 142
+2025-12-15 16:31:55,201 - INFO -   Removed 17 correlated features
+2025-12-15 16:31:55,201 - INFO -   Final selection: 95 features
+2025-12-15 16:31:55,201 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d', 'gold_zscore_63d', 'dxy_bb_position_20d']
+2025-12-15 16:31:55,205 - INFO - Feature selection: down | top_n=82 | corr_threshold=0.9216833507913473
+2025-12-15 16:31:55,223 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:31:55,227 - INFO -   Training samples: 4859
+2025-12-15 16:32:16,206 - INFO -   Candidate features: 123
+2025-12-15 16:32:16,344 - INFO -   Removed 14 correlated features
+2025-12-15 16:32:16,344 - INFO -   Final selection: 82 features
+2025-12-15 16:32:16,344 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d', 'gold_zscore_63d', 'dxy_bb_position_20d']
+2025-12-15 16:32:22,088 - INFO - Feature selection: expansion | top_n=73 | corr_threshold=0.928549562534567
+2025-12-15 16:32:22,104 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:32:22,107 - INFO -   Training samples: 2241
+2025-12-15 16:32:38,314 - INFO -   Candidate features: 109
+2025-12-15 16:32:38,419 - INFO -   Removed 15 correlated features
+2025-12-15 16:32:38,419 - INFO -   Final selection: 73 features
+2025-12-15 16:32:38,419 - INFO -   Top 5: ['hy_spread', 'days_in_regime', 'fin_stress_index', 'hy_velocity_21d', 'vix_percentile_126d']
+2025-12-15 16:32:38,424 - INFO - Feature selection: compression | top_n=108 | corr_threshold=0.928549562534567
+2025-12-15 16:32:38,450 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:32:38,455 - INFO -   Training samples: 2613
+2025-12-15 16:32:56,277 - INFO -   Candidate features: 162
+2025-12-15 16:32:56,511 - INFO -   Removed 10 correlated features
+2025-12-15 16:32:56,511 - INFO -   Final selection: 108 features
+2025-12-15 16:32:56,511 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'regime_x_opex_prox', 'vix_percentile_126d', 'joint_regime_expected_return']
+2025-12-15 16:32:56,516 - INFO - Feature selection: up | top_n=130 | corr_threshold=0.928549562534567
+2025-12-15 16:32:56,536 - INFO -   Using all samples (UP classification)
+2025-12-15 16:32:56,539 - INFO -   Training samples: 4859
+2025-12-15 16:33:14,312 - INFO -   Candidate features: 195
+2025-12-15 16:33:14,652 - INFO -   Removed 22 correlated features
+2025-12-15 16:33:14,652 - INFO -   Final selection: 130 features
+2025-12-15 16:33:14,652 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'yield_curve_vol_avg', 'vix_velocity_5d', 'skew_vix_ratio_percentile_252d']
+2025-12-15 16:33:14,658 - INFO - Feature selection: down | top_n=141 | corr_threshold=0.928549562534567
+2025-12-15 16:33:14,676 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:33:14,680 - INFO -   Training samples: 4859
+2025-12-15 16:33:32,256 - INFO -   Candidate features: 211
+2025-12-15 16:33:32,653 - INFO -   Removed 23 correlated features
+2025-12-15 16:33:32,653 - INFO -   Final selection: 141 features
+2025-12-15 16:33:32,653 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'yield_curve_vol_avg', 'vix_velocity_5d', 'skew_vix_ratio_percentile_252d']
+2025-12-15 16:33:39,827 - INFO - Feature selection: expansion | top_n=87 | corr_threshold=0.8895156706339742
+2025-12-15 16:33:39,842 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:33:39,846 - INFO -   Training samples: 2241
+2025-12-15 16:34:06,083 - INFO -   Candidate features: 130
+2025-12-15 16:34:06,229 - INFO -   Removed 11 correlated features
+2025-12-15 16:34:06,230 - INFO -   Final selection: 87 features
+2025-12-15 16:34:06,230 - INFO -   Top 5: ['vix_percentile_126d', 'days_in_regime', 'fin_stress_index', 'vx_oi_surge', 'hy_spread']
+2025-12-15 16:34:06,237 - INFO - Feature selection: compression | top_n=131 | corr_threshold=0.8895156706339742
+2025-12-15 16:34:06,256 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:34:06,261 - INFO -   Training samples: 2613
+2025-12-15 16:34:35,447 - INFO -   Candidate features: 196
+2025-12-15 16:34:35,771 - INFO -   Removed 29 correlated features
+2025-12-15 16:34:35,771 - INFO -   Final selection: 131 features
+2025-12-15 16:34:35,771 - INFO -   Top 5: ['vix_vs_ma63', 'vix_percentile_126d', 'joint_regime_expected_return', 'vix_vs_ma21', 'vix_velocity_5d_regime_adj']
+2025-12-15 16:34:35,775 - INFO - Feature selection: up | top_n=111 | corr_threshold=0.8895156706339742
+2025-12-15 16:34:35,788 - INFO -   Using all samples (UP classification)
+2025-12-15 16:34:35,791 - INFO -   Training samples: 4859
+2025-12-15 16:35:01,269 - INFO -   Candidate features: 166
+2025-12-15 16:35:01,511 - INFO -   Removed 30 correlated features
+2025-12-15 16:35:01,512 - INFO -   Final selection: 111 features
+2025-12-15 16:35:01,512 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d', 'dxy_zscore_21d', 'dxy_vs_ma21']
+2025-12-15 16:35:01,522 - INFO - Feature selection: down | top_n=116 | corr_threshold=0.8895156706339742
+2025-12-15 16:35:01,549 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:35:01,554 - INFO -   Training samples: 4859
+2025-12-15 16:41:21,443 - INFO -   Candidate features: 174
+2025-12-15 16:41:21,695 - INFO -   Removed 33 correlated features
+2025-12-15 16:41:21,695 - INFO -   Final selection: 116 features
+2025-12-15 16:41:21,695 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'skew_vix_ratio_percentile_252d', 'dxy_zscore_21d', 'dxy_vs_ma21']
+2025-12-15 16:41:27,740 - INFO - Feature selection: expansion | top_n=119 | corr_threshold=0.904689224040927
+2025-12-15 16:41:27,753 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:41:27,756 - INFO -   Training samples: 2226
+2025-12-15 16:41:38,780 - INFO -   Candidate features: 178
+2025-12-15 16:41:39,035 - INFO -   Removed 29 correlated features
+2025-12-15 16:41:39,035 - INFO -   Final selection: 119 features
+2025-12-15 16:41:39,035 - INFO -   Top 5: ['days_in_regime', 'vix_percentile_126d', 'fin_stress_index', 'copper_ret_63d', 'dxy_zscore_252d']
+2025-12-15 16:41:39,038 - INFO - Feature selection: compression | top_n=129 | corr_threshold=0.904689224040927
+2025-12-15 16:41:39,050 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 16:41:39,054 - INFO -   Training samples: 2607
+2025-12-15 16:41:51,654 - INFO -   Candidate features: 193
+2025-12-15 16:41:51,959 - INFO -   Removed 26 correlated features
+2025-12-15 16:41:51,959 - INFO -   Final selection: 129 features
+2025-12-15 16:41:51,959 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_skew_joint_regime', 'vix_percentile_126d', 'joint_regime_expected_return']
+2025-12-15 16:41:51,962 - INFO - Feature selection: up | top_n=147 | corr_threshold=0.904689224040927
+2025-12-15 16:41:51,974 - INFO -   Using all samples (UP classification)
+2025-12-15 16:41:51,977 - INFO -   Training samples: 4838
+2025-12-15 16:43:44,065 - INFO -   Candidate features: 220
+2025-12-15 16:43:44,470 - INFO -   Removed 34 correlated features
+2025-12-15 16:43:44,470 - INFO -   Final selection: 147 features
+2025-12-15 16:43:44,470 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio', 'dxy_bb_position_20d', 'vix_vs_ma10', 'dxy_vs_ma252']
+2025-12-15 16:43:44,473 - INFO - Feature selection: down | top_n=128 | corr_threshold=0.904689224040927
+2025-12-15 16:43:44,485 - INFO -   Using all samples (DOWN classification)
+2025-12-15 16:43:44,488 - INFO -   Training samples: 4838
+2025-12-15 16:44:45,748 - INFO -   Candidate features: 192
+2025-12-15 16:44:46,053 - INFO -   Removed 27 correlated features
+2025-12-15 16:44:46,053 - INFO -   Final selection: 128 features
+2025-12-15 16:44:46,053 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio', 'dxy_bb_position_20d', 'vix_vs_ma10', 'dxy_vs_ma252']
+2025-12-15 16:47:08,058 - INFO - Feature selection: expansion | top_n=87 | corr_threshold=0.8886784955963598
+2025-12-15 16:47:08,070 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 16:47:08,073 - INFO -   Training samples: 2226
+2025-12-15 17:03:59,127 - INFO -   Candidate features: 130
+2025-12-15 17:03:59,262 - INFO -   Removed 17 correlated features
+2025-12-15 17:03:59,262 - INFO -   Final selection: 87 features
+2025-12-15 17:03:59,262 - INFO -   Top 5: ['days_in_regime', 'spx_vol_ratio_10_63', 'vix_percentile_126d', '6m_vol_63d_fred', 'copper_momentum_63d']
+2025-12-15 17:03:59,266 - INFO - Feature selection: compression | top_n=135 | corr_threshold=0.8886784955963598
+2025-12-15 17:03:59,279 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:03:59,283 - INFO -   Training samples: 2607
+2025-12-15 17:06:31,058 - INFO -   Candidate features: 202
+2025-12-15 17:06:31,390 - INFO -   Removed 27 correlated features
+2025-12-15 17:06:31,390 - INFO -   Final selection: 135 features
+2025-12-15 17:06:31,390 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_percentile_126d', 'vvix', 'vix_velocity_5d_regime_adj']
+2025-12-15 17:06:31,398 - INFO - Feature selection: up | top_n=84 | corr_threshold=0.8886784955963598
+2025-12-15 17:06:31,416 - INFO -   Using all samples (UP classification)
+2025-12-15 17:06:31,420 - INFO -   Training samples: 4838
+2025-12-15 17:06:37,441 - INFO -   Candidate features: 126
+2025-12-15 17:06:37,573 - INFO -   Removed 18 correlated features
+2025-12-15 17:06:37,574 - INFO -   Final selection: 84 features
+2025-12-15 17:06:37,574 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio_percentile_252d', 'vix_vs_ma10', 'dxy_ret_63d', 'rsi_14']
+2025-12-15 17:06:37,577 - INFO - Feature selection: down | top_n=146 | corr_threshold=0.8886784955963598
+2025-12-15 17:06:37,588 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:06:37,591 - INFO -   Training samples: 4838
+2025-12-15 17:06:43,554 - INFO -   Candidate features: 219
+2025-12-15 17:06:43,946 - INFO -   Removed 34 correlated features
+2025-12-15 17:06:43,946 - INFO -   Final selection: 146 features
+2025-12-15 17:06:43,946 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio_percentile_252d', 'vix_vs_ma10', 'dxy_ret_63d', 'rsi_14']
+2025-12-15 17:06:49,387 - INFO - Feature selection: expansion | top_n=119 | corr_threshold=0.9296772698841616
+2025-12-15 17:06:49,398 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:06:49,400 - INFO -   Training samples: 2226
+2025-12-15 17:07:02,538 - INFO -   Candidate features: 178
+2025-12-15 17:07:02,795 - INFO -   Removed 19 correlated features
+2025-12-15 17:07:02,795 - INFO -   Final selection: 119 features
+2025-12-15 17:07:02,795 - INFO -   Top 5: ['days_in_regime', 'fin_stress_index', 'vx_oi_surge', 'hy_velocity_21d', 'hy_spread']
+2025-12-15 17:07:02,798 - INFO - Feature selection: compression | top_n=140 | corr_threshold=0.9296772698841616
+2025-12-15 17:07:02,809 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:07:02,813 - INFO -   Training samples: 2607
+2025-12-15 17:07:17,597 - INFO -   Candidate features: 210
+2025-12-15 17:07:17,955 - INFO -   Removed 15 correlated features
+2025-12-15 17:07:17,955 - INFO -   Final selection: 140 features
+2025-12-15 17:07:17,956 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_skew_joint_regime', 'vix_percentile_126d', 'vix_velocity_5d_regime_adj']
+2025-12-15 17:07:17,958 - INFO - Feature selection: up | top_n=89 | corr_threshold=0.9296772698841616
+2025-12-15 17:07:17,972 - INFO -   Using all samples (UP classification)
+2025-12-15 17:07:17,974 - INFO -   Training samples: 4838
+2025-12-15 17:10:37,844 - INFO -   Candidate features: 133
+2025-12-15 17:10:37,993 - INFO -   Removed 14 correlated features
+2025-12-15 17:10:37,993 - INFO -   Final selection: 89 features
+2025-12-15 17:10:37,993 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'skew_vix_ratio_percentile_252d', 'dxy_zscore_21d', 'hy_spread', 'vix_vs_ma10']
+2025-12-15 17:10:37,997 - INFO - Feature selection: down | top_n=87 | corr_threshold=0.9296772698841616
+2025-12-15 17:10:38,012 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:10:38,016 - INFO -   Training samples: 4838
+2025-12-15 17:11:04,126 - INFO - Loading production data...
+2025-12-15 17:11:24,698 - INFO - Dataset: 5339 samples, 510 features
+2025-12-15 17:11:24,698 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-15 17:11:24,698 - INFO - 
+2025-12-15 17:11:24,716 - INFO - ================================================================================
+2025-12-15 17:11:24,717 - INFO - UNIFIED PHASE 1 TUNER - UPGRADED WITH FEATURE FREEZING
+2025-12-15 17:11:24,717 - INFO - ================================================================================
+2025-12-15 17:11:24,717 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
+2025-12-15 17:11:24,717 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
+2025-12-15 17:11:24,717 - INFO - Test:   480 days (2024-01-01 to 2025-11-28)
+2025-12-15 17:11:24,717 - INFO - Base features: 505
+2025-12-15 17:11:24,717 - INFO - ⚠️  NO FROZEN FEATURES: Will select per trial (slower, less stable)
+2025-12-15 17:11:24,717 - INFO - ✓ CONSISTENT EVAL METRICS: Both classifiers use 'logloss' for probability calibration
+2025-12-15 17:11:24,717 - INFO - EVALUATES: With ensemble logic (normalized probs + up_advantage)
+2025-12-15 17:11:24,717 - INFO - CONSTRAINTS: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-15 17:11:24,717 - INFO - ================================================================================
+2025-12-15 17:11:24,717 - INFO - Starting Unified Phase 1 optimization: 200 trials (selecting features per trial)
+2025-12-15 17:11:24,717 - INFO - Tuning ~74 hyperparameters (includes feature selection)
+2025-12-15 17:11:24,717 - INFO - Evaluating with ENSEMBLE LOGIC on 480 test days
+2025-12-15 17:11:24,717 - INFO - Constraints: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-15 17:11:24,717 - INFO - ================================================================================
+2025-12-15 17:11:25,358 - INFO - Feature selection: expansion | top_n=74 | corr_threshold=0.8522642943725383
+2025-12-15 17:11:25,378 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:11:25,384 - INFO -   Training samples: 2241
+2025-12-15 17:13:06,658 - INFO - Loading production data...
+2025-12-15 17:13:24,116 - INFO - Dataset: 5339 samples, 510 features
+2025-12-15 17:13:24,116 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-15 17:13:24,116 - INFO - 
+2025-12-15 17:13:24,116 - INFO - ================================================================================
+2025-12-15 17:13:24,116 - INFO - FEATURE STABILITY TEST: Running feature selection 10 times
+2025-12-15 17:13:24,116 - INFO - ================================================================================
+2025-12-15 17:13:24,678 - INFO - 
+Run 1/10:
+2025-12-15 17:13:24,681 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:13:24,691 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:13:24,696 - INFO -   Training samples: 2241
+2025-12-15 17:14:00,221 - INFO -   Candidate features: 150
+2025-12-15 17:14:00,402 - INFO -   Removed 19 correlated features
+2025-12-15 17:14:00,402 - INFO -   Final selection: 100 features
+2025-12-15 17:14:00,402 - INFO -   Top 5: ['yield_10y3m_inversion_depth', 'vx_spread_x_vix_expiry', 'days_in_regime', 'vix_percentile_126d', 'hy_spread']
+2025-12-15 17:14:00,403 - INFO -   expansion: 100 features
+2025-12-15 17:14:00,405 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:14:00,416 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:14:00,419 - INFO -   Training samples: 2613
+2025-12-15 17:14:37,489 - INFO -   Candidate features: 150
+2025-12-15 17:14:37,673 - INFO -   Removed 20 correlated features
+2025-12-15 17:14:37,673 - INFO -   Final selection: 100 features
+2025-12-15 17:14:37,673 - INFO -   Top 5: ['vix_vs_ma63', 'regime_prob_crisis', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_velocity_5d_regime_adj']
+2025-12-15 17:14:37,675 - INFO -   compression: 100 features
+2025-12-15 17:14:37,676 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:14:37,689 - INFO -   Using all samples (UP classification)
+2025-12-15 17:14:37,691 - INFO -   Training samples: 4859
+2025-12-15 17:15:09,035 - INFO -   Candidate features: 150
+2025-12-15 17:15:09,222 - INFO -   Removed 18 correlated features
+2025-12-15 17:15:09,222 - INFO -   Final selection: 100 features
+2025-12-15 17:15:09,222 - INFO -   Top 5: ['spx_realized_vol_63d_x_regime_3', 'vix_velocity_5d_regime_adj', 'month', 'vix_velocity_5d', 'hy_spread']
+2025-12-15 17:15:09,224 - INFO -   up: 100 features
+2025-12-15 17:15:09,226 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:15:09,235 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:15:09,238 - INFO -   Training samples: 4859
+2025-12-15 17:15:40,766 - INFO -   Candidate features: 150
+2025-12-15 17:15:40,956 - INFO -   Removed 18 correlated features
+2025-12-15 17:15:40,956 - INFO -   Final selection: 100 features
+2025-12-15 17:15:40,956 - INFO -   Top 5: ['spx_realized_vol_63d_x_regime_3', 'vix_velocity_5d_regime_adj', 'month', 'vix_velocity_5d', 'hy_spread']
+2025-12-15 17:15:40,958 - INFO -   down: 100 features
+2025-12-15 17:15:40,958 - INFO - 
+Run 2/10:
+2025-12-15 17:15:40,960 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:15:40,969 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:15:40,972 - INFO -   Training samples: 2241
+2025-12-15 17:16:16,371 - INFO -   Candidate features: 150
+2025-12-15 17:16:16,553 - INFO -   Removed 19 correlated features
+2025-12-15 17:16:16,553 - INFO -   Final selection: 100 features
+2025-12-15 17:16:16,553 - INFO -   Top 5: ['days_in_regime', 'cross_asset_vol_cluster', 'yield_curve_level', 'vix_zscore_252d_x_regime_1', 'vix_zscore_252d_x_regime_2']
+2025-12-15 17:16:16,555 - INFO -   expansion: 100 features
+2025-12-15 17:16:16,556 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:16:16,576 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:16:16,583 - INFO -   Training samples: 2613
+2025-12-15 17:16:55,222 - INFO -   Candidate features: 150
+2025-12-15 17:16:55,409 - INFO -   Removed 16 correlated features
+2025-12-15 17:16:55,409 - INFO -   Final selection: 100 features
+2025-12-15 17:16:55,409 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_percentile_126d', 'joint_regime_expected_return', 'vix_velocity_5d_regime_adj']
+2025-12-15 17:16:55,412 - INFO -   compression: 100 features
+2025-12-15 17:16:55,416 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:16:55,434 - INFO -   Using all samples (UP classification)
+2025-12-15 17:16:55,440 - INFO -   Training samples: 4859
+2025-12-15 17:17:26,100 - INFO -   Candidate features: 150
+2025-12-15 17:17:26,286 - INFO -   Removed 17 correlated features
+2025-12-15 17:17:26,286 - INFO -   Final selection: 100 features
+2025-12-15 17:17:26,286 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'ig_hy_spread', 'month', 'vix_vs_ma10', 'dxy_zscore_21d']
+2025-12-15 17:17:26,288 - INFO -   up: 100 features
+2025-12-15 17:17:26,289 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:17:26,299 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:17:26,303 - INFO -   Training samples: 4859
+2025-12-15 17:17:56,855 - INFO -   Candidate features: 150
+2025-12-15 17:17:57,040 - INFO -   Removed 17 correlated features
+2025-12-15 17:17:57,040 - INFO -   Final selection: 100 features
+2025-12-15 17:17:57,040 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'ig_hy_spread', 'month', 'vix_vs_ma10', 'dxy_zscore_21d']
+2025-12-15 17:17:57,042 - INFO -   down: 100 features
+2025-12-15 17:17:57,042 - INFO - 
+Run 3/10:
+2025-12-15 17:17:57,043 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:17:57,053 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:17:57,056 - INFO -   Training samples: 2241
+2025-12-15 17:18:32,893 - INFO -   Candidate features: 150
+2025-12-15 17:18:33,081 - INFO -   Removed 21 correlated features
+2025-12-15 17:18:33,081 - INFO -   Final selection: 100 features
+2025-12-15 17:18:33,081 - INFO -   Top 5: ['vvix_percentile_63d', 'vx_oi_surge', 'time_in_regime_pct', 'month', 'hy_spread']
+2025-12-15 17:18:33,083 - INFO -   expansion: 100 features
+2025-12-15 17:18:33,085 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:18:33,098 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:18:33,102 - INFO -   Training samples: 2613
+2025-12-15 17:19:12,060 - INFO -   Candidate features: 150
+2025-12-15 17:19:12,245 - INFO -   Removed 15 correlated features
+2025-12-15 17:19:12,245 - INFO -   Final selection: 100 features
+2025-12-15 17:19:12,245 - INFO -   Top 5: ['vix_vs_ma63', 'vix_percentile_126d', 'vix_velocity_5d_regime_adj', 'regime_x_opex_prox', 'vix_skew_joint_regime']
+2025-12-15 17:19:12,248 - INFO -   compression: 100 features
+2025-12-15 17:19:12,253 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:19:12,268 - INFO -   Using all samples (UP classification)
+2025-12-15 17:19:12,270 - INFO -   Training samples: 4859
+2025-12-15 17:19:44,752 - INFO -   Candidate features: 150
+2025-12-15 17:19:44,940 - INFO -   Removed 19 correlated features
+2025-12-15 17:19:44,940 - INFO -   Final selection: 100 features
+2025-12-15 17:19:44,940 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'dxy_vs_ma252', 'vvix_ret_10d', 'yield_10y3m_percentile_252d', 'dxy_zscore_21d']
+2025-12-15 17:19:44,943 - INFO -   up: 100 features
+2025-12-15 17:19:44,946 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:19:44,959 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:19:44,962 - INFO -   Training samples: 4859
+2025-12-15 17:20:16,630 - INFO -   Candidate features: 150
+2025-12-15 17:20:16,817 - INFO -   Removed 18 correlated features
+2025-12-15 17:20:16,817 - INFO -   Final selection: 100 features
+2025-12-15 17:20:16,817 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'dxy_vs_ma252', 'vvix_ret_10d', 'yield_10y3m_percentile_252d', 'vix1m_vix3m_ratio']
+2025-12-15 17:20:16,819 - INFO -   down: 100 features
+2025-12-15 17:20:16,819 - INFO - 
+Run 4/10:
+2025-12-15 17:20:16,821 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:20:16,831 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:20:16,834 - INFO -   Training samples: 2241
+2025-12-15 17:20:52,111 - INFO -   Candidate features: 150
+2025-12-15 17:20:52,292 - INFO -   Removed 19 correlated features
+2025-12-15 17:20:52,292 - INFO -   Final selection: 100 features
+2025-12-15 17:20:52,292 - INFO -   Top 5: ['time_in_regime_pct', 'vx_oi_surge', 'fin_stress_index', 'hy_velocity_21d', 'vix_percentile_126d']
+2025-12-15 17:20:52,294 - INFO -   expansion: 100 features
+2025-12-15 17:20:52,296 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:20:52,311 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:20:52,316 - INFO -   Training samples: 2613
+2025-12-15 17:21:28,972 - INFO -   Candidate features: 150
+2025-12-15 17:21:29,193 - INFO -   Removed 16 correlated features
+2025-12-15 17:21:29,193 - INFO -   Final selection: 100 features
+2025-12-15 17:21:29,193 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_percentile_126d', 'vix_skew_joint_regime', 'vix_velocity_5d_regime_adj']
+2025-12-15 17:21:29,195 - INFO -   compression: 100 features
+2025-12-15 17:21:29,196 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:21:29,213 - INFO -   Using all samples (UP classification)
+2025-12-15 17:21:29,217 - INFO -   Training samples: 4859
+2025-12-15 17:22:00,224 - INFO -   Candidate features: 150
+2025-12-15 17:22:00,413 - INFO -   Removed 21 correlated features
+2025-12-15 17:22:00,413 - INFO -   Final selection: 100 features
+2025-12-15 17:22:00,413 - INFO -   Top 5: ['hy_spread', 'time_in_regime_pct', 'skew_vix_ratio_percentile_252d', 'vix_vs_ma10', 'spx_realized_vol_21d']
+2025-12-15 17:22:00,416 - INFO -   up: 100 features
+2025-12-15 17:22:00,420 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:22:00,431 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:22:00,434 - INFO -   Training samples: 4859
+2025-12-15 17:22:33,969 - INFO -   Candidate features: 150
+2025-12-15 17:22:34,163 - INFO -   Removed 21 correlated features
+2025-12-15 17:22:34,163 - INFO -   Final selection: 100 features
+2025-12-15 17:22:34,163 - INFO -   Top 5: ['hy_spread', 'time_in_regime_pct', 'skew_vix_ratio_percentile_252d', 'vix_vs_ma10', 'spx_realized_vol_21d']
+2025-12-15 17:22:34,168 - INFO -   down: 100 features
+2025-12-15 17:22:34,168 - INFO - 
+Run 5/10:
+2025-12-15 17:22:34,173 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:22:34,191 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:22:34,197 - INFO -   Training samples: 2241
+2025-12-15 17:23:10,646 - INFO -   Candidate features: 150
+2025-12-15 17:23:10,831 - INFO -   Removed 15 correlated features
+2025-12-15 17:23:10,831 - INFO -   Final selection: 100 features
+2025-12-15 17:23:10,831 - INFO -   Top 5: ['days_in_regime', 'hy_spread', 'fin_stress_index', 'copper_ret_63d', 'vx_oi_5d_change']
+2025-12-15 17:23:10,834 - INFO -   expansion: 100 features
+2025-12-15 17:23:10,840 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:23:10,863 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:23:10,875 - INFO -   Training samples: 2613
+2025-12-15 17:23:48,571 - INFO -   Candidate features: 150
+2025-12-15 17:23:48,755 - INFO -   Removed 17 correlated features
+2025-12-15 17:23:48,755 - INFO -   Final selection: 100 features
+2025-12-15 17:23:48,755 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_skew_joint_regime', 'vix_velocity_5d_regime_adj', 'vix_zscore_63d']
+2025-12-15 17:23:48,757 - INFO -   compression: 100 features
+2025-12-15 17:23:48,758 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:23:48,770 - INFO -   Using all samples (UP classification)
+2025-12-15 17:23:48,774 - INFO -   Training samples: 4859
+2025-12-15 17:24:20,668 - INFO -   Candidate features: 150
+2025-12-15 17:24:20,858 - INFO -   Removed 22 correlated features
+2025-12-15 17:24:20,858 - INFO -   Final selection: 100 features
+2025-12-15 17:24:20,858 - INFO -   Top 5: ['dxy_percentile_21d', 'vix_velocity_5d_regime_adj', 'spx_realized_vol_21d_log', 'vix_velocity_5d_x_regime_0', 'joint_regime_frequency']
+2025-12-15 17:24:20,862 - INFO -   up: 100 features
+2025-12-15 17:24:20,866 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:24:20,878 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:24:20,881 - INFO -   Training samples: 4859
+2025-12-15 17:24:52,839 - INFO -   Candidate features: 150
+2025-12-15 17:24:53,027 - INFO -   Removed 22 correlated features
+2025-12-15 17:24:53,027 - INFO -   Final selection: 100 features
+2025-12-15 17:24:53,027 - INFO -   Top 5: ['dxy_percentile_21d', 'vix_velocity_5d_regime_adj', 'spx_realized_vol_21d_log', 'vix_velocity_5d_x_regime_0', 'joint_regime_frequency']
+2025-12-15 17:24:53,031 - INFO -   down: 100 features
+2025-12-15 17:24:53,031 - INFO - 
+Run 6/10:
+2025-12-15 17:24:53,033 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:24:53,044 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:24:53,048 - INFO -   Training samples: 2241
+2025-12-15 17:25:28,710 - INFO -   Candidate features: 150
+2025-12-15 17:25:28,936 - INFO -   Removed 22 correlated features
+2025-12-15 17:25:28,936 - INFO -   Final selection: 100 features
+2025-12-15 17:25:28,936 - INFO -   Top 5: ['fin_stress_index', 'hy_spread', 'days_in_regime', 'correlation_regime', 'vvix_ret_10d']
+2025-12-15 17:25:28,939 - INFO -   expansion: 100 features
+2025-12-15 17:25:28,940 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:25:28,957 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:25:28,964 - INFO -   Training samples: 2613
+2025-12-15 17:26:06,556 - INFO -   Candidate features: 150
+2025-12-15 17:26:06,742 - INFO -   Removed 16 correlated features
+2025-12-15 17:26:06,742 - INFO -   Final selection: 100 features
+2025-12-15 17:26:06,742 - INFO -   Top 5: ['vix_vs_ma63', 'vix_vs_ma21', 'vix_skew_joint_regime', 'vix_percentile_126d', 'joint_regime_expected_return']
+2025-12-15 17:26:06,745 - INFO -   compression: 100 features
+2025-12-15 17:26:06,749 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:26:06,762 - INFO -   Using all samples (UP classification)
+2025-12-15 17:26:06,765 - INFO -   Training samples: 4859
+2025-12-15 17:26:38,296 - INFO -   Candidate features: 150
+2025-12-15 17:26:38,518 - INFO -   Removed 21 correlated features
+2025-12-15 17:26:38,518 - INFO -   Final selection: 100 features
+2025-12-15 17:26:38,518 - INFO -   Top 5: ['hy_spread', 'spx_realized_vol_21d_log', 'vix_velocity_5d', 'dxy_extreme_high', 'gold']
+2025-12-15 17:26:38,520 - INFO -   up: 100 features
+2025-12-15 17:26:38,522 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:26:38,537 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:26:38,541 - INFO -   Training samples: 4859
+2025-12-15 17:27:09,516 - INFO -   Candidate features: 150
+2025-12-15 17:27:09,704 - INFO -   Removed 22 correlated features
+2025-12-15 17:27:09,704 - INFO -   Final selection: 100 features
+2025-12-15 17:27:09,704 - INFO -   Top 5: ['hy_spread', 'spx_realized_vol_21d_log', 'vix_velocity_5d', 'dxy_extreme_high', 'gold']
+2025-12-15 17:27:09,706 - INFO -   down: 100 features
+2025-12-15 17:27:09,706 - INFO - 
+Run 7/10:
+2025-12-15 17:27:09,708 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:27:09,719 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:27:09,723 - INFO -   Training samples: 2241
+2025-12-15 17:27:45,494 - INFO -   Candidate features: 150
+2025-12-15 17:27:45,680 - INFO -   Removed 23 correlated features
+2025-12-15 17:27:45,680 - INFO -   Final selection: 100 features
+2025-12-15 17:27:45,680 - INFO -   Top 5: ['time_in_regime_pct', 'hy_velocity_21d', 'vx_oi_surge', 'fin_stress_index', 'hy_spread']
+2025-12-15 17:27:45,682 - INFO -   expansion: 100 features
+2025-12-15 17:27:45,684 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:27:45,697 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:27:45,702 - INFO -   Training samples: 2613
+2025-12-15 17:28:23,099 - INFO -   Candidate features: 150
+2025-12-15 17:28:23,289 - INFO -   Removed 19 correlated features
+2025-12-15 17:28:23,289 - INFO -   Final selection: 100 features
+2025-12-15 17:28:23,289 - INFO -   Top 5: ['vix_vs_ma63', 'vix_skew_joint_regime', 'vix_vs_ma21', 'vix_velocity_5d_regime_adj', 'vix_percentile_126d']
+2025-12-15 17:28:23,291 - INFO -   compression: 100 features
+2025-12-15 17:28:23,292 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:28:23,303 - INFO -   Using all samples (UP classification)
+2025-12-15 17:28:23,305 - INFO -   Training samples: 4859
+2025-12-15 17:28:55,357 - INFO -   Candidate features: 150
+2025-12-15 17:28:55,547 - INFO -   Removed 18 correlated features
+2025-12-15 17:28:55,547 - INFO -   Final selection: 100 features
+2025-12-15 17:28:55,547 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'multi_event_stress', 'vvix_percentile_21d', 'vvix_vix_ratio', 'vix_vs_ma10']
+2025-12-15 17:28:55,549 - INFO -   up: 100 features
+2025-12-15 17:28:55,552 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:28:55,562 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:28:55,565 - INFO -   Training samples: 4859
+2025-12-15 17:29:28,285 - INFO -   Candidate features: 150
+2025-12-15 17:29:28,515 - INFO -   Removed 18 correlated features
+2025-12-15 17:29:28,515 - INFO -   Final selection: 100 features
+2025-12-15 17:29:28,515 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'multi_event_stress', 'vvix_percentile_21d', 'vvix_vix_ratio', 'vix_vs_ma10']
+2025-12-15 17:29:28,518 - INFO -   down: 100 features
+2025-12-15 17:29:28,518 - INFO - 
+Run 8/10:
+2025-12-15 17:29:28,520 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:29:28,531 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:29:28,535 - INFO -   Training samples: 2241
+2025-12-15 17:30:05,344 - INFO -   Candidate features: 150
+2025-12-15 17:30:05,541 - INFO -   Removed 20 correlated features
+2025-12-15 17:30:05,541 - INFO -   Final selection: 100 features
+2025-12-15 17:30:05,541 - INFO -   Top 5: ['time_in_regime_pct', 'fin_stress_index', 'vix_percentile_126d', 'vx_oi_5d_change', 'hy_spread']
+2025-12-15 17:30:05,546 - INFO -   expansion: 100 features
+2025-12-15 17:30:05,560 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:30:05,589 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:30:05,597 - INFO -   Training samples: 2613
+2025-12-15 17:30:45,299 - INFO -   Candidate features: 150
+2025-12-15 17:30:45,493 - INFO -   Removed 20 correlated features
+2025-12-15 17:30:45,494 - INFO -   Final selection: 100 features
+2025-12-15 17:30:45,494 - INFO -   Top 5: ['vix_vs_ma63', 'joint_regime_expected_return', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_skew_joint_regime']
+2025-12-15 17:30:45,497 - INFO -   compression: 100 features
+2025-12-15 17:30:45,502 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:30:45,518 - INFO -   Using all samples (UP classification)
+2025-12-15 17:30:45,521 - INFO -   Training samples: 4859
+2025-12-15 17:31:17,309 - INFO -   Candidate features: 150
+2025-12-15 17:31:17,499 - INFO -   Removed 21 correlated features
+2025-12-15 17:31:17,499 - INFO -   Final selection: 100 features
+2025-12-15 17:31:17,499 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'spx_realized_vol_21d_log', 'month', 'spx_rv_x_earnings', 'ovx_oil_rv_spread']
+2025-12-15 17:31:17,501 - INFO -   up: 100 features
+2025-12-15 17:31:17,502 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:31:17,514 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:31:17,518 - INFO -   Training samples: 4859
+2025-12-15 17:31:49,720 - INFO -   Candidate features: 150
+2025-12-15 17:31:49,910 - INFO -   Removed 21 correlated features
+2025-12-15 17:31:49,910 - INFO -   Final selection: 100 features
+2025-12-15 17:31:49,910 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'spx_realized_vol_21d_log', 'month', 'spx_rv_x_earnings', 'ovx_oil_rv_spread']
+2025-12-15 17:31:49,913 - INFO -   down: 100 features
+2025-12-15 17:31:49,913 - INFO - 
+Run 9/10:
+2025-12-15 17:31:49,916 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:31:49,933 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:31:49,939 - INFO -   Training samples: 2241
+2025-12-15 17:32:25,957 - INFO -   Candidate features: 150
+2025-12-15 17:32:26,141 - INFO -   Removed 20 correlated features
+2025-12-15 17:32:26,141 - INFO -   Final selection: 100 features
+2025-12-15 17:32:26,141 - INFO -   Top 5: ['fin_stress_index', 'vx_spread_x_opex_prox', 'hy_spread', 'time_in_regime_pct', 'vix_percentile_126d']
+2025-12-15 17:32:26,143 - INFO -   expansion: 100 features
+2025-12-15 17:32:26,144 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:32:26,154 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:32:26,158 - INFO -   Training samples: 2613
+2025-12-15 17:33:03,611 - INFO -   Candidate features: 150
+2025-12-15 17:33:03,803 - INFO -   Removed 12 correlated features
+2025-12-15 17:33:03,803 - INFO -   Final selection: 100 features
+2025-12-15 17:33:03,803 - INFO -   Top 5: ['vix_vs_ma63', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_velocity_5d_regime_adj', 'risk_premium_x_opex']
+2025-12-15 17:33:03,804 - INFO -   compression: 100 features
+2025-12-15 17:33:03,806 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:33:03,820 - INFO -   Using all samples (UP classification)
+2025-12-15 17:33:03,823 - INFO -   Training samples: 4859
+2025-12-15 17:33:35,378 - INFO -   Candidate features: 150
+2025-12-15 17:33:35,600 - INFO -   Removed 20 correlated features
+2025-12-15 17:33:35,600 - INFO -   Final selection: 100 features
+2025-12-15 17:33:35,600 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'gold', 'hy_b_spread', 'vix_zscore_252d_x_regime_1', 'multi_event_stress']
+2025-12-15 17:33:35,603 - INFO -   up: 100 features
+2025-12-15 17:33:35,605 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:33:35,614 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:33:35,616 - INFO -   Training samples: 4859
+2025-12-15 17:34:07,562 - INFO -   Candidate features: 150
+2025-12-15 17:34:07,753 - INFO -   Removed 20 correlated features
+2025-12-15 17:34:07,753 - INFO -   Final selection: 100 features
+2025-12-15 17:34:07,753 - INFO -   Top 5: ['vix_velocity_5d_regime_adj', 'gold', 'hy_b_spread', 'vix_zscore_252d_x_regime_1', 'multi_event_stress']
+2025-12-15 17:34:07,756 - INFO -   down: 100 features
+2025-12-15 17:34:07,756 - INFO - 
+Run 10/10:
+2025-12-15 17:34:07,758 - INFO - Feature selection: expansion | top_n=100 | corr_threshold=0.9
+2025-12-15 17:34:07,772 - INFO -   Using UP samples only (expansion domain)
+2025-12-15 17:34:07,775 - INFO -   Training samples: 2241
+2025-12-15 17:34:43,143 - INFO -   Candidate features: 150
+2025-12-15 17:34:43,325 - INFO -   Removed 22 correlated features
+2025-12-15 17:34:43,325 - INFO -   Final selection: 100 features
+2025-12-15 17:34:43,325 - INFO -   Top 5: ['days_in_regime', 'vvix_zscore_63d', 'vx_oi_surge', 'fin_stress_index', 'month']
+2025-12-15 17:34:43,327 - INFO -   expansion: 100 features
+2025-12-15 17:34:43,330 - INFO - Feature selection: compression | top_n=100 | corr_threshold=0.9
+2025-12-15 17:34:43,341 - INFO -   Using DOWN samples only (compression domain)
+2025-12-15 17:34:43,345 - INFO -   Training samples: 2613
+2025-12-15 17:35:20,118 - INFO -   Candidate features: 150
+2025-12-15 17:35:20,305 - INFO -   Removed 13 correlated features
+2025-12-15 17:35:20,305 - INFO -   Final selection: 100 features
+2025-12-15 17:35:20,305 - INFO -   Top 5: ['vix_vs_ma63', 'joint_regime_expected_return', 'vix_percentile_126d', 'vix_vs_ma21', 'vix_skew_joint_regime']
+2025-12-15 17:35:20,308 - INFO -   compression: 100 features
+2025-12-15 17:35:20,310 - INFO - Feature selection: up | top_n=100 | corr_threshold=0.9
+2025-12-15 17:35:20,320 - INFO -   Using all samples (UP classification)
+2025-12-15 17:35:20,323 - INFO -   Training samples: 4859
+2025-12-15 17:35:51,644 - INFO -   Candidate features: 150
+2025-12-15 17:35:51,836 - INFO -   Removed 19 correlated features
+2025-12-15 17:35:51,836 - INFO -   Final selection: 100 features
+2025-12-15 17:35:51,836 - INFO -   Top 5: ['hy_spread', 'vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'vix_velocity_5d_x_regime_2', 'crude_oil_vol_21d_log']
+2025-12-15 17:35:51,838 - INFO -   up: 100 features
+2025-12-15 17:35:51,840 - INFO - Feature selection: down | top_n=100 | corr_threshold=0.9
+2025-12-15 17:35:51,849 - INFO -   Using all samples (DOWN classification)
+2025-12-15 17:35:51,853 - INFO -   Training samples: 4859
+2025-12-15 17:36:23,300 - INFO -   Candidate features: 150
+2025-12-15 17:36:23,492 - INFO -   Removed 19 correlated features
+2025-12-15 17:36:23,492 - INFO -   Final selection: 100 features
+2025-12-15 17:36:23,492 - INFO -   Top 5: ['hy_spread', 'vix_velocity_5d_regime_adj', 'vix_vs_ma10', 'vix_velocity_5d_x_regime_2', 'crude_oil_vol_21d_log']
+2025-12-15 17:36:23,494 - INFO -   down: 100 features
+2025-12-15 17:36:23,494 - INFO - 
+================================================================================
+2025-12-15 17:36:23,494 - INFO - STABILITY ANALYSIS:
+2025-12-15 17:36:23,494 - INFO - ================================================================================
+2025-12-15 17:36:23,494 - INFO - 
+EXPANSION:
+2025-12-15 17:36:23,495 - INFO -   Total unique features seen: 268
+2025-12-15 17:36:23,495 - INFO -   Stable features (>=8/10 runs): 35
+2025-12-15 17:36:23,495 - INFO -   Stability rate: 13.1%
+2025-12-15 17:36:23,495 - INFO -   Most stable (top 10):
+2025-12-15 17:36:23,495 - INFO -     vvix_percentile_21d: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     VXTH: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     ovx_vol_10d: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     spx_ret_63d: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     spx_vol_ratio_10_21: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     vix_percentile_126d: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     VXTLT_vs_ma21: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     dxy_vs_ma252: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     ovx_zscore_252d: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     fin_stress_index: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -   Least stable (bottom 10):
+2025-12-15 17:36:23,495 - INFO -     is_fomc_period: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO -     vx_roll_cost_5d: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO -     SKEW_percentile_63d: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO -     yield_10y3m_velocity_63d: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO -     vix_velocity_21d: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO -     vx_curve_3_2_ratio: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO -     hy_bb_velocity_21d: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO -     dxy_momentum_z_10d: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO -     vix_percentile_252d: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO -     is_earnings_heavy: 1/10 (10%)
+2025-12-15 17:36:23,495 - INFO - 
+COMPRESSION:
+2025-12-15 17:36:23,495 - INFO -   Total unique features seen: 282
+2025-12-15 17:36:23,495 - INFO -   Stable features (>=8/10 runs): 42
+2025-12-15 17:36:23,495 - INFO -   Stability rate: 14.9%
+2025-12-15 17:36:23,495 - INFO -   Most stable (top 10):
+2025-12-15 17:36:23,495 - INFO -     dxy_gold_corr_63d: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     vix_zscore_252d: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     vvix: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     risk_premium_x_opex: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     trend_strength: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     joint_regime_expected_return: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     vix_vel_x_opex_prox: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     vix_vs_rv_21d: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     vix_vs_ma21: 10/10 (100%)
+2025-12-15 17:36:23,495 - INFO -     vix_percentile_126d: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -   Least stable (bottom 10):
+2025-12-15 17:36:23,496 - INFO -     SKEW_percentile_252d: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     vix_vel_x_macro_event: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     vix_skew_divergence_extreme: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     VX1-VX2: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     cross_asset_vol_cluster: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     risk_premium_percentile_21d: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     regime_prob_crisis: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     vix_term_slope_velocity_21d: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     risk_premium_extreme_low_63d: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     gold_vol_21d: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO - 
+UP:
+2025-12-15 17:36:23,496 - INFO -   Total unique features seen: 302
+2025-12-15 17:36:23,496 - INFO -   Stable features (>=8/10 runs): 30
+2025-12-15 17:36:23,496 - INFO -   Stability rate: 9.9%
+2025-12-15 17:36:23,496 - INFO -   Most stable (top 10):
+2025-12-15 17:36:23,496 - INFO -     spx_vs_ma200: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -     vix_vol_63d: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -     dxy_zscore_63d: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -     vix_vs_ma10: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -     vix_term_ratio_zscore_63d: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -     vix_accel_x_opex_prox: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -     natgas_vol_21d: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -     day_of_month: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -     skew_vix_ratio_percentile_252d: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -     vix1m_vix3m_ratio: 10/10 (100%)
+2025-12-15 17:36:23,496 - INFO -   Least stable (bottom 10):
+2025-12-15 17:36:23,496 - INFO -     vx_oi_surge: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     vix_vel_x_macro_event: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     dxy_gold_both_rally: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     ovx_velocity_21d: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     regime_x_fomc_prox: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     spx_gap_magnitude: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     cpi_week: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     growth_concern_signal: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     fomc_pre_period: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO -     vx_contango_zscore: 1/10 (10%)
+2025-12-15 17:36:23,496 - INFO - 
+DOWN:
+2025-12-15 17:36:23,496 - INFO -   Total unique features seen: 303
+2025-12-15 17:36:23,496 - INFO -   Stable features (>=8/10 runs): 31
+2025-12-15 17:36:23,496 - INFO -   Stability rate: 10.2%
+2025-12-15 17:36:23,497 - INFO -   Most stable (top 10):
+2025-12-15 17:36:23,497 - INFO -     dxy_gold_corr_63d: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -     spx_vs_ma200: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -     vix_vol_63d: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -     dxy_zscore_63d: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -     vix_vs_ma10: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -     vix_term_ratio_zscore_63d: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -     vix_accel_x_opex_prox: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -     natgas_vol_21d: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -     day_of_month: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -     skew_vix_ratio_percentile_252d: 10/10 (100%)
+2025-12-15 17:36:23,497 - INFO -   Least stable (bottom 10):
+2025-12-15 17:36:23,497 - INFO -     vx_oi_surge: 1/10 (10%)
+2025-12-15 17:36:23,497 - INFO -     vix_vel_x_macro_event: 1/10 (10%)
+2025-12-15 17:36:23,497 - INFO -     dxy_gold_both_rally: 1/10 (10%)
+2025-12-15 17:36:23,497 - INFO -     risk_premium_percentile_21d: 1/10 (10%)
+2025-12-15 17:36:23,497 - INFO -     ovx_velocity_21d: 1/10 (10%)
+2025-12-15 17:36:23,497 - INFO -     regime_x_fomc_prox: 1/10 (10%)
+2025-12-15 17:36:23,497 - INFO -     yield_curve_vol_dispersion: 1/10 (10%)
+2025-12-15 17:36:23,497 - INFO -     spx_gap_magnitude: 1/10 (10%)
+2025-12-15 17:36:23,497 - INFO -     cpi_week: 1/10 (10%)
+2025-12-15 17:36:23,497 - INFO -     growth_concern_signal: 1/10 (10%)
+2025-12-15 17:36:23,499 - INFO - 
+✅ Stable features saved to: tuning_unified/frozen_features.json
+2025-12-15 17:36:23,499 - INFO -    Use with: python unified_tuner_upgraded.py --frozen-features tuning_unified/frozen_features.json
+2025-12-15 17:36:23,502 - INFO - ✅ Full report saved to: tuning_unified/stability_report.json
+2025-12-15 17:36:23,502 - INFO - ================================================================================
+2025-12-15 17:37:50,427 - INFO - Using --frozen shorthand: 500 trials with feature_stability/frozen_features.json
+2025-12-15 17:37:50,427 - INFO - Loading production data...
+2025-12-15 17:38:09,831 - INFO - Dataset: 5339 samples, 510 features
+2025-12-15 17:38:09,832 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-15 17:38:09,832 - INFO - 
+2025-12-15 17:38:09,832 - ERROR - ❌ Frozen features file not found: feature_stability/frozen_features.json
+2025-12-15 17:38:09,832 - ERROR -    Run feature stability test first:
+2025-12-15 17:38:09,832 - ERROR -    python unified_tuner_upgraded.py --test-feature-stability 10
+2025-12-15 17:41:13,577 - INFO - Using --frozen shorthand: 500 trials with tuning_unified/frozen_features.json
+2025-12-15 17:41:13,577 - INFO - Loading production data...
+2025-12-15 17:41:31,045 - INFO - Dataset: 5339 samples, 510 features
+2025-12-15 17:41:31,046 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-15 17:41:31,046 - INFO - 
+2025-12-15 17:41:31,046 - INFO - ✅ Loaded frozen features from: tuning_unified/frozen_features.json
+2025-12-15 17:41:31,064 - INFO - ================================================================================
+2025-12-15 17:41:31,064 - INFO - UNIFIED PHASE 1 TUNER - UPGRADED WITH FEATURE FREEZING
+2025-12-15 17:41:31,064 - INFO - ================================================================================
+2025-12-15 17:41:31,064 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
+2025-12-15 17:41:31,064 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
+2025-12-15 17:41:31,064 - INFO - Test:   480 days (2024-01-01 to 2025-11-28)
+2025-12-15 17:41:31,064 - INFO - Base features: 505
+2025-12-15 17:41:31,064 - INFO - ✓ USING FROZEN FEATURES:
+2025-12-15 17:41:31,064 - INFO -   - Expansion: 35 features
+2025-12-15 17:41:31,064 - INFO -   - Compression: 42 features
+2025-12-15 17:41:31,064 - INFO -   - UP: 30 features
+2025-12-15 17:41:31,064 - INFO -   - DOWN: 31 features
+2025-12-15 17:41:31,064 - INFO -   → Effective params reduced by ~16 (no feature selection per trial)
+2025-12-15 17:41:31,064 - INFO - ✓ CONSISTENT EVAL METRICS: Both classifiers use 'logloss' for probability calibration
+2025-12-15 17:41:31,064 - INFO - EVALUATES: With ensemble logic (normalized probs + up_advantage)
+2025-12-15 17:41:31,064 - INFO - CONSTRAINTS: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-15 17:41:31,064 - INFO - ================================================================================
+2025-12-15 17:41:31,064 - INFO - Starting Unified Phase 1 optimization: 500 trials (WITH FROZEN FEATURES)
+2025-12-15 17:41:31,064 - INFO - Tuning ~58 hyperparameters (feature selection skipped)
+2025-12-15 17:41:31,064 - INFO - Evaluating with ENSEMBLE LOGIC on 480 test days
+2025-12-15 17:41:31,064 - INFO - Constraints: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-15 17:41:31,064 - INFO - ================================================================================
+2025-12-15 17:58:27,451 - INFO - 
+✅ Results saved: tuning_unified/unified_results.json
+2025-12-16 00:11:47,008 - INFO - Using --frozen shorthand: 500 trials with feature_stability/frozen_features.json
+2025-12-16 00:11:47,009 - INFO - Loading production data...
+2025-12-16 00:12:10,479 - INFO - Dataset: 5339 samples, 510 features
+2025-12-16 00:12:10,480 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-16 00:12:10,480 - INFO - 
+2025-12-16 00:12:10,481 - ERROR - ❌ Frozen features file not found: feature_stability/frozen_features.json
+2025-12-16 00:12:10,481 - ERROR -    Run feature stability test first:
+2025-12-16 00:12:10,481 - ERROR -    python unified_tuner_upgraded.py --test-feature-stability 10
+2025-12-16 00:18:18,093 - INFO - Using --frozen shorthand: 500 trials with tuning_unified/frozen_features.json
+2025-12-16 00:18:18,093 - INFO - Loading production data...
+2025-12-16 00:18:35,350 - INFO - Dataset: 5339 samples, 510 features
+2025-12-16 00:18:35,350 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-16 00:18:35,350 - INFO - 
+2025-12-16 00:18:35,351 - INFO - ✅ Loaded frozen features from: tuning_unified/frozen_features.json
+2025-12-16 00:18:35,373 - INFO - ================================================================================
+2025-12-16 00:18:35,373 - INFO - UNIFIED PHASE 1 TUNER - UPGRADED WITH FEATURE FREEZING
+2025-12-16 00:18:35,374 - INFO - ================================================================================
+2025-12-16 00:18:35,374 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
+2025-12-16 00:18:35,374 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
+2025-12-16 00:18:35,374 - INFO - Test:   480 days (2024-01-01 to 2025-11-28)
+2025-12-16 00:18:35,374 - INFO - Base features: 505
+2025-12-16 00:18:35,374 - INFO - ✓ USING FROZEN FEATURES:
+2025-12-16 00:18:35,374 - INFO -   - Expansion: 35 features
+2025-12-16 00:18:35,374 - INFO -   - Compression: 42 features
+2025-12-16 00:18:35,374 - INFO -   - UP: 30 features
+2025-12-16 00:18:35,374 - INFO -   - DOWN: 31 features
+2025-12-16 00:18:35,374 - INFO -   → Effective params reduced by ~16 (no feature selection per trial)
+2025-12-16 00:18:35,374 - INFO - ✓ CONSISTENT EVAL METRICS: Both classifiers use 'logloss' for probability calibration
+2025-12-16 00:18:35,374 - INFO - EVALUATES: With ensemble logic (normalized probs + up_advantage)
+2025-12-16 00:18:35,374 - INFO - CONSTRAINTS: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-16 00:18:35,374 - INFO - ================================================================================
+2025-12-16 00:18:35,374 - INFO - Starting Unified Phase 1 optimization: 500 trials (WITH FROZEN FEATURES)
+2025-12-16 00:18:35,374 - INFO - Tuning ~58 hyperparameters (feature selection skipped)
+2025-12-16 00:18:35,374 - INFO - Evaluating with ENSEMBLE LOGIC on 480 test days
+2025-12-16 00:18:35,374 - INFO - Constraints: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-16 00:18:35,374 - INFO - ================================================================================
+2025-12-16 00:36:40,482 - INFO - 
+✅ Results saved: tuning_unified/unified_results.json
+2025-12-16 00:36:40,483 - INFO - ✅ Config saved: tuning_unified/unified_config.py
+2025-12-16 00:36:40,485 - INFO - ✅ Frozen features reference saved: tuning_unified/frozen_features_used.json
+2025-12-16 00:36:40,485 - INFO - 
+================================================================================
+2025-12-16 00:36:40,485 - INFO - UNIFIED PHASE 1 OPTIMIZATION COMPLETE (UPGRADED)
+2025-12-16 00:36:40,485 - INFO - ================================================================================
+2025-12-16 00:36:40,485 - INFO - Best trial: #346 | Score: 2.261
+2025-12-16 00:36:40,485 - INFO - 
+2025-12-16 00:36:40,485 - INFO - 📊 ACTIONABLE SIGNALS (Primary Target):
+2025-12-16 00:36:40,485 - INFO -     Total: 222 (46.2% actionable)
+2025-12-16 00:36:40,485 - INFO -     UP: 149 | DOWN: 73
+2025-12-16 00:36:40,485 - INFO -     Overall accuracy: 72.5%
+2025-12-16 00:36:40,485 - INFO -     UP accuracy: 71.1%
+2025-12-16 00:36:40,485 - INFO -     DOWN accuracy: 75.3%
+2025-12-16 00:36:40,485 - INFO - 
+2025-12-16 00:36:40,485 - INFO - 📊 ALL PREDICTIONS:
+2025-12-16 00:36:40,485 - INFO -     Total: 480
+2025-12-16 00:36:40,485 - INFO -     UP: 31.0% (149 predictions)
+2025-12-16 00:36:40,485 - INFO -     DOWN: 69.0% (331 predictions)
+2025-12-16 00:36:40,486 - INFO -     UP accuracy: 71.1%
+2025-12-16 00:36:40,486 - INFO -     DOWN accuracy: 62.8%
+2025-12-16 00:36:40,486 - INFO - ================================================================================
+2025-12-16 00:36:40,486 - INFO - 
+✅ Unified optimization complete!
+2025-12-16 00:36:40,486 - INFO - 
+📝 NEXT STEPS:
+2025-12-16 00:36:40,486 - INFO -    1. Review: tuning_unified/unified_results.json
+2025-12-16 00:36:40,486 - INFO -    2. Copy: tuning_unified/unified_config.py → src/config.py
+2025-12-16 00:36:40,486 - INFO -    3. Train: python train_probabilistic_models.py
+2025-12-16 00:36:40,486 - INFO -    4. Validate: python integrated_system.py
+2025-12-16 00:36:40,486 - INFO -    5. Fine-tune: python phase2_ensemble_tuner.py --trials 500

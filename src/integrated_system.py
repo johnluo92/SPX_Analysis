@@ -19,11 +19,30 @@ def get_last_complete_month_end():
     return last_month_end.strftime("%Y-%m-%d")
 
 def check_model_stale():
+    expansion_file=Path("models/expansion_model.pkl")
+    up_file=Path("models/up_classifier.pkl")
+
+    # Check if models exist
+    if not expansion_file.exists() or not up_file.exists():
+        return True,"No model exists"
+
+    # Check if training metadata exists
     metadata_file=Path("models/training_metadata.json")
-    if not metadata_file.exists(): return True,"No model exists"
+    if not metadata_file.exists():
+        # Fallback: check model file modification time
+        model_mtime=expansion_file.stat().st_mtime
+        model_date=datetime.fromtimestamp(model_mtime).strftime("%Y-%m-%d")
+        target_end=get_last_complete_month_end()
+        if model_date<target_end:
+            return True,f"Model trained {model_date}, target {target_end}"
+        return False,f"Model current (trained {model_date})"
+
+    # Use metadata if available
     with open(metadata_file)as f: meta=json.load(f)
-    model_end=meta.get("training_end","2000-01-01"); target_end=get_last_complete_month_end()
-    if model_end<target_end: return True,f"Model trained through {model_end}, target {target_end}"
+    model_end=meta.get("training_end","2000-01-01")
+    target_end=get_last_complete_month_end()
+    if model_end<target_end:
+        return True,f"Model trained through {model_end}, target {target_end}"
     return False,f"Model current (trained through {model_end})"
 
 def retrain_model():
@@ -196,6 +215,11 @@ class VIXForecaster:
         logger.info("\n"+"="*80)
         logger.info("📊 VIX FORECAST | {horizon}d Horizon".format(horizon=TARGET_CONFIG["horizon_days"]))
         logger.info("="*80)
+        obs_date=forecast.get('metadata',{}).get('observation_date','unknown')
+        target_date=forecast.get('metadata',{}).get('forecast_date','unknown')
+        logger.info(f"\n📅 FORECAST DETAILS")
+        logger.info(f"   Generated from: {obs_date} (observation date)")
+        logger.info(f"   Targeting: {target_date} (5d ahead)")
         logger.info(f"\n📍 MARKET STATE")
         logger.info(f"   VIX: {forecast['current_vix']:.2f} | Regime: {forecast['current_regime']} | Cohort: {cohort}")
         logger.info(f"   Quality: {forecast.get('metadata',{}).get('feature_quality',1.0):.1%} | Weight: {forecast.get('metadata',{}).get('cohort_weight',1.0):.2f}x")
@@ -253,8 +277,9 @@ def main():
         cal=ForecastCalibrator(); result=cal.fit_from_database(forecaster.db)
         if result: cal.save("models"); forecaster.calibrator=cal; logger.info("✅ Calibrator refitted")
         else: logger.warning("⚠️  Calibrator fitting failed")
-    yesterday=(datetime.now()-pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    feature_data=forecaster.get_features(yesterday,force_historical=False)
+    forecaster._feature_cache = None  # Clear cache
+    today=datetime.now().strftime("%Y-%m-%d")
+    feature_data=forecaster.get_features(today,force_historical=False)
     df=feature_data["features"]; latest_available=df.index[-1].strftime("%Y-%m-%d")
     forecast=forecaster.generate_forecast(latest_available,df=df)
     if forecast:
