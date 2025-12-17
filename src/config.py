@@ -110,32 +110,32 @@ DOWN_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'loglos
 ENSEMBLE_CONFIG = {
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
-    'up_advantage': 0.0357,
+    'up_advantage': 0.0711,
     'confidence_weights': {
-        'up': {'classifier': 0.6990, 'magnitude': 0.3010},
-        'down': {'classifier': 0.7367, 'magnitude': 0.2633}
+        'up': {'classifier': 0.7432, 'magnitude': 0.2568},
+        'down': {'classifier': 0.6130, 'magnitude': 0.3870}
     },
     'magnitude_scaling': {
-        'up': {'small': 3.4269, 'medium': 7.1849, 'large': 11.1666},
-        'down': {'small': 2.5002, 'medium': 7.6739, 'large': 9.8932}
+        'up': {'small': 2.5296, 'medium': 5.0009, 'large': 10.9756},
+        'down': {'small': 3.0799, 'medium': 4.6980, 'large': 8.2516}
     },
     'dynamic_thresholds': {
         'up': {
-            'high_magnitude': 0.6562,
-            'medium_magnitude': 0.7383,
-            'low_magnitude': 0.7310
+            'high_magnitude': 0.6975,
+            'medium_magnitude': 0.7594,
+            'low_magnitude': 0.8179
         },
         'down': {
-            'high_magnitude': 0.7544,
-            'medium_magnitude': 0.7959,
-            'low_magnitude': 0.8076
+            'high_magnitude': 0.7716,
+            'medium_magnitude': 0.8414,
+            'low_magnitude': 0.8788
         }
     },
-    'min_confidence_up': 0.6737,
-    'min_confidence_down': 0.6750,
-    'boost_threshold_up': 19.1231,
-    'boost_threshold_down': 11.9596,
-    'boost_amount_up': 0.0340,
-    'boost_amount_down': 0.0528,
-    'description': 'Unified tuning - base models + ensemble together (UPGRADED)'
+    'min_confidence_up': 0.5587,
+    'min_confidence_down': 0.6604,
+    'boost_threshold_up': 11.9459,
+    'boost_threshold_down': 12.3533,
+    'boost_amount_up': 0.0431,
+    'boost_amount_down': 0.0762,
+    'description': 'Phase 2 optimized for 68%+ balanced accuracy'
 }

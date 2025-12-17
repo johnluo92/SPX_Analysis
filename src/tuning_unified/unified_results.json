@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-12-16T00:36:40.477448",
+  "timestamp": "2025-12-16T21:26:20.840764",
   "phase": "Unified Phase 1 - Base Models + Ensemble Config (UPGRADED)",
   "description": "Tunes all 4 models + ensemble with ensemble evaluation. Uses frozen features for stability.",
   "frozen_features_used": true,
