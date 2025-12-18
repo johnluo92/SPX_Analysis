@@ -1,0 +1,104 @@
+{
+  "calibration": {
+    "UP": {
+      "total": 200,
+      "accuracy": 0.75,
+      "calibration": [
+        {
+          "bin": "(0.0, 0.5]",
+          "prob_mid": 0.25,
+          "count": 78,
+          "accuracy": 0.6153846153846154,
+          "gap": 0.3653846153846154
+        },
+        {
+          "bin": "(0.5, 0.55]",
+          "prob_mid": 0.525,
+          "count": 62,
+          "accuracy": 0.8225806451612904,
+          "gap": 0.29758064516129035
+        },
+        {
+          "bin": "(0.55, 0.6]",
+          "prob_mid": 0.575,
+          "count": 30,
+          "accuracy": 0.8333333333333334,
+          "gap": 0.2583333333333334
+        },
+        {
+          "bin": "(0.6, 0.65]",
+          "prob_mid": 0.625,
+          "count": 30,
+          "accuracy": 0.8666666666666667,
+          "gap": 0.2416666666666667
+        }
+      ]
+    },
+    "DOWN": {
+      "total": 284,
+      "accuracy": 0.6232394366197183,
+      "calibration": [
+        {
+          "bin": "(0.5, 0.55]",
+          "prob_mid": 0.525,
+          "count": 49,
+          "accuracy": 0.5102040816326531,
+          "gap": -0.01479591836734695
+        },
+        {
+          "bin": "(0.55, 0.6]",
+          "prob_mid": 0.575,
+          "count": 115,
+          "accuracy": 0.6,
+          "gap": 0.025000000000000022
+        },
+        {
+          "bin": "(0.6, 0.65]",
+          "prob_mid": 0.625,
+          "count": 120,
+          "accuracy": 0.6916666666666667,
+          "gap": 0.06666666666666665
+        }
+      ]
+    }
+  },
+  "confidence_gap": {
+    "up_accuracy": 0.8571428571428571,
+    "down_accuracy": 0.8023255813953488,
+    "gap": 0.054817275747508276
+  },
+  "cohort_effects": [
+    {
+      "cohort": "earnings_heavy",
+      "up_count": 5,
+      "up_accuracy": 1.0,
+      "down_count": 2,
+      "down_accuracy": 1.0,
+      "gap": 0.0
+    },
+    {
+      "cohort": "fomc_period",
+      "up_count": 60,
+      "up_accuracy": 0.8666666666666667,
+      "down_count": 41,
+      "down_accuracy": 0.7073170731707317,
+      "gap": 0.15934959349593503
+    },
+    {
+      "cohort": "mid_cycle",
+      "up_count": 7,
+      "up_accuracy": 1.0,
+      "down_count": 22,
+      "down_accuracy": 0.8181818181818182,
+      "gap": 0.18181818181818177
+    },
+    {
+      "cohort": "opex_week",
+      "up_count": 12,
+      "up_accuracy": 0.6666666666666666,
+      "down_count": 21,
+      "down_accuracy": 0.9523809523809523,
+      "gap": -0.2857142857142857
+    }
+  ]
+}

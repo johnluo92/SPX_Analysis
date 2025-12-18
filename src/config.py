@@ -52,7 +52,7 @@ REGIME_NAMES={0:"Low Vol",1:"Normal",2:"Elevated",3:"Crisis"}
 HYPERPARAMETER_TUNING_CONFIG={"enabled":False,"method":"optuna","n_trials":500,"cv_folds":5,"timeout_hours":24,"magnitude_param_space":{"max_depth":(2,8),"learning_rate":(0.005,0.1),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"colsample_bylevel":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0)},"direction_param_space":{"max_depth":(3,10),"learning_rate":(0.01,0.15),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0),"scale_pos_weight":(0.8,2.0)},"description":"Hyperparameter optimization with Optuna - run after ensemble implementation"}
 
 
-QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.5000,
+QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.5494,
     'warn_pct': 20.0, 'error_pct': 50.0, 'strategy': 'raise'}
 
 CALENDAR_COHORTS = {
@@ -76,66 +76,66 @@ FEATURE_SELECTION_CONFIG = {'expansion_top_n': 35,
     'description': 'Unified tuning with ensemble evaluation'}
 
 EXPANSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 5, 'learning_rate': 0.0165,
-    'n_estimators': 668, 'subsample': 0.9122,
-    'colsample_bytree': 0.7868, 'colsample_bylevel': 0.7545,
-    'min_child_weight': 14, 'reg_alpha': 6.1920,
-    'reg_lambda': 6.2310, 'gamma': 0.1538,
+    'max_depth': 6, 'learning_rate': 0.0180,
+    'n_estimators': 791, 'subsample': 0.7048,
+    'colsample_bytree': 0.9217, 'colsample_bylevel': 0.8514,
+    'min_child_weight': 9, 'reg_alpha': 7.5614,
+    'reg_lambda': 9.3269, 'gamma': 0.3872,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 COMPRESSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 3, 'learning_rate': 0.0128,
-    'n_estimators': 605, 'subsample': 0.9458,
-    'colsample_bytree': 0.8038, 'colsample_bylevel': 0.9355,
-    'min_child_weight': 4, 'reg_alpha': 6.0451,
-    'reg_lambda': 9.0234, 'gamma': 0.1011,
+    'max_depth': 6, 'learning_rate': 0.0105,
+    'n_estimators': 801, 'subsample': 0.8472,
+    'colsample_bytree': 0.7356, 'colsample_bylevel': 0.9159,
+    'min_child_weight': 3, 'reg_alpha': 7.2376,
+    'reg_lambda': 3.8474, 'gamma': 0.0350,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 UP_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'logloss',
-    'max_depth': 4, 'learning_rate': 0.0282,
-    'n_estimators': 297, 'subsample': 0.9009,
-    'colsample_bytree': 0.7713, 'min_child_weight': 9,
-    'reg_alpha': 6.6232, 'reg_lambda': 9.0507,
-    'gamma': 1.8426, 'scale_pos_weight': 0.7410,
+    'max_depth': 4, 'learning_rate': 0.0300,
+    'n_estimators': 235, 'subsample': 0.8046,
+    'colsample_bytree': 0.7546, 'min_child_weight': 6,
+    'reg_alpha': 1.9392, 'reg_lambda': 16.4233,
+    'gamma': 2.3502, 'scale_pos_weight': 0.7866,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 DOWN_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'logloss',
-    'max_depth': 4, 'learning_rate': 0.0392,
-    'n_estimators': 217, 'subsample': 0.6274,
-    'colsample_bytree': 0.8678, 'min_child_weight': 16,
-    'reg_alpha': 8.5402, 'reg_lambda': 19.4843,
-    'gamma': 1.9034, 'scale_pos_weight': 0.7736,
+    'max_depth': 4, 'learning_rate': 0.0686,
+    'n_estimators': 285, 'subsample': 0.6606,
+    'colsample_bytree': 0.7336, 'min_child_weight': 18,
+    'reg_alpha': 5.9200, 'reg_lambda': 18.1730,
+    'gamma': 1.7357, 'scale_pos_weight': 0.7216,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 ENSEMBLE_CONFIG = {
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
-    'up_advantage': 0.0711,
+    'up_advantage': 0.0819,
     'confidence_weights': {
-        'up': {'classifier': 0.7432, 'magnitude': 0.2568},
-        'down': {'classifier': 0.6130, 'magnitude': 0.3870}
+        'up': {'classifier': 0.5696, 'magnitude': 0.4304},
+        'down': {'classifier': 0.6940, 'magnitude': 0.3060}
     },
     'magnitude_scaling': {
-        'up': {'small': 2.5296, 'medium': 5.0009, 'large': 10.9756},
-        'down': {'small': 3.0799, 'medium': 4.6980, 'large': 8.2516}
+        'up': {'small': 3.9265, 'medium': 6.1406, 'large': 12.8440},
+        'down': {'small': 3.2286, 'medium': 6.7560, 'large': 9.2251}
     },
     'dynamic_thresholds': {
         'up': {
-            'high_magnitude': 0.6975,
-            'medium_magnitude': 0.7594,
-            'low_magnitude': 0.8179
+            'high_magnitude': 0.6152,
+            'medium_magnitude': 0.7095,
+            'low_magnitude': 0.7766
         },
         'down': {
-            'high_magnitude': 0.7716,
-            'medium_magnitude': 0.8414,
-            'low_magnitude': 0.8788
+            'high_magnitude': 0.7506,
+            'medium_magnitude': 0.7371,
+            'low_magnitude': 0.8056
         }
     },
-    'min_confidence_up': 0.5587,
-    'min_confidence_down': 0.6604,
-    'boost_threshold_up': 11.9459,
-    'boost_threshold_down': 12.3533,
-    'boost_amount_up': 0.0431,
-    'boost_amount_down': 0.0762,
-    'description': 'Phase 2 optimized for 68%+ balanced accuracy'
+    'min_confidence_up': 0.6959,
+    'min_confidence_down': 0.6864,
+    'boost_threshold_up': 14.4621,
+    'boost_threshold_down': 14.1743,
+    'boost_amount_up': 0.0549,
+    'boost_amount_down': 0.0605,
+    'description': 'Unified tuning - base models + ensemble together (UPGRADED)'
 }

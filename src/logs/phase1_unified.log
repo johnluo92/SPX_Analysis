@@ -14300,3 +14300,64 @@ DOWN:
 2025-12-16 21:26:20,845 - INFO -    3. Train: python train_probabilistic_models.py
 2025-12-16 21:26:20,845 - INFO -    4. Validate: python integrated_system.py
 2025-12-16 21:26:20,845 - INFO -    5. Fine-tune: python phase2_ensemble_tuner.py --trials 500
+2025-12-17 18:20:27,702 - INFO - Using --frozen shorthand: 2000 trials with tuning_unified/frozen_features.json
+2025-12-17 18:20:27,703 - INFO - Loading production data...
+2025-12-17 18:20:44,689 - INFO - Dataset: 5339 samples, 510 features
+2025-12-17 18:20:44,689 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-17 18:20:44,689 - INFO - 
+2025-12-17 18:20:44,690 - INFO - ✅ Loaded frozen features from: tuning_unified/frozen_features.json
+2025-12-17 18:20:44,708 - INFO - ================================================================================
+2025-12-17 18:20:44,708 - INFO - UNIFIED PHASE 1 TUNER - UPGRADED WITH FEATURE FREEZING
+2025-12-17 18:20:44,708 - INFO - ================================================================================
+2025-12-17 18:20:44,708 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
+2025-12-17 18:20:44,708 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
+2025-12-17 18:20:44,708 - INFO - Test:   480 days (2024-01-01 to 2025-11-28)
+2025-12-17 18:20:44,708 - INFO - Base features: 505
+2025-12-17 18:20:44,708 - INFO - ✓ USING FROZEN FEATURES:
+2025-12-17 18:20:44,708 - INFO -   - Expansion: 35 features
+2025-12-17 18:20:44,708 - INFO -   - Compression: 42 features
+2025-12-17 18:20:44,708 - INFO -   - UP: 30 features
+2025-12-17 18:20:44,708 - INFO -   - DOWN: 31 features
+2025-12-17 18:20:44,708 - INFO -   → Effective params reduced by ~16 (no feature selection per trial)
+2025-12-17 18:20:44,708 - INFO - ✓ CONSISTENT EVAL METRICS: Both classifiers use 'logloss' for probability calibration
+2025-12-17 18:20:44,708 - INFO - EVALUATES: With ensemble logic (normalized probs + up_advantage)
+2025-12-17 18:20:44,708 - INFO - CONSTRAINTS: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-17 18:20:44,709 - INFO - ================================================================================
+2025-12-17 18:20:44,709 - INFO - Starting Unified Phase 1 optimization: 2000 trials (WITH FROZEN FEATURES)
+2025-12-17 18:20:44,709 - INFO - Tuning ~58 hyperparameters (feature selection skipped)
+2025-12-17 18:20:44,709 - INFO - Evaluating with ENSEMBLE LOGIC on 480 test days
+2025-12-17 18:20:44,709 - INFO - Constraints: Signal balance + LR balance + Complexity + scale_pos_weight
+2025-12-17 18:20:44,709 - INFO - ================================================================================
+2025-12-17 21:25:52,245 - INFO - 
+✅ Results saved: tuning_unified/unified_results.json
+2025-12-17 21:25:52,245 - INFO - ✅ Config saved: tuning_unified/unified_config.py
+2025-12-17 21:25:52,246 - INFO - ✅ Frozen features reference saved: tuning_unified/frozen_features_used.json
+2025-12-17 21:25:52,246 - INFO - 
+================================================================================
+2025-12-17 21:25:52,246 - INFO - UNIFIED PHASE 1 OPTIMIZATION COMPLETE (UPGRADED)
+2025-12-17 21:25:52,246 - INFO - ================================================================================
+2025-12-17 21:25:52,246 - INFO - Best trial: #1955 | Score: 1.799
+2025-12-17 21:25:52,246 - INFO - 
+2025-12-17 21:25:52,246 - INFO - 📊 ACTIONABLE SIGNALS (Primary Target):
+2025-12-17 21:25:52,246 - INFO -     Total: 137 (28.5% actionable)
+2025-12-17 21:25:52,246 - INFO -     UP: 90 | DOWN: 47
+2025-12-17 21:25:52,246 - INFO -     Overall accuracy: 75.2%
+2025-12-17 21:25:52,246 - INFO -     UP accuracy: 74.4%
+2025-12-17 21:25:52,246 - INFO -     DOWN accuracy: 76.6%
+2025-12-17 21:25:52,246 - INFO - 
+2025-12-17 21:25:52,246 - INFO - 📊 ALL PREDICTIONS:
+2025-12-17 21:25:52,246 - INFO -     Total: 480
+2025-12-17 21:25:52,246 - INFO -     UP: 49.4% (237 predictions)
+2025-12-17 21:25:52,246 - INFO -     DOWN: 50.6% (243 predictions)
+2025-12-17 21:25:52,246 - INFO -     UP accuracy: 63.7%
+2025-12-17 21:25:52,246 - INFO -     DOWN accuracy: 67.9%
+2025-12-17 21:25:52,246 - INFO - ================================================================================
+2025-12-17 21:25:52,246 - INFO - 
+✅ Unified optimization complete!
+2025-12-17 21:25:52,246 - INFO - 
+📝 NEXT STEPS:
+2025-12-17 21:25:52,246 - INFO -    1. Review: tuning_unified/unified_results.json
+2025-12-17 21:25:52,246 - INFO -    2. Copy: tuning_unified/unified_config.py → src/config.py
+2025-12-17 21:25:52,246 - INFO -    3. Train: python train_probabilistic_models.py
+2025-12-17 21:25:52,247 - INFO -    4. Validate: python integrated_system.py
+2025-12-17 21:25:52,247 - INFO -    5. Fine-tune: python phase2_ensemble_tuner.py --trials 500

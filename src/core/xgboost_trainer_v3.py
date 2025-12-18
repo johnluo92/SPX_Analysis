@@ -288,13 +288,48 @@ class AsymmetricVIXForecaster:
             val_weights=val_df['cohort_weight'].values
             logger.info(f"Using cohort weights: mean={train_weights.mean():.3f}")
         model.fit(X_train,y_train,sample_weight=train_weights,eval_set=[(X_val,y_val)],sample_weight_eval_set=[val_weights]if val_weights is not None else None,verbose=False)
-        y_train_pred=model.predict(X_train); y_val_pred=model.predict(X_val); y_test_pred=model.predict(X_test)
-        y_train_proba=model.predict_proba(X_train)[:,1]; y_val_proba=model.predict_proba(X_val)[:,1]; y_test_proba=model.predict_proba(X_test)[:,1]
-        train_acc=accuracy_score(y_train,y_train_pred); val_acc=accuracy_score(y_val,y_val_pred); test_acc=accuracy_score(y_test,y_test_pred)
-        test_prec=precision_score(y_test,y_test_pred,zero_division=0); test_rec=recall_score(y_test,y_test_pred,zero_division=0); test_f1=f1_score(y_test,y_test_pred,zero_division=0)
-        metrics={"train":{"accuracy":float(train_acc),"avg_confidence":float(np.mean(np.maximum(y_train_proba,1-y_train_proba)))},"val":{"accuracy":float(val_acc),"avg_confidence":float(np.mean(np.maximum(y_val_proba,1-y_val_proba)))},"test":{"accuracy":float(test_acc),"precision":float(test_prec),"recall":float(test_rec),"f1":float(test_f1),"avg_confidence":float(np.mean(np.maximum(y_test_proba,1-y_test_proba)))}}
-        logger.info(f"{name}: Train Acc={train_acc:.1%} | Val Acc={val_acc:.1%} | Test Acc={test_acc:.1%} | Prec={test_prec:.1%} | Rec={test_rec:.1%} | F1={test_f1:.1%}")
+
+        # Get predictions and probabilities
+        y_train_proba=model.predict_proba(X_train)[:,1]
+        y_val_proba=model.predict_proba(X_val)[:,1]
+        y_test_proba=model.predict_proba(X_test)[:,1]
+
+        # Compute accuracy using probabilities (threshold 0.5)
+        y_train_pred=(y_train_proba>0.5).astype(int)
+        y_val_pred=(y_val_proba>0.5).astype(int)
+        y_test_pred=(y_test_proba>0.5).astype(int)
+
+        train_acc=accuracy_score(y_train,y_train_pred)
+        val_acc=accuracy_score(y_val,y_val_pred)
+        test_acc=accuracy_score(y_test,y_test_pred)
+
+        # For production-relevant metrics, use optimal threshold from probabilities
+        # Find threshold that maximizes F1 on validation set
+        from sklearn.metrics import roc_auc_score, roc_curve
+        best_threshold = 0.5
+        if len(np.unique(y_val)) > 1:  # Only if we have both classes
+            fpr, tpr, thresholds = roc_curve(y_val, y_val_proba)
+            f1_scores = []
+            for thresh in thresholds:
+                y_pred_thresh = (y_val_proba >= thresh).astype(int)
+                f1 = f1_score(y_val, y_pred_thresh, zero_division=0)
+                f1_scores.append(f1)
+            best_idx = np.argmax(f1_scores)
+            best_threshold = float(thresholds[best_idx])
+
+        # Compute test metrics using optimal threshold
+        y_test_pred_optimal=(y_test_proba>=best_threshold).astype(int)
+        test_prec=precision_score(y_test,y_test_pred_optimal,zero_division=0)
+        test_rec=recall_score(y_test,y_test_pred_optimal,zero_division=0)
+        test_f1=f1_score(y_test,y_test_pred_optimal,zero_division=0)
+
+        # Compute ROC-AUC as additional metric
+        test_auc = roc_auc_score(y_test, y_test_proba) if len(np.unique(y_test)) > 1 else 0.0
+
+        metrics={"train":{"accuracy":float(train_acc),"avg_confidence":float(np.mean(np.maximum(y_train_proba,1-y_train_proba)))},"val":{"accuracy":float(val_acc),"avg_confidence":float(np.mean(np.maximum(y_val_proba,1-y_val_proba)))},"test":{"accuracy":float(test_acc),"precision":float(test_prec),"recall":float(test_rec),"f1":float(test_f1),"auc":float(test_auc),"optimal_threshold":float(best_threshold),"avg_confidence":float(np.mean(np.maximum(y_test_proba,1-y_test_proba)))}}
+        logger.info(f"{name}: Train Acc={train_acc:.1%} | Val Acc={val_acc:.1%} | Test Acc={test_acc:.1%} | Prec={test_prec:.1%} | Rec={test_rec:.1%} | F1={test_f1:.1%} | AUC={test_auc:.3f} (thresh={best_threshold:.3f})")
         return model,metrics,y_val_proba,y_test_proba
+
 
     def predict(self,X,current_vix):
         # CRITICAL: Maintain sorted column order
@@ -422,8 +457,14 @@ class AsymmetricVIXForecaster:
         if self.ensemble_enabled: print(f"✓ Asymmetric ensemble: DOWN must beat UP by {self.up_advantage*100:.0f}% to win")
         print(f"Expansion: Train={self.metrics['expansion']['train']['mae_pct']:.2f}% | Val={self.metrics['expansion']['val']['mae_pct']:.2f}% | Test={self.metrics['expansion']['test']['mae_pct']:.2f}% | Bias={self.metrics['expansion']['test']['bias_pct']:+.2f}%")
         print(f"Compression: Train={self.metrics['compression']['train']['mae_pct']:.2f}% | Val={self.metrics['compression']['val']['mae_pct']:.2f}% | Test={self.metrics['compression']['test']['mae_pct']:.2f}% | Bias={self.metrics['compression']['test']['bias_pct']:+.2f}%")
-        print(f"UP: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['up_classifier']['test']['precision']:.1%} | Rec={self.metrics['up_classifier']['test']['recall']:.1%} | F1={self.metrics['up_classifier']['test']['f1']:.1%}")
-        print(f"DOWN: Train={self.metrics['down_classifier']['train']['accuracy']:.1%} | Val={self.metrics['down_classifier']['val']['accuracy']:.1%} | Test={self.metrics['down_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['down_classifier']['test']['precision']:.1%} | Rec={self.metrics['down_classifier']['test']['recall']:.1%} | F1={self.metrics['down_classifier']['test']['f1']:.1%}")
+
+        up_auc = self.metrics['up_classifier']['test'].get('auc', 0)
+        up_thresh = self.metrics['up_classifier']['test'].get('optimal_threshold', 0.5)
+        print(f"UP: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['up_classifier']['test']['precision']:.1%} | Rec={self.metrics['up_classifier']['test']['recall']:.1%} | F1={self.metrics['up_classifier']['test']['f1']:.1%} | AUC={up_auc:.3f} (thresh={up_thresh:.3f})")
+
+        down_auc = self.metrics['down_classifier']['test'].get('auc', 0)
+        down_thresh = self.metrics['down_classifier']['test'].get('optimal_threshold', 0.5)
+        print(f"DOWN: Train={self.metrics['down_classifier']['train']['accuracy']:.1%} | Val={self.metrics['down_classifier']['val']['accuracy']:.1%} | Test={self.metrics['down_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['down_classifier']['test']['precision']:.1%} | Rec={self.metrics['down_classifier']['test']['recall']:.1%} | F1={self.metrics['down_classifier']['test']['f1']:.1%} | AUC={down_auc:.3f} (thresh={down_thresh:.3f})")
         print()
 
 def train_asymmetric_forecaster(df,expansion_features=None,compression_features=None,up_features=None,down_features=None,save_dir="models"):

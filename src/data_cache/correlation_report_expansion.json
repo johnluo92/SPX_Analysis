@@ -5,8 +5,8 @@
   "removed_features": [
     "copper_ret_63d",
     "hy_bb_velocity_21d",
-    "hy_ccc_spread",
     "hy_ccc_velocity_21d",
+    "macd",
     "skew_vix_ratio",
     "time_in_regime_pct",
     "vx_oi_5d_change"
