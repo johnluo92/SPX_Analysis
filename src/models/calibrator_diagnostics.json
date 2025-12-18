@@ -1,24 +1,22 @@
 {
   "fitted": true,
-  "calibration_date": "2025-12-03T00:00:00",
+  "calibration_date": "2025-11-29T00:00:00",
   "window_days": 700,
   "decay_lambda": 0.125,
   "min_samples": 50,
   "corrections": {
     "regime_cohort": {
-      "low_vol_fomc_period": -2.1196058268663545,
-      "normal_fomc_period": 7.483429019482739,
-      "normal_mid_cycle": 11.090138386062591
+      "low_vol_fomc_period": -1.907479394061383,
+      "normal_fomc_period": 4.716894864597805
     },
     "regime": {
-      "low_vol": -0.32515681028642857,
-      "normal": 5.931001825656609
+      "low_vol": 0.8863008087727756,
+      "normal": 5.084275141296484
     },
     "cohort": {
-      "fomc_period": 2.878625333777349,
-      "opex_week": -7.632357581898205,
-      "mid_cycle": 6.164922288185453
+      "fomc_period": 0.3116870845819771,
+      "mid_cycle": 10.278214800165339
     },
-    "global": 1.9157512670269778
+    "global": 1.1811269895625076
   }
 }

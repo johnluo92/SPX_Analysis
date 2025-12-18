@@ -13,8 +13,12 @@ class ForecastCalibrator:
     def fit_from_database(self,database):
         df=database.get_predictions(with_actuals=True)
         if len(df)==0:logger.warning("⚠️  No predictions with actuals - cannot fit calibrator");return False
+
+        df = df[df["direction_prediction"].isin(["UP", "DOWN"])].copy()
+        if len(df)==0:logger.warning("⚠️  No directional predictions - cannot fit calibrator");return False
+
         df["forecast_date"]=pd.to_datetime(df["forecast_date"]);df=df.sort_values("forecast_date")
-        logger.info(f"Loaded {len(df)} predictions with actuals")
+        logger.info(f"Loaded {len(df)} directional predictions with actuals")
         logger.info(f"Date range: {df['forecast_date'].min().date()} → {df['forecast_date'].max().date()}")
 
         latest_date=df["forecast_date"].max();trading_days=pd.bdate_range(end=latest_date,periods=self.window_days)

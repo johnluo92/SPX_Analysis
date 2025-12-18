@@ -28,13 +28,13 @@ COHORT_PRIORITY=["fomc_period","opex_week","earnings_heavy","mid_cycle"]
 
 MACRO_EVENT_CONFIG={"cpi_release":{"day_of_month_target":12,"window_days":2},"pce_release":{"day_of_month_target":28,"window_days":3},"fomc_minutes":{"days_after_meeting":21,"window_days":2},"fomc_meeting":{"pre_meeting_days":7,"post_meeting_days":2}}
 
-DIRECTION_CALIBRATION_CONFIG={"enabled":False,"skip_up_calibration":True,"method":"isotonic","min_samples":100,"out_of_bounds":"clip","description":"Calibration disabled - up_advantage provides superior decision boundary adjustment"}
+DIRECTION_CALIBRATION_CONFIG={"enabled":False,"skip_up_calibration":True,"method":"isotonic","min_samples":100,"out_of_bounds":"clip","description":"Calibration disabled - ensemble provides decision boundary adjustment"}
 
 XGBOOST_CONFIG={"strategy":"asymmetric_4model","cohort_aware":False,"cv_config":{"method":"time_series_split","n_splits":5,"gap":5}}
 
 MODEL_OBJECTIVES=["expansion_regressor","compression_regressor","up_classifier","down_classifier"]
 
-PREDICTION_DB_CONFIG={"db_path":"data_cache/predictions.db","table_name":"forecasts","min_samples_for_calibration":MIN_SAMPLES_FOR_CORRECTION,"schema":{"prediction_id":"TEXT PRIMARY KEY","timestamp":"DATETIME","observation_date":"DATE","forecast_date":"DATE","horizon":"INTEGER","calendar_cohort":"TEXT","cohort_weight":"REAL","prob_up":"REAL","prob_down":"REAL","magnitude_forecast":"REAL","expected_vix":"REAL","feature_quality":"REAL","num_features_used":"INTEGER","current_vix":"REAL","actual_vix_change":"REAL","actual_direction":"INTEGER","direction_error":"REAL","magnitude_error":"REAL","correction_type":"TEXT","features_used":"TEXT","model_version":"TEXT","created_at":"DATETIME","direction_probability":"REAL","direction_prediction":"TEXT","direction_correct":"INTEGER","direction_confidence":"REAL","actionable":"INTEGER","actionable_threshold":"REAL"},"indexes":["CREATE INDEX idx_timestamp ON forecasts(timestamp)","CREATE INDEX idx_observation_date ON forecasts(observation_date)","CREATE INDEX idx_cohort ON forecasts(calendar_cohort)","CREATE INDEX idx_forecast_date ON forecasts(forecast_date)","CREATE INDEX idx_correction_type ON forecasts(correction_type)"]}
+PREDICTION_DB_CONFIG={"db_path":"data_cache/predictions.db","table_name":"forecasts","min_samples_for_calibration":MIN_SAMPLES_FOR_CORRECTION,"schema":{"prediction_id":"TEXT PRIMARY KEY","timestamp":"DATETIME","observation_date":"DATE","forecast_date":"DATE","horizon":"INTEGER","calendar_cohort":"TEXT","cohort_weight":"REAL","prob_up":"REAL","prob_down":"REAL","magnitude_forecast":"REAL","expected_vix":"REAL","feature_quality":"REAL","num_features_used":"INTEGER","current_vix":"REAL","actual_vix_change":"REAL","actual_direction":"INTEGER","direction_error":"REAL","magnitude_error":"REAL","correction_type":"TEXT","features_used":"TEXT","model_version":"TEXT","created_at":"DATETIME","direction_probability":"REAL","direction_prediction":"TEXT","direction_correct":"INTEGER","direction_confidence":"REAL"},"indexes":["CREATE INDEX idx_timestamp ON forecasts(timestamp)","CREATE INDEX idx_observation_date ON forecasts(observation_date)","CREATE INDEX idx_cohort ON forecasts(calendar_cohort)","CREATE INDEX idx_forecast_date ON forecasts(forecast_date)","CREATE INDEX idx_correction_type ON forecasts(correction_type)"]}
 
 ENABLE_TEMPORAL_SAFETY=True
 
@@ -119,23 +119,6 @@ ENSEMBLE_CONFIG = {
         'up': {'small': 3.9265, 'medium': 6.1406, 'large': 12.8440},
         'down': {'small': 3.2286, 'medium': 6.7560, 'large': 9.2251}
     },
-    'dynamic_thresholds': {
-        'up': {
-            'high_magnitude': 0.6152,
-            'medium_magnitude': 0.7095,
-            'low_magnitude': 0.7766
-        },
-        'down': {
-            'high_magnitude': 0.7506,
-            'medium_magnitude': 0.7371,
-            'low_magnitude': 0.8056
-        }
-    },
-    'min_confidence_up': 0.6959,
-    'min_confidence_down': 0.6864,
-    'boost_threshold_up': 14.4621,
-    'boost_threshold_down': 14.1743,
-    'boost_amount_up': 0.0549,
-    'boost_amount_down': 0.0605,
-    'description': 'Unified tuning - base models + ensemble together (UPGRADED)'
+    'decision_threshold': 0.70,
+    'description': 'Ternary decision system: UP/DOWN/NO_DECISION based on single threshold'
 }

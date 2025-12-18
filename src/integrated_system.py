@@ -22,14 +22,11 @@ def check_model_stale():
     expansion_file=Path("models/expansion_model.pkl")
     up_file=Path("models/up_classifier.pkl")
 
-    # Check if models exist
     if not expansion_file.exists() or not up_file.exists():
         return True,"No model exists"
 
-    # Check if training metadata exists
     metadata_file=Path("models/training_metadata.json")
     if not metadata_file.exists():
-        # Fallback: check model file modification time
         model_mtime=expansion_file.stat().st_mtime
         model_date=datetime.fromtimestamp(model_mtime).strftime("%Y-%m-%d")
         target_end=get_last_complete_month_end()
@@ -37,7 +34,6 @@ def check_model_stale():
             return True,f"Model trained {model_date}, target {target_end}"
         return False,f"Model current (trained {model_date})"
 
-    # Use metadata if available
     with open(metadata_file)as f: meta=json.load(f)
     model_end=meta.get("training_end","2000-01-01")
     target_end=get_last_complete_month_end()
@@ -158,7 +154,7 @@ class VIXForecaster:
             if col not in X.columns: X[col]=X_down[col].values
         current_vix=float(obs["vix"]); cohort=obs.get("calendar_cohort","mid_cycle")
         forecast=self.forecaster.predict(X,current_vix)
-        if calibrated and self.calibrator.fitted:
+        if calibrated and self.calibrator.fitted and forecast["direction"] != "NO_DECISION":
             cal_result=self.calibrator.calibrate(forecast["magnitude_pct"],current_vix,cohort)
             forecast["magnitude_pct"]=cal_result["calibrated_forecast"]
             forecast["expected_vix"]=current_vix*(1+forecast["magnitude_pct"]/100)
@@ -193,7 +189,7 @@ class VIXForecaster:
         for col in self.forecaster.down_features:
             if col not in X.columns: X[col]=X_down[col].values
         current_vix=float(obs["vix"]); forecast=self.forecaster.predict(X,current_vix)
-        if self.calibrator.fitted:
+        if self.calibrator.fitted and forecast["direction"] != "NO_DECISION":
             cal_result=self.calibrator.calibrate(forecast["magnitude_pct"],current_vix,cohort)
             forecast["magnitude_pct"]=cal_result["calibrated_forecast"]
             forecast["expected_vix"]=current_vix*(1+forecast["magnitude_pct"]/100)
@@ -208,7 +204,7 @@ class VIXForecaster:
         forecast_date=obs_date+pd.Timedelta(days=TARGET_CONFIG["horizon_days"])
         pred_id=f"pred_{forecast_date.strftime('%Y%m%d')}_h{TARGET_CONFIG['horizon_days']}"
         correction_type="calibrated"if calibrated else"not_fitted"
-        pred={"prediction_id":pred_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":obs_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(obs["vix"]),"calendar_cohort":obs.get("calendar_cohort","mid_cycle"),"cohort_weight":float(obs.get("cohort_weight",1.0)),"prob_up":float(forecast["p_up"]),"prob_down":float(forecast["p_down"]),"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast.get("metadata",{}).get("feature_quality",1.0)),"num_features_used":forecast.get("metadata",{}).get("features_used",0),"correction_type":correction_type,"features_used":"","model_version":"v6.0_asymmetric","direction_probability":forecast.get("direction_probability",0.5),"direction_prediction":forecast.get("direction","UNKNOWN"),"direction_correct":None,"direction_confidence":float(forecast.get("direction_confidence",0.0)),"actionable":1 if forecast.get("actionable",False) else 0,"actionable_threshold":float(forecast.get("actionable_threshold",0.0))}
+        pred={"prediction_id":pred_id,"timestamp":datetime.now(),"forecast_date":forecast_date,"observation_date":obs_date,"horizon":TARGET_CONFIG["horizon_days"],"current_vix":float(obs["vix"]),"calendar_cohort":obs.get("calendar_cohort","mid_cycle"),"cohort_weight":float(obs.get("cohort_weight",1.0)),"prob_up":float(forecast["p_up"]),"prob_down":float(forecast["p_down"]),"magnitude_forecast":forecast["magnitude_pct"],"expected_vix":forecast["expected_vix"],"feature_quality":float(forecast.get("metadata",{}).get("feature_quality",1.0)),"num_features_used":forecast.get("metadata",{}).get("features_used",0),"correction_type":correction_type,"features_used":"","model_version":"v7.0_ternary","direction_probability":forecast.get("direction_probability",0.5),"direction_prediction":forecast.get("direction","UNKNOWN"),"direction_correct":None,"direction_confidence":float(forecast.get("direction_confidence",0.0))}
         self.db.store_prediction(pred); self.db.commit()
 
     def print_enhanced_forecast(self,forecast,cohort):
@@ -223,38 +219,47 @@ class VIXForecaster:
         logger.info(f"\n📍 MARKET STATE")
         logger.info(f"   VIX: {forecast['current_vix']:.2f} | Regime: {forecast['current_regime']} | Cohort: {cohort}")
         logger.info(f"   Quality: {forecast.get('metadata',{}).get('feature_quality',1.0):.1%} | Weight: {forecast.get('metadata',{}).get('cohort_weight',1.0):.2f}x")
-        direction_symbol="▲" if forecast['magnitude_pct']>0 else"▼"
-        abs_mag=abs(forecast['magnitude_pct'])
-        logger.info(f"\n{direction_symbol} FORECAST")
-        logger.info(f"   Direction: {'UP' if forecast['magnitude_pct']>0 else 'DOWN'} {abs_mag:.2f}%")
-        logger.info(f"   Expected VIX: {forecast['current_vix']:.2f} → {forecast['expected_vix']:.2f}")
-        logger.info(f"   Confidence: {forecast['direction_confidence']:.1%} (threshold: {forecast['actionable_threshold']:.1%})")
+
+        if forecast['direction'] == "NO_DECISION":
+            logger.info(f"\n⚠️  FORECAST: NO DECISION")
+            logger.info(f"   Confidence: {forecast['direction_confidence']:.1%} (threshold: {forecast['decision_threshold']:.1%})")
+            logger.info(f"   System not confident enough to make prediction")
+        else:
+            direction_symbol="▲" if forecast['magnitude_pct']>0 else"▼"
+            abs_mag=abs(forecast['magnitude_pct'])
+            logger.info(f"\n{direction_symbol} FORECAST")
+            logger.info(f"   Direction: {'UP' if forecast['magnitude_pct']>0 else 'DOWN'} {abs_mag:.2f}%")
+            logger.info(f"   Expected VIX: {forecast['current_vix']:.2f} → {forecast['expected_vix']:.2f}")
+            logger.info(f"   Confidence: {forecast['direction_confidence']:.1%} (threshold: {forecast['decision_threshold']:.1%})")
+
         logger.info(f"\n🎲 PROBABILITIES")
         logger.info(f"   P(UP): {forecast['p_up']:.1%} | P(DOWN): {forecast['p_down']:.1%}")
-        logger.info(f"   Ensemble: {forecast['direction'].upper()} by {self.forecaster.up_advantage*100:.0f}% margin")
-        if forecast.get('calibration',{}).get('correction_type')!='not_fitted':
+
+        if forecast['direction'] != "NO_DECISION" and forecast.get('calibration',{}).get('correction_type')!='not_fitted':
             raw_mag=forecast['expansion_magnitude']if forecast['magnitude_pct']>0 else forecast['compression_magnitude']
             adj=forecast['calibration']['adjustment']
             logger.info(f"\n🔧 CALIBRATION")
             logger.info(f"   Raw: {raw_mag:+.2f}% → Adjusted: {forecast['magnitude_pct']:+.2f}% (Δ{adj:+.2f}%)")
             logger.info(f"   Type: {forecast['calibration']['correction_type']}")
-        if forecast['regime_change']:
+
+        if forecast['direction'] != "NO_DECISION" and forecast['regime_change']:
             logger.info(f"\n⚠️  REGIME CHANGE: {forecast['current_regime']} → {forecast['expected_regime']}")
+
         logger.info(f"\n{'='*80}")
-        if forecast['actionable']:
-            logger.info("✅ ACTIONABLE SIGNAL")
+        if forecast['direction'] == "NO_DECISION":
+            logger.info("⛔ NO DECISION (confidence below threshold)")
         else:
-            logger.info("⛔ NOT ACTIONABLE (below confidence threshold)")
+            logger.info("✅ DIRECTIONAL SIGNAL")
         logger.info("="*80+"\n")
 
 def main():
-    parser=argparse.ArgumentParser(description="VIX Forecasting System v6.0 - Asymmetric 4-Model")
+    parser=argparse.ArgumentParser(description="VIX Forecasting System v7.0 - Ternary Decision")
     parser.add_argument("--force-retrain",action="store_true")
     parser.add_argument("--force-bootstrap",action="store_true")
     parser.add_argument("--rebuild-calibration",action="store_true")
     args=parser.parse_args()
     Path("logs").mkdir(exist_ok=True); Path("models").mkdir(exist_ok=True)
-    logger.info(f"VIX FORECASTING SYSTEM v6.0 (Asymmetric) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"VIX FORECASTING SYSTEM v7.0 (Ternary) | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     stale,reason=check_model_stale(); logger.info(f"Model: {reason}")
     if stale or args.force_retrain:
         if not retrain_model(): sys.exit(1)
@@ -277,7 +282,7 @@ def main():
         cal=ForecastCalibrator(); result=cal.fit_from_database(forecaster.db)
         if result: cal.save("models"); forecaster.calibrator=cal; logger.info("✅ Calibrator refitted")
         else: logger.warning("⚠️  Calibrator fitting failed")
-    forecaster._feature_cache = None  # Clear cache
+    forecaster._feature_cache = None
     today=datetime.now().strftime("%Y-%m-%d")
     feature_data=forecaster.get_features(today,force_historical=False)
     df=feature_data["features"]; latest_available=df.index[-1].strftime("%Y-%m-%d")

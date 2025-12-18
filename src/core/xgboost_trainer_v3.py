@@ -10,9 +10,6 @@ logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 
 class AsymmetricVIXForecaster:
-    # MODIFIED __init__ METHOD for xgboost_trainer_v3.py
-    # Replace the existing __init__ method with this:
-
     def __init__(self, use_ensemble=True):
         """
         Args:
@@ -29,38 +26,22 @@ class AsymmetricVIXForecaster:
         self.use_ensemble = use_ensemble
 
         if use_ensemble:
-            # Load Phase 2 ensemble config
             self.ensemble_enabled=ENSEMBLE_CONFIG["enabled"]
             self.up_advantage=ENSEMBLE_CONFIG.get("up_advantage",0.07)
+            self.decision_threshold=ENSEMBLE_CONFIG.get("decision_threshold",0.70)
 
-            # SUPPORT BOTH OLD AND NEW CONFIG STRUCTURES
-            # New structure has directional parameters (up/down)
             self._has_directional_config = isinstance(ENSEMBLE_CONFIG.get("confidence_weights", {}), dict) and \
                                            "up" in ENSEMBLE_CONFIG.get("confidence_weights", {})
 
             if self._has_directional_config:
-                # NEW DIRECTIONAL CONFIG
                 logger.info("Using directional ensemble config (up/down specific parameters)")
                 self.confidence_weights = ENSEMBLE_CONFIG["confidence_weights"]
                 self.magnitude_scaling = ENSEMBLE_CONFIG["magnitude_scaling"]
-                self.dynamic_thresholds = ENSEMBLE_CONFIG["dynamic_thresholds"]
-                self.min_confidence_up = ENSEMBLE_CONFIG.get("min_confidence_up", 0.50)
-                self.min_confidence_down = ENSEMBLE_CONFIG.get("min_confidence_down", 0.50)
-                self.boost_threshold_up = ENSEMBLE_CONFIG.get("boost_threshold_up", 15.0)
-                self.boost_threshold_down = ENSEMBLE_CONFIG.get("boost_threshold_down", 15.0)
-                self.boost_amount_up = ENSEMBLE_CONFIG.get("boost_amount_up", 0.05)
-                self.boost_amount_down = ENSEMBLE_CONFIG.get("boost_amount_down", 0.05)
             else:
-                # OLD SINGLE-VALUE CONFIG (backward compatible)
                 logger.info("Using legacy ensemble config (single parameters)")
                 weights = ENSEMBLE_CONFIG.get("confidence_weights", {"classifier": 0.60, "magnitude": 0.40})
                 scaling = ENSEMBLE_CONFIG.get("magnitude_scaling", {"small": 3.0, "medium": 6.0, "large": 12.0})
-                thresholds = ENSEMBLE_CONFIG.get("dynamic_thresholds", {
-                    "up": {"high_magnitude": 0.50, "medium_magnitude": 0.55, "low_magnitude": 0.60},
-                    "down": {"high_magnitude": 0.55, "medium_magnitude": 0.60, "low_magnitude": 0.65}
-                })
 
-                # Convert to directional format internally
                 self.confidence_weights = {
                     "up": weights.copy(),
                     "down": weights.copy()
@@ -69,26 +50,14 @@ class AsymmetricVIXForecaster:
                     "up": scaling.copy(),
                     "down": scaling.copy()
                 }
-                self.dynamic_thresholds = thresholds
-
-                min_conf = ENSEMBLE_CONFIG.get("min_ensemble_confidence", 0.50)
-                self.min_confidence_up = min_conf
-                self.min_confidence_down = min_conf
-
-                boost_thresh = ENSEMBLE_CONFIG.get("confidence_boost_threshold", 15.0)
-                boost_amt = ENSEMBLE_CONFIG.get("confidence_boost_amount", 0.05)
-                self.boost_threshold_up = boost_thresh
-                self.boost_threshold_down = boost_thresh
-                self.boost_amount_up = boost_amt
-                self.boost_amount_down = boost_amt
         else:
-            # Phase 1 mode: no ensemble logic
             self.ensemble_enabled = False
             self.up_advantage = 0.0
-            # Don't load any Phase 2 config
+            self.decision_threshold = 0.0
 
         from core.target_calculator import TargetCalculator
         self.target_calculator=TargetCalculator()
+
     def _get_regime(self,vix_level):
         for i,boundary in enumerate(REGIME_BOUNDARIES[1:]):
             if vix_level<boundary: return REGIME_NAMES[i]
@@ -113,42 +82,17 @@ class AsymmetricVIXForecaster:
         """Compute ensemble confidence with directional parameters"""
         if not self.ensemble_enabled: return float(classifier_prob)
 
-        # Use directional weights and scaling
         weights = self.confidence_weights[direction.lower()]
         scaling = self.magnitude_scaling[direction.lower()]
 
         abs_mag = abs(magnitude_pct)
         mag_strength = min(abs_mag / scaling["large"], 1.0)
         ensemble_conf = weights["classifier"] * classifier_prob + weights["magnitude"] * mag_strength
-
-        # Apply directional boost
-        boost_threshold = self.boost_threshold_up if direction == "UP" else self.boost_threshold_down
-        boost_amount = self.boost_amount_up if direction == "UP" else self.boost_amount_down
-
-        if abs_mag > boost_threshold:
-            ensemble_conf = min(ensemble_conf + boost_amount, 1.0)
-
-        # Apply directional minimum confidence
-        min_conf = self.min_confidence_up if direction == "UP" else self.min_confidence_down
-        ensemble_conf = np.clip(ensemble_conf, min_conf, 1.0)
+        ensemble_conf = np.clip(ensemble_conf, 0.0, 1.0)
 
         return float(ensemble_conf)
 
-    def _get_dynamic_threshold(self,magnitude_pct,direction):
-        """Get dynamic threshold with directional parameters"""
-        thresholds = self.dynamic_thresholds[direction.lower()]
-        scaling = self.magnitude_scaling[direction.lower()]
-        abs_mag = abs(magnitude_pct)
-
-        if abs_mag > scaling["large"]:
-            return thresholds["high_magnitude"]
-        elif abs_mag > scaling["medium"]:
-            return thresholds["medium_magnitude"]
-        else:
-            return thresholds["low_magnitude"]
-
     def train(self,df,expansion_features=None,compression_features=None,up_features=None,down_features=None,save_dir="models"):
-        # CRITICAL: Sort dataframe by index for deterministic splits
         df = df.sort_index()
 
         df=self.target_calculator.calculate_all_targets(df,vix_col="vix")
@@ -159,7 +103,6 @@ class AsymmetricVIXForecaster:
         stats=validation["stats"]
         logger.info(f"Valid targets: {stats['count']} | UP: {df['target_direction'].sum()} ({df['target_direction'].mean():.1%}) | DOWN: {len(df)-df['target_direction'].sum()}")
 
-        # CRITICAL: Sort feature lists for deterministic column ordering
         if expansion_features: self.expansion_features=sorted(expansion_features)
         else: self.expansion_features=self._prepare_features(df)[1]
         if compression_features: self.compression_features=sorted(compression_features)
@@ -197,7 +140,6 @@ class AsymmetricVIXForecaster:
         logger.info(f"\n{'='*60}")
         logger.info("📈 EXPANSION REGRESSOR (UP samples)")
 
-        # CRITICAL: Maintain sorted column order
         X_exp_train=train_df[train_up_mask][self.expansion_features]
         y_exp_train=train_df[train_up_mask]['target_log_vix_change']
         X_exp_val=val_df[val_up_mask][self.expansion_features]
@@ -240,7 +182,6 @@ class AsymmetricVIXForecaster:
     def _prepare_features(self,df):
         exclude_cols=["vix","spx","calendar_cohort","cohort_weight","feature_quality","future_vix","target_vix_pct_change","target_log_vix_change","target_direction"]
         cohort_features=["is_fomc_period","is_opex_week","is_earnings_heavy"]
-        # Sort columns for determinism
         all_cols=sorted(df.columns.tolist())
         feature_cols=[c for c in all_cols if c not in exclude_cols]
         feature_cols=sorted(list(dict.fromkeys(feature_cols)))
@@ -250,7 +191,6 @@ class AsymmetricVIXForecaster:
         return X,feature_cols
 
     def _train_regressor_model(self,X_train,y_train,X_val,y_val,X_test,y_test,params,name,train_df,val_df):
-        # Use params from config (tuner-optimized)
         params = params.copy()
         if 'seed' in params and 'random_state' not in params:
             params['random_state'] = params['seed']
@@ -276,7 +216,6 @@ class AsymmetricVIXForecaster:
         return model,metrics
 
     def _train_classifier_model(self,X_train,y_train,X_val,y_val,X_test,y_test,params,name,train_df,val_df,invert=False):
-        # Use params from config (tuner-optimized)
         params = params.copy()
         if 'seed' in params and 'random_state' not in params:
             params['random_state'] = params['seed']
@@ -289,12 +228,10 @@ class AsymmetricVIXForecaster:
             logger.info(f"Using cohort weights: mean={train_weights.mean():.3f}")
         model.fit(X_train,y_train,sample_weight=train_weights,eval_set=[(X_val,y_val)],sample_weight_eval_set=[val_weights]if val_weights is not None else None,verbose=False)
 
-        # Get predictions and probabilities
         y_train_proba=model.predict_proba(X_train)[:,1]
         y_val_proba=model.predict_proba(X_val)[:,1]
         y_test_proba=model.predict_proba(X_test)[:,1]
 
-        # Compute accuracy using probabilities (threshold 0.5)
         y_train_pred=(y_train_proba>0.5).astype(int)
         y_val_pred=(y_val_proba>0.5).astype(int)
         y_test_pred=(y_test_proba>0.5).astype(int)
@@ -303,11 +240,9 @@ class AsymmetricVIXForecaster:
         val_acc=accuracy_score(y_val,y_val_pred)
         test_acc=accuracy_score(y_test,y_test_pred)
 
-        # For production-relevant metrics, use optimal threshold from probabilities
-        # Find threshold that maximizes F1 on validation set
         from sklearn.metrics import roc_auc_score, roc_curve
         best_threshold = 0.5
-        if len(np.unique(y_val)) > 1:  # Only if we have both classes
+        if len(np.unique(y_val)) > 1:
             fpr, tpr, thresholds = roc_curve(y_val, y_val_proba)
             f1_scores = []
             for thresh in thresholds:
@@ -317,13 +252,11 @@ class AsymmetricVIXForecaster:
             best_idx = np.argmax(f1_scores)
             best_threshold = float(thresholds[best_idx])
 
-        # Compute test metrics using optimal threshold
         y_test_pred_optimal=(y_test_proba>=best_threshold).astype(int)
         test_prec=precision_score(y_test,y_test_pred_optimal,zero_division=0)
         test_rec=recall_score(y_test,y_test_pred_optimal,zero_division=0)
         test_f1=f1_score(y_test,y_test_pred_optimal,zero_division=0)
 
-        # Compute ROC-AUC as additional metric
         test_auc = roc_auc_score(y_test, y_test_proba) if len(np.unique(y_test)) > 1 else 0.0
 
         metrics={"train":{"accuracy":float(train_acc),"avg_confidence":float(np.mean(np.maximum(y_train_proba,1-y_train_proba)))},"val":{"accuracy":float(val_acc),"avg_confidence":float(np.mean(np.maximum(y_val_proba,1-y_val_proba)))},"test":{"accuracy":float(test_acc),"precision":float(test_prec),"recall":float(test_rec),"f1":float(test_f1),"auc":float(test_auc),"optimal_threshold":float(best_threshold),"avg_confidence":float(np.mean(np.maximum(y_test_proba,1-y_test_proba)))}}
@@ -332,7 +265,6 @@ class AsymmetricVIXForecaster:
 
 
     def predict(self,X,current_vix):
-        # CRITICAL: Maintain sorted column order
         X_up=X[sorted(self.up_features)]
         X_down=X[sorted(self.down_features)]
 
@@ -350,7 +282,6 @@ class AsymmetricVIXForecaster:
         expansion_pct=np.clip(expansion_pct,-50,100); compression_pct=np.clip(compression_pct,-50,100)
 
         if not self.use_ensemble:
-            # PHASE 1 MODE: Simple winner-takes-all (no up_advantage)
             if p_up > p_down:
                 direction = "UP"
                 magnitude_pct = expansion_pct
@@ -362,12 +293,8 @@ class AsymmetricVIXForecaster:
                 magnitude_log = compression_log
                 classifier_prob = p_down_norm
 
-            # No confidence computation, no actionable filtering
             ensemble_confidence = classifier_prob
-            actionable_threshold = 0.0
-            actionable = True  # All predictions actionable in Phase 1 mode
         else:
-            # PHASE 2 MODE: Asymmetric ensemble with up_advantage
             if p_down_norm > (p_up_norm + self.up_advantage):
                 direction="DOWN"
                 magnitude_pct=compression_pct
@@ -380,13 +307,17 @@ class AsymmetricVIXForecaster:
                 classifier_prob=p_up_norm
 
             ensemble_confidence=self._compute_ensemble_confidence(classifier_prob,magnitude_pct,direction)
-            actionable_threshold=self._get_dynamic_threshold(magnitude_pct,direction)
-            actionable=ensemble_confidence>actionable_threshold
+
+            if ensemble_confidence < self.decision_threshold:
+                direction = "NO_DECISION"
+                magnitude_pct = 0.0
+                magnitude_log = 0.0
 
         expected_vix=current_vix*(1+magnitude_pct/100)
         current_regime=self._get_regime(current_vix); expected_regime=self._get_regime(expected_vix)
         regime_change=current_regime!=expected_regime
-        return {"magnitude_pct":float(magnitude_pct),"magnitude_log":float(magnitude_log),"expected_vix":float(expected_vix),"current_vix":float(current_vix),"direction":direction,"p_up":float(p_up_norm),"p_down":float(p_down_norm),"expansion_magnitude":float(expansion_pct),"compression_magnitude":float(compression_pct),"direction_probability":classifier_prob,"direction_confidence":ensemble_confidence,"current_regime":current_regime,"expected_regime":expected_regime,"regime_change":regime_change,"actionable":actionable,"actionable_threshold":actionable_threshold,"ensemble_enabled":self.ensemble_enabled}
+
+        return {"magnitude_pct":float(magnitude_pct),"magnitude_log":float(magnitude_log),"expected_vix":float(expected_vix),"current_vix":float(current_vix),"direction":direction,"p_up":float(p_up_norm),"p_down":float(p_down_norm),"expansion_magnitude":float(expansion_pct),"compression_magnitude":float(compression_pct),"direction_probability":classifier_prob,"direction_confidence":ensemble_confidence,"current_regime":current_regime,"expected_regime":expected_regime,"regime_change":regime_change,"decision_threshold":self.decision_threshold,"ensemble_enabled":self.ensemble_enabled}
 
     def _save_models(self,save_dir):
         save_path=Path(save_dir); save_path.mkdir(parents=True,exist_ok=True)
@@ -454,7 +385,7 @@ class AsymmetricVIXForecaster:
     def _print_summary(self):
         print("\nASYMMETRIC 4-MODEL TRAINING SUMMARY")
         print(f"Models: Expansion + Compression Regressors | UP + DOWN Classifiers | Training through: {TRAINING_END_DATE}")
-        if self.ensemble_enabled: print(f"✓ Asymmetric ensemble: DOWN must beat UP by {self.up_advantage*100:.0f}% to win")
+        if self.ensemble_enabled: print(f"✓ Ternary decision: Confidence threshold = {self.decision_threshold:.1%}")
         print(f"Expansion: Train={self.metrics['expansion']['train']['mae_pct']:.2f}% | Val={self.metrics['expansion']['val']['mae_pct']:.2f}% | Test={self.metrics['expansion']['test']['mae_pct']:.2f}% | Bias={self.metrics['expansion']['test']['bias_pct']:+.2f}%")
         print(f"Compression: Train={self.metrics['compression']['train']['mae_pct']:.2f}% | Val={self.metrics['compression']['val']['mae_pct']:.2f}% | Test={self.metrics['compression']['test']['mae_pct']:.2f}% | Bias={self.metrics['compression']['test']['bias_pct']:+.2f}%")
 

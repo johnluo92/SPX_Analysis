@@ -19,7 +19,7 @@ class PredictionDatabase:
     def _create_schema(self):
         cursor=self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='forecasts'");table_exists=cursor.fetchone()is not None
         if not table_exists:
-            create_sql="""CREATE TABLE forecasts (prediction_id TEXT PRIMARY KEY,timestamp DATETIME NOT NULL,observation_date DATE NOT NULL,forecast_date DATE NOT NULL,horizon INTEGER NOT NULL,calendar_cohort TEXT,cohort_weight REAL,prob_up REAL,prob_down REAL,magnitude_forecast REAL,expected_vix REAL,feature_quality REAL,num_features_used INTEGER,current_vix REAL,actual_vix_change REAL,actual_direction INTEGER,direction_correct INTEGER,magnitude_error REAL,correction_type TEXT,features_used TEXT,model_version TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP,direction_probability REAL,direction_prediction TEXT,direction_confidence REAL,actionable INTEGER,actionable_threshold REAL,UNIQUE(forecast_date,horizon))"""
+            create_sql="""CREATE TABLE forecasts (prediction_id TEXT PRIMARY KEY,timestamp DATETIME NOT NULL,observation_date DATE NOT NULL,forecast_date DATE NOT NULL,horizon INTEGER NOT NULL,calendar_cohort TEXT,cohort_weight REAL,prob_up REAL,prob_down REAL,magnitude_forecast REAL,expected_vix REAL,feature_quality REAL,num_features_used INTEGER,current_vix REAL,actual_vix_change REAL,actual_direction INTEGER,direction_correct INTEGER,magnitude_error REAL,correction_type TEXT,features_used TEXT,model_version TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP,direction_probability REAL,direction_prediction TEXT,direction_confidence REAL,UNIQUE(forecast_date,horizon))"""
             self.conn.execute(create_sql);self.conn.commit();logger.info("✅ Database schema created")
         indexes=["CREATE INDEX IF NOT EXISTS idx_observation_date ON forecasts(observation_date)","CREATE INDEX IF NOT EXISTS idx_forecast_date ON forecasts(forecast_date)","CREATE INDEX IF NOT EXISTS idx_cohort ON forecasts(calendar_cohort)","CREATE INDEX IF NOT EXISTS idx_has_actual ON forecasts(actual_vix_change) WHERE actual_vix_change IS NOT NULL","CREATE INDEX IF NOT EXISTS idx_created_at ON forecasts(created_at)","CREATE INDEX IF NOT EXISTS idx_correction_type ON forecasts(correction_type)"]
         for index_sql in indexes:
@@ -33,8 +33,6 @@ class PredictionDatabase:
         if "direction_probability"not in cols:migrations_needed.append(("direction_probability","ALTER TABLE forecasts ADD COLUMN direction_probability REAL"))
         if "direction_prediction"not in cols:migrations_needed.append(("direction_prediction","ALTER TABLE forecasts ADD COLUMN direction_prediction TEXT"))
         if "direction_confidence"not in cols:migrations_needed.append(("direction_confidence","ALTER TABLE forecasts ADD COLUMN direction_confidence REAL"))
-        if "actionable"not in cols:migrations_needed.append(("actionable","ALTER TABLE forecasts ADD COLUMN actionable INTEGER"))
-        if "actionable_threshold"not in cols:migrations_needed.append(("actionable_threshold","ALTER TABLE forecasts ADD COLUMN actionable_threshold REAL"))
         if migrations_needed:
             logger.info(f"Migrating database: adding {len(migrations_needed)} columns")
             for col_name,sql in migrations_needed:
@@ -93,6 +91,11 @@ class PredictionDatabase:
         updated=0;skipped=0
         for row in rows:
             pred_id=row[0];forecast_date=row[1];horizon=row[2];current_vix=row[3];direction_probability=row[4]if len(row)>4 else None;direction_prediction=row[5]if len(row)>5 else None;magnitude_forecast=row[6]if len(row)>6 else row[4]
+
+            if direction_prediction == "NO_DECISION":
+                skipped+=1
+                continue
+
             try:target_date_attempt=pd.bdate_range(start=pd.Timestamp(forecast_date),periods=horizon+1)[-1]
             except Exception as e:logger.warning(f"   Business day calc failed for {forecast_date}: {e}");skipped+=1;continue
             found_date=None
@@ -106,17 +109,23 @@ class PredictionDatabase:
             updated+=1
         self.conn.commit()
         if updated>0:logger.info(f"✅ Backfilled {updated} predictions")
-        if skipped>0:logger.debug(f"Skipped {skipped} predictions")
+        if skipped>0:logger.debug(f"Skipped {skipped} predictions (NO_DECISION or no data)")
     def get_performance_summary(self):
         df=self.get_predictions(with_actuals=True)
         if len(df)==0:return{"error":"No predictions with actuals"}
-        if "direction_correct"not in df.columns or df["direction_correct"].isna().all():
-            if "direction_prediction"in df.columns:df["direction_correct"]=((df["direction_prediction"]=="UP")&(df["actual_direction"]==1))|((df["direction_prediction"]=="DOWN")&(df["actual_direction"]==0))
-            else:df["predicted_direction"]=(df["prob_up"]>0.5).astype(int);df["direction_correct"]=(df["predicted_direction"]==df["actual_direction"]).astype(int)
-        if "magnitude_error"not in df.columns or df["magnitude_error"].isna().all():df["magnitude_error"]=np.abs(df["actual_vix_change"]-df["magnitude_forecast"])
-        summary={"n_predictions":len(df),"date_range":{"start":df["forecast_date"].min().isoformat(),"end":df["forecast_date"].max().isoformat()},"direction":{"accuracy":float(df["direction_correct"].mean()),"precision":float(df[df["actual_direction"]==1]["direction_correct"].mean())if(df["actual_direction"]==1).sum()>0 else 0.0,"recall":float(df[df["actual_direction"]==1]["direction_correct"].mean())if(df["actual_direction"]==1).sum()>0 else 0.0},"magnitude":{"mae":float(df["magnitude_error"].mean()),"rmse":float(np.sqrt((df["magnitude_error"]**2).mean())),"bias":float((df["magnitude_forecast"]-df["actual_vix_change"]).mean()),"median_error":float(df["magnitude_error"].median())}};summary["by_cohort"]={}
-        for cohort in sorted(df["calendar_cohort"].unique()):
-            cohort_df=df[df["calendar_cohort"]==cohort];summary["by_cohort"][cohort]={"n":int(len(cohort_df)),"direction_accuracy":float(cohort_df["direction_correct"].mean()),"magnitude_mae":float(cohort_df["magnitude_error"].mean()),"magnitude_bias":float((cohort_df["magnitude_forecast"]-cohort_df["actual_vix_change"]).mean())}
+
+        df_with_decision = df[df["direction_prediction"].isin(["UP", "DOWN"])].copy()
+
+        if len(df_with_decision)==0:return{"error":"No predictions with directional decisions"}
+
+        if "direction_correct"not in df_with_decision.columns or df_with_decision["direction_correct"].isna().all():
+            if "direction_prediction"in df_with_decision.columns:df_with_decision["direction_correct"]=((df_with_decision["direction_prediction"]=="UP")&(df_with_decision["actual_direction"]==1))|((df_with_decision["direction_prediction"]=="DOWN")&(df_with_decision["actual_direction"]==0))
+            else:df_with_decision["predicted_direction"]=(df_with_decision["prob_up"]>0.5).astype(int);df_with_decision["direction_correct"]=(df_with_decision["predicted_direction"]==df_with_decision["actual_direction"]).astype(int)
+        if "magnitude_error"not in df_with_decision.columns or df_with_decision["magnitude_error"].isna().all():df_with_decision["magnitude_error"]=np.abs(df_with_decision["actual_vix_change"]-df_with_decision["magnitude_forecast"])
+
+        summary={"n_predictions_total":len(df),"n_predictions_with_decision":len(df_with_decision),"n_no_decision":len(df) - len(df_with_decision),"no_decision_rate":float((len(df) - len(df_with_decision)) / len(df)),"date_range":{"start":df["forecast_date"].min().isoformat(),"end":df["forecast_date"].max().isoformat()},"direction":{"accuracy":float(df_with_decision["direction_correct"].mean()),"precision":float(df_with_decision[df_with_decision["actual_direction"]==1]["direction_correct"].mean())if(df_with_decision["actual_direction"]==1).sum()>0 else 0.0,"recall":float(df_with_decision[df_with_decision["actual_direction"]==1]["direction_correct"].mean())if(df_with_decision["actual_direction"]==1).sum()>0 else 0.0},"magnitude":{"mae":float(df_with_decision["magnitude_error"].mean()),"rmse":float(np.sqrt((df_with_decision["magnitude_error"]**2).mean())),"bias":float((df_with_decision["magnitude_forecast"]-df_with_decision["actual_vix_change"]).mean()),"median_error":float(df_with_decision["magnitude_error"].median())}};summary["by_cohort"]={}
+        for cohort in sorted(df_with_decision["calendar_cohort"].unique()):
+            cohort_df=df_with_decision[df_with_decision["calendar_cohort"]==cohort];summary["by_cohort"][cohort]={"n":int(len(cohort_df)),"direction_accuracy":float(cohort_df["direction_correct"].mean()),"magnitude_mae":float(cohort_df["magnitude_error"].mean()),"magnitude_bias":float((cohort_df["magnitude_forecast"]-cohort_df["actual_vix_change"]).mean())}
         return summary
     def export_to_csv(self,filename="predictions_export.csv"):
         df=self.get_predictions();df.to_csv(filename,index=False);logger.info(f"📄 Exported {len(df)} to {filename}")
