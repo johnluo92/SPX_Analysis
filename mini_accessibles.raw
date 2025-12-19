@@ -1,28 +1,28 @@
 Core Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/core/data_fetcher.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/core/forecast_calibrator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/core/prediction_database.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/core/target_calculator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/core/temporal_validator.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/core/vx_continuous_contract_builder.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/core/xgboost_feature_selector_v2.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/core/xgboost_trainer_v3.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/core/data_fetcher.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/core/forecast_calibrator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/core/prediction_database.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/core/target_calculator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/core/temporal_validator.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/core/vx_continuous_contract_builder.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/core/xgboost_feature_selector_v2.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/core/xgboost_trainer_v3.py
 
 Root src Files
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/config.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/integrated_system.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/train_probabilistic_models.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/config.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/integrated_system.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/train_probabilistic_models.py
 
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/unified_tuner.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/phase2_ensemble_tuner.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/unified_tuner_upgraded.py
+
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/phase2_ensemble_tuner.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/unified_tuner_upgraded.py
 
 feature engineerers
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/features/vx_futures_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/features/feature_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/features/regime_classifier.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/features/cohort_feature_engineer.py
-https://raw.githubusercontent.com/johnluo92/SPX_Analysis/1d0306d/src/features/commodity_volatility_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/features/vx_futures_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/features/feature_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/features/regime_classifier.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/features/cohort_feature_engineer.py
+https://raw.githubusercontent.com/johnluo92/SPX_Analysis/e6a930d/src/features/commodity_volatility_engineer.py
 
 help me apply these new configs (optimized) and help me replace my config's params. just give me the complete dictionaries with the new params and with key/pairs unchanged if they are unchanged.
 

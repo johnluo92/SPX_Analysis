@@ -14361,3 +14361,131 @@ DOWN:
 2025-12-17 21:25:52,246 - INFO -    3. Train: python train_probabilistic_models.py
 2025-12-17 21:25:52,247 - INFO -    4. Validate: python integrated_system.py
 2025-12-17 21:25:52,247 - INFO -    5. Fine-tune: python phase2_ensemble_tuner.py --trials 500
+2025-12-19 00:28:23,346 - INFO - Using --frozen shorthand: 2000 trials with tuning_unified/frozen_features.json
+2025-12-19 00:28:23,346 - INFO - Loading production data...
+2025-12-19 00:28:44,872 - INFO - Dataset: 5339 samples, 510 features
+2025-12-19 00:28:44,872 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-19 00:28:44,873 - INFO - 
+2025-12-19 00:28:44,873 - INFO - ✅ Loaded frozen features from: tuning_unified/frozen_features.json
+2025-12-19 00:28:44,905 - INFO - ================================================================================
+2025-12-19 00:28:44,905 - INFO - UNIFIED PHASE 1 TUNER - TERNARY DECISION SYSTEM
+2025-12-19 00:28:44,905 - INFO - ================================================================================
+2025-12-19 00:28:44,905 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
+2025-12-19 00:28:44,905 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
+2025-12-19 00:28:44,905 - INFO - Test:   480 days (2024-01-01 to 2025-11-28)
+2025-12-19 00:28:44,905 - INFO - Base features: 505
+2025-12-19 00:28:44,905 - INFO - ✓ USING FROZEN FEATURES:
+2025-12-19 00:28:44,905 - INFO -   - Expansion: 35 features
+2025-12-19 00:28:44,905 - INFO -   - Compression: 42 features
+2025-12-19 00:28:44,905 - INFO -   - UP: 30 features
+2025-12-19 00:28:44,905 - INFO -   - DOWN: 31 features
+2025-12-19 00:28:44,905 - INFO -   → Effective params: ~42 (down from ~74)
+2025-12-19 00:28:44,905 - INFO - ✓ TERNARY DECISION SYSTEM: UP/DOWN/NO_DECISION based on single threshold
+2025-12-19 00:28:44,905 - INFO - ✓ Parameters reduced: 42 tunable (removed 12 complex threshold params)
+2025-12-19 00:28:44,905 - INFO - ================================================================================
+2025-12-19 00:28:44,905 - INFO - Starting Unified Phase 1 optimization: 2000 trials (WITH FROZEN FEATURES)
+2025-12-19 00:28:44,905 - INFO - Tuning ~42 hyperparameters (simplified ternary system)
+2025-12-19 00:28:44,906 - INFO - Evaluating with TERNARY DECISION LOGIC on 480 test days
+2025-12-19 00:28:44,906 - INFO - Optimizing for: Balanced UP/DOWN accuracy + appropriate NO_DECISION rate
+2025-12-19 00:28:44,906 - INFO - ================================================================================
+2025-12-19 01:39:40,003 - INFO - 
+✅ Results saved: tuning_unified/unified_results.json
+2025-12-19 01:39:40,005 - INFO - ✅ Config saved: tuning_unified/unified_config.py
+2025-12-19 01:39:40,007 - INFO - ✅ Frozen features reference saved: tuning_unified/frozen_features_used.json
+2025-12-19 01:39:40,007 - INFO - 
+================================================================================
+2025-12-19 01:39:40,007 - INFO - UNIFIED PHASE 1 OPTIMIZATION COMPLETE - TERNARY DECISION SYSTEM
+2025-12-19 01:39:40,007 - INFO - ================================================================================
+2025-12-19 01:39:40,007 - INFO - Best trial: #1545 | Score: 2.026
+2025-12-19 01:39:40,007 - INFO - 
+2025-12-19 01:39:40,007 - INFO - 📊 DIRECTIONAL PREDICTIONS (UP/DOWN only):
+2025-12-19 01:39:40,007 - INFO -     Total decisions: 246
+2025-12-19 01:39:40,007 - INFO -     UP: 185 (75.2%) | DOWN: 61 (24.8%)
+2025-12-19 01:39:40,007 - INFO -     Overall accuracy: 72.4%
+2025-12-19 01:39:40,007 - INFO -     UP accuracy: 71.4%
+2025-12-19 01:39:40,007 - INFO -     DOWN accuracy: 75.4%
+2025-12-19 01:39:40,007 - INFO - 
+2025-12-19 01:39:40,007 - INFO - 📊 NO_DECISION:
+2025-12-19 01:39:40,007 - INFO -     Count: 234
+2025-12-19 01:39:40,007 - INFO -     Rate: 48.8% of total 480 predictions
+2025-12-19 01:39:40,007 - INFO - 
+2025-12-19 01:39:40,007 - INFO - 📊 SYSTEM IMPROVEMENTS:
+2025-12-19 01:39:40,007 - INFO -     ✓ Parameters reduced from 74 to 42
+2025-12-19 01:39:40,007 - INFO -     ✓ Single decision_threshold (removed 12 complex thresholds)
+2025-12-19 01:39:40,007 - INFO -     ✓ Direct ternary output (no two-stage filtering)
+2025-12-19 01:39:40,007 - INFO -     ✓ Balanced optimization target: 71.4% UP vs 75.4% DOWN
+2025-12-19 01:39:40,007 - INFO - ================================================================================
+2025-12-19 01:39:40,007 - INFO - 
+✅ Unified optimization complete!
+2025-12-19 01:39:40,007 - INFO - 
+📝 NEXT STEPS:
+2025-12-19 01:39:40,007 - INFO -    1. Review: tuning_unified/unified_results.json
+2025-12-19 01:39:40,007 - INFO -    2. Copy: tuning_unified/unified_config.py → src/config.py
+2025-12-19 01:39:40,007 - INFO -    3. Train: python train_probabilistic_models.py
+2025-12-19 01:39:40,007 - INFO -    4. Validate: python integrated_system.py
+2025-12-19 10:00:57,397 - INFO - Using --frozen shorthand: 1000 trials with tuning_unified/frozen_features.json
+2025-12-19 10:00:57,397 - INFO - Loading production data...
+2025-12-19 10:01:20,685 - INFO - Dataset: 5339 samples, 510 features
+2025-12-19 10:01:20,686 - INFO - Date range: 2004-09-13 to 2025-11-28
+2025-12-19 10:01:20,686 - INFO - 
+2025-12-19 10:01:20,686 - INFO - ✅ Loaded frozen features from: tuning_unified/frozen_features.json
+2025-12-19 10:01:20,710 - INFO - ================================================================================
+2025-12-19 10:01:20,710 - INFO - UNIFIED PHASE 1 TUNER - TERNARY DECISION SYSTEM
+2025-12-19 10:01:20,710 - INFO - ================================================================================
+2025-12-19 10:01:20,710 - INFO - Train:  4358 days (2004-09-13 to 2021-12-31)
+2025-12-19 10:01:20,710 - INFO - Val:    501 days (2022-01-03 to 2023-12-31)
+2025-12-19 10:01:20,710 - INFO - Test:   480 days (2024-01-01 to 2025-11-28)
+2025-12-19 10:01:20,711 - INFO - Base features: 505
+2025-12-19 10:01:20,711 - INFO - ✓ USING FROZEN FEATURES:
+2025-12-19 10:01:20,711 - INFO -   - Expansion: 35 features
+2025-12-19 10:01:20,711 - INFO -   - Compression: 42 features
+2025-12-19 10:01:20,711 - INFO -   - UP: 30 features
+2025-12-19 10:01:20,711 - INFO -   - DOWN: 31 features
+2025-12-19 10:01:20,711 - INFO -   → Effective params: ~42 (down from ~74)
+2025-12-19 10:01:20,711 - INFO - ✓ TERNARY DECISION SYSTEM: UP/DOWN/NO_DECISION based on single threshold
+2025-12-19 10:01:20,711 - INFO - ✓ BALANCED OPTIMIZATION: Both UP and DOWN target 40-60% of decisions
+2025-12-19 10:01:20,711 - INFO - ✓ direction_bias: Can be negative (favors DOWN) or positive (favors UP)
+2025-12-19 10:01:20,711 - INFO - ✓ Parameters: ~42 tunable (removed 12 complex threshold params)
+2025-12-19 10:01:20,711 - INFO - ================================================================================
+2025-12-19 10:01:20,711 - INFO - Starting Unified Phase 1 optimization: 1000 trials (WITH FROZEN FEATURES)
+2025-12-19 10:01:20,711 - INFO - Tuning ~42 hyperparameters (simplified ternary system)
+2025-12-19 10:01:20,711 - INFO - Evaluating with TERNARY DECISION LOGIC on 480 test days
+2025-12-19 10:01:20,711 - INFO - Optimizing for: Balanced UP/DOWN accuracy + appropriate NO_DECISION rate
+2025-12-19 10:01:20,711 - INFO - ================================================================================
+2025-12-19 10:35:05,727 - INFO - 
+✅ Results saved: tuning_unified/unified_results.json
+2025-12-19 10:35:05,727 - INFO - ✅ Config saved: tuning_unified/unified_config.py
+2025-12-19 10:35:05,728 - INFO - ✅ Frozen features reference saved: tuning_unified/frozen_features_used.json
+2025-12-19 10:35:05,728 - INFO - 
+================================================================================
+2025-12-19 10:35:05,728 - INFO - UNIFIED PHASE 1 OPTIMIZATION COMPLETE - TERNARY DECISION SYSTEM
+2025-12-19 10:35:05,728 - INFO - ================================================================================
+2025-12-19 10:35:05,728 - INFO - Best trial: #868 | Score: 1.811
+2025-12-19 10:35:05,728 - INFO - 
+2025-12-19 10:35:05,728 - INFO - 📊 DIRECTIONAL PREDICTIONS (UP/DOWN only):
+2025-12-19 10:35:05,728 - INFO -     Total decisions: 293
+2025-12-19 10:35:05,728 - INFO -     UP: 137 (46.8%) | DOWN: 156 (53.2%)
+2025-12-19 10:35:05,728 - INFO -     Overall accuracy: 72.0%
+2025-12-19 10:35:05,728 - INFO -     UP accuracy: 73.0%
+2025-12-19 10:35:05,728 - INFO -     DOWN accuracy: 71.2%
+2025-12-19 10:35:05,728 - INFO - 
+2025-12-19 10:35:05,728 - INFO - 📊 NO_DECISION:
+2025-12-19 10:35:05,728 - INFO -     Count: 187
+2025-12-19 10:35:05,728 - INFO -     Rate: 39.0% of total 480 predictions
+2025-12-19 10:35:05,728 - INFO - 
+2025-12-19 10:35:05,728 - INFO - 📊 SYSTEM IMPROVEMENTS:
+2025-12-19 10:35:05,728 - INFO -     ✓ Parameters reduced from 74 to 42
+2025-12-19 10:35:05,728 - INFO -     ✓ Single decision_threshold (removed 12 complex thresholds)
+2025-12-19 10:35:05,728 - INFO -     ✓ Direct ternary output (no two-stage filtering)
+2025-12-19 10:35:05,728 - INFO -     ✓ Balanced optimization target: 73.0% UP vs 71.2% DOWN
+2025-12-19 10:35:05,728 - INFO -     ✓ Accuracy difference: 1.8% (target: < 5%)
+2025-12-19 10:35:05,728 - INFO -     ✓ Signal ratio UP/DOWN: 0.88 (target: 0.67-1.50)
+2025-12-19 10:35:05,728 - INFO - ================================================================================
+2025-12-19 10:35:05,728 - INFO - 
+✅ Unified optimization complete!
+2025-12-19 10:35:05,728 - INFO - 
+📝 NEXT STEPS:
+2025-12-19 10:35:05,728 - INFO -    1. Review: tuning_unified/unified_results.json
+2025-12-19 10:35:05,728 - INFO -    2. Copy: tuning_unified/unified_config.py → src/config.py
+2025-12-19 10:35:05,728 - INFO -    3. Train: python train_probabilistic_models.py
+2025-12-19 10:35:05,728 - INFO -    4. Validate: python integrated_system.py

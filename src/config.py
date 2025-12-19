@@ -3,7 +3,7 @@ from datetime import datetime,timedelta
 import pandas as pd
 
 TRAINING_YEARS=20
-PHASE1_TUNER_TRIALS=200
+PHASE1_TUNER_TRIALS=1000
 
 def get_last_complete_month_end():
     today=datetime.now(); first_of_month=today.replace(day=1); last_month_end=first_of_month-timedelta(days=1)
@@ -52,7 +52,8 @@ REGIME_NAMES={0:"Low Vol",1:"Normal",2:"Elevated",3:"Crisis"}
 HYPERPARAMETER_TUNING_CONFIG={"enabled":False,"method":"optuna","n_trials":500,"cv_folds":5,"timeout_hours":24,"magnitude_param_space":{"max_depth":(2,8),"learning_rate":(0.005,0.1),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"colsample_bylevel":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0)},"direction_param_space":{"max_depth":(3,10),"learning_rate":(0.01,0.15),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0),"scale_pos_weight":(0.8,2.0)},"description":"Hyperparameter optimization with Optuna - run after ensemble implementation"}
 
 
-QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.5494,
+
+QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.6417,
     'warn_pct': 20.0, 'error_pct': 50.0, 'strategy': 'raise'}
 
 CALENDAR_COHORTS = {
@@ -73,52 +74,52 @@ FEATURE_SELECTION_CONFIG = {'expansion_top_n': 35,
     'compression_top_n': 42, 'up_top_n': 30,
     'down_top_n': 31, 'cv_folds': 5, 'protected_features': [],
     'correlation_threshold': 0.9000,
-    'description': 'Unified tuning with ensemble evaluation'}
+    'description': 'Ternary system with balanced signal distribution and direction_bias tuning'}
 
 EXPANSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 6, 'learning_rate': 0.0180,
-    'n_estimators': 791, 'subsample': 0.7048,
-    'colsample_bytree': 0.9217, 'colsample_bylevel': 0.8514,
-    'min_child_weight': 9, 'reg_alpha': 7.5614,
-    'reg_lambda': 9.3269, 'gamma': 0.3872,
+    'max_depth': 3, 'learning_rate': 0.0687,
+    'n_estimators': 805, 'subsample': 0.8212,
+    'colsample_bytree': 0.7690, 'colsample_bylevel': 0.7013,
+    'min_child_weight': 13, 'reg_alpha': 7.6960,
+    'reg_lambda': 8.1959, 'gamma': 0.7496,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 COMPRESSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 6, 'learning_rate': 0.0105,
-    'n_estimators': 801, 'subsample': 0.8472,
-    'colsample_bytree': 0.7356, 'colsample_bylevel': 0.9159,
-    'min_child_weight': 3, 'reg_alpha': 7.2376,
-    'reg_lambda': 3.8474, 'gamma': 0.0350,
+    'max_depth': 5, 'learning_rate': 0.0409,
+    'n_estimators': 325, 'subsample': 0.8589,
+    'colsample_bytree': 0.7841, 'colsample_bylevel': 0.8395,
+    'min_child_weight': 5, 'reg_alpha': 6.1738,
+    'reg_lambda': 8.8805, 'gamma': 0.3002,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 UP_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'logloss',
-    'max_depth': 4, 'learning_rate': 0.0300,
-    'n_estimators': 235, 'subsample': 0.8046,
-    'colsample_bytree': 0.7546, 'min_child_weight': 6,
-    'reg_alpha': 1.9392, 'reg_lambda': 16.4233,
-    'gamma': 2.3502, 'scale_pos_weight': 0.7866,
+    'max_depth': 3, 'learning_rate': 0.0163,
+    'n_estimators': 219, 'subsample': 0.6786,
+    'colsample_bytree': 0.8996, 'min_child_weight': 8,
+    'reg_alpha': 4.7689, 'reg_lambda': 17.6359,
+    'gamma': 1.5884, 'scale_pos_weight': 0.9115,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 DOWN_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'logloss',
-    'max_depth': 4, 'learning_rate': 0.0686,
-    'n_estimators': 285, 'subsample': 0.6606,
-    'colsample_bytree': 0.7336, 'min_child_weight': 18,
-    'reg_alpha': 5.9200, 'reg_lambda': 18.1730,
-    'gamma': 1.7357, 'scale_pos_weight': 0.7216,
+    'max_depth': 4, 'learning_rate': 0.0426,
+    'n_estimators': 348, 'subsample': 0.6902,
+    'colsample_bytree': 0.8605, 'min_child_weight': 13,
+    'reg_alpha': 5.4013, 'reg_lambda': 19.4028,
+    'gamma': 1.6804, 'scale_pos_weight': 0.6828,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 ENSEMBLE_CONFIG = {
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
-    'up_advantage': 0.0819,
+    'up_advantage': -0.0282,
     'confidence_weights': {
-        'up': {'classifier': 0.5696, 'magnitude': 0.4304},
-        'down': {'classifier': 0.6940, 'magnitude': 0.3060}
+        'up': {'classifier': 0.5500, 'magnitude': 0.4500},
+        'down': {'classifier': 0.6843, 'magnitude': 0.3157}
     },
     'magnitude_scaling': {
-        'up': {'small': 3.9265, 'medium': 6.1406, 'large': 12.8440},
-        'down': {'small': 3.2286, 'medium': 6.7560, 'large': 9.2251}
+        'up': {'small': 3.8182, 'medium': 5.0041, 'large': 9.8909},
+        'down': {'small': 4.1024, 'medium': 5.7933, 'large': 9.9171}
     },
-    'decision_threshold': 0.70,
-    'description': 'Ternary decision system: UP/DOWN/NO_DECISION based on single threshold'
+    'decision_threshold': 0.6714,
+    'description': 'Ternary decision system with balanced 40-60% UP/DOWN target'
 }
