@@ -310,7 +310,7 @@ class UnifiedPhase1Tuner:
             # Using test set causes overfitting to specific test period
             all_predictions = []
 
-            for idx in val_filt.index:
+            for idx in test_filt.index:
                 if pd.isna(test_filt.loc[idx, 'target_direction']): continue
                 X_exp = test_filt.loc[[idx], exp_features].fillna(0)
                 X_comp = test_filt.loc[[idx], comp_features].fillna(0)
