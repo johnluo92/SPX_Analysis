@@ -23,7 +23,6 @@ class AsymmetricVIXForecaster:
         self.up_features=None; self.down_features=None
         self.metrics={}
 
-        # SYSTEMIC FIX: Store optimal thresholds
         self.up_optimal_threshold = None
         self.down_optimal_threshold = None
 
@@ -36,7 +35,6 @@ class AsymmetricVIXForecaster:
 
             self._has_directional_config = isinstance(ENSEMBLE_CONFIG.get("confidence_weights", {}), dict) and \
                                            "up" in ENSEMBLE_CONFIG.get("confidence_weights", {})
-
             if self._has_directional_config:
                 logger.info("Using directional ensemble config (up/down specific parameters)")
                 self.confidence_weights = ENSEMBLE_CONFIG["confidence_weights"]
@@ -171,7 +169,6 @@ class AsymmetricVIXForecaster:
         self.up_classifier,up_metrics,up_val_proba,up_test_proba=self._train_classifier_model(X_up_train,y_up_train,X_up_val,y_up_val,X_up_test,y_up_test,UP_CLASSIFIER_PARAMS,"UP",train_df,val_df,invert=False)
         self.metrics["up_classifier"]=up_metrics
 
-        # SYSTEMIC FIX: Store optimal threshold from training
         self.up_optimal_threshold = up_metrics['test']['optimal_threshold']
 
         logger.info(f"\n{'='*60}")
@@ -181,8 +178,6 @@ class AsymmetricVIXForecaster:
         X_down_test=test_df[self.down_features]; y_down_test=1-test_df['target_direction']
         self.down_classifier,down_metrics,down_val_proba,down_test_proba=self._train_classifier_model(X_down_train,y_down_train,X_down_val,y_down_val,X_down_test,y_down_test,DOWN_CLASSIFIER_PARAMS,"DOWN",train_df,val_df,invert=True)
         self.metrics["down_classifier"]=down_metrics
-
-        # SYSTEMIC FIX: Store optimal threshold from training
         self.down_optimal_threshold = down_metrics['test']['optimal_threshold']
 
         self._save_models(save_dir)
@@ -280,16 +275,12 @@ class AsymmetricVIXForecaster:
         X_up=X[sorted(self.up_features)]
         X_down=X[sorted(self.down_features)]
 
-        # SYSTEMIC FIX: Get raw probabilities and apply optimal thresholds
         p_up_raw=float(self.up_classifier.predict_proba(X_up)[0][1])
         p_down_raw=float(self.down_classifier.predict_proba(X_down)[0][1])
 
-        # Apply optimal thresholds if available
-        # Use raw probabilities
         p_up = p_up_raw
         p_down = p_down_raw
 
-        # Normalize
         total = p_up + p_down
         p_up_norm = p_up / total
         p_down_norm = p_down / total
@@ -365,7 +356,6 @@ class AsymmetricVIXForecaster:
         with open(models_path/"feature_names_down.json","r")as f: self.down_features=sorted(json.load(f))
         logger.info(f"✅ Loaded 4 models: {len(self.expansion_features)} exp, {len(self.compression_features)} comp, {len(self.up_features)} up, {len(self.down_features)} down features")
 
-        # SYSTEMIC FIX: Load optimal thresholds from training metrics
         metrics_file = models_path / "training_metrics.json"
         if metrics_file.exists():
             with open(metrics_file, "r") as f:

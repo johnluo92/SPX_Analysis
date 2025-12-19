@@ -3,11 +3,11 @@
   "features_removed": 5,
   "random_state": 42,
   "removed_features": [
-    "dxy_velocity_10d",
     "dxy_zscore_21d",
+    "hy_b_spread",
+    "time_in_regime_pct",
     "vix_percentile_252d",
-    "vix_ret_5d",
-    "vvix_vix_ratio"
+    "vix_vs_ma252"
   ],
   "threshold": 0.9,
   "total_features_before": 46

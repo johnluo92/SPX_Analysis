@@ -3,13 +3,13 @@
   "features_removed": 7,
   "random_state": 42,
   "removed_features": [
-    "copper_ret_63d",
+    "copper_momentum_63d",
+    "credit_quality_spread",
     "hy_bb_velocity_21d",
+    "hy_ccc_spread",
     "hy_ccc_velocity_21d",
-    "macd",
-    "skew_vix_ratio",
     "time_in_regime_pct",
-    "vx_oi_5d_change"
+    "vx_oi_surge"
   ],
   "threshold": 0.9,
   "total_features_before": 52

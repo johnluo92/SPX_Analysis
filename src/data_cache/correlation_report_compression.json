@@ -3,9 +3,9 @@
   "features_removed": 4,
   "random_state": 42,
   "removed_features": [
+    "ovx_ret_10d",
     "reversion_strength_63d",
     "skew_vix_ratio_percentile_252d",
-    "vix_percentile_63d",
     "vix_vs_ma252"
   ],
   "threshold": 0.9,

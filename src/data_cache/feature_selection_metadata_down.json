@@ -6,28 +6,28 @@
   "random_state": 42,
   "target_type": "down",
   "top_10_features": [
-    "vix_velocity_5d_regime_adj",
     "vix_velocity_5d",
+    "vix_velocity_5d_regime_adj",
     "vix_vs_ma10",
-    "hy_spread",
-    "skew_vix_ratio_percentile_252d",
-    "dxy_bb_position_20d",
     "skew_vix_ratio",
+    "skew_vix_ratio_percentile_252d",
+    "dxy_vs_ma21",
     "rsi_14",
-    "yield_curve_level",
-    "dxy_vs_ma21"
+    "hy_spread",
+    "dxy_bb_position_20d",
+    "vix_term_ratio_zscore_63d"
   ],
   "top_10_importance": [
-    0.008961668144911528,
-    0.007218137755990029,
-    0.006621710257604718,
-    0.006101157004013658,
-    0.005577549291774631,
-    0.005087679205462337,
-    0.005026323115453124,
-    0.005001405347138643,
-    0.004832735727541148,
-    0.004607659112662077
+    0.008358804415911436,
+    0.00830004531890154,
+    0.0068878473713994024,
+    0.0058615653775632385,
+    0.0056342488620430235,
+    0.005364262172952295,
+    0.005062307976186275,
+    0.004908326873555779,
+    0.004696862795390189,
+    0.004564397828653454
   ],
   "top_n": 31
 }

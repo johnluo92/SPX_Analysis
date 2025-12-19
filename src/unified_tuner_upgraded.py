@@ -306,8 +306,6 @@ class UnifiedPhase1Tuner:
             down_train_acc = accuracy_score(y_down_train, down_model.predict(X_down_train))
             down_val_acc = accuracy_score(y_down_val, down_model.predict(X_down_val))
 
-            # ENSEMBLE EVALUATION WITH TERNARY DECISION - USE VALIDATION SET
-            # Using test set causes overfitting to specific test period
             all_predictions = []
 
             for idx in test_filt.index:
@@ -325,12 +323,10 @@ class UnifiedPhase1Tuner:
                 p_up = up_model.predict_proba(X_up)[0, 1]
                 p_down = down_model.predict_proba(X_down)[0, 1]
 
-                # NORMALIZE
                 total = p_up + p_down
                 p_up_norm = p_up / total
                 p_down_norm = p_down / total
 
-                # APPLY up_advantage (can be negative to favor DOWN!)
                 up_advantage = trial_params['up_advantage']
                 # Negative advantage means DOWN doesn't need to beat UP by as much
                 if p_down_norm > (p_up_norm + up_advantage):
