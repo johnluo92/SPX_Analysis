@@ -244,7 +244,7 @@ class AsymmetricVIXForecaster:
         self.compression_model,comp_metrics=self._train_regressor_model(X_comp_train,y_comp_train,X_comp_val,y_comp_val,X_comp_test,y_comp_test,COMPRESSION_PARAMS,"Compression",train_df[train_down_mask],val_df[val_down_mask])
         self.metrics["compression"]=comp_metrics
         logger.info(f"\n{'='*60}")
-        logger.info("🔺 UP CLASSIFIER (F1-optimized)")
+        logger.info("🔺 UP CLASSIFIER (Balanced)")
         X_up_train=train_df[self.up_features]; y_up_train=train_df['target_direction']
         X_up_val=val_df[self.up_features]; y_up_val=val_df['target_direction']
         X_up_test=test_df[self.up_features]; y_up_test=test_df['target_direction']
@@ -254,7 +254,7 @@ class AsymmetricVIXForecaster:
         self.up_optimal_threshold = up_metrics['test']['optimal_threshold']
 
         logger.info(f"\n{'='*60}")
-        logger.info("🔻 DOWN CLASSIFIER (F1-optimized)")
+        logger.info("🔻 DOWN CLASSIFIER (Balanced)")
         X_down_train=train_df[self.down_features]; y_down_train=1-train_df['target_direction']
         X_down_val=val_df[self.down_features]; y_down_val=1-val_df['target_direction']
         X_down_test=test_df[self.down_features]; y_down_test=1-test_df['target_direction']
@@ -336,16 +336,12 @@ class AsymmetricVIXForecaster:
         test_acc=accuracy_score(y_test,y_test_pred)
 
         from sklearn.metrics import roc_auc_score, roc_curve
-        best_threshold = 0.5
-        if len(np.unique(y_val)) > 1:
-            fpr, tpr, thresholds = roc_curve(y_val, y_val_proba)
-            f1_scores = []
-            for thresh in thresholds:
-                y_pred_thresh = (y_val_proba >= thresh).astype(int)
-                f1 = f1_score(y_val, y_pred_thresh, zero_division=0)
-                f1_scores.append(f1)
-            best_idx = np.argmax(f1_scores)
-            best_threshold = float(thresholds[best_idx])
+
+        # ENSEMBLE-AWARE THRESHOLD OPTIMIZATION
+        # Target balanced classifiers (not high-recall) for ensemble to work with
+        # UP: 52-62% accuracy | DOWN: 50-58% accuracy at optimal threshold
+        target_acc_range = (0.52, 0.62) if name == "UP" else (0.50, 0.58)
+        best_threshold = self._optimize_balanced_threshold(y_val, y_val_proba, target_acc_range, name)
 
         y_test_pred_optimal=(y_test_proba>=best_threshold).astype(int)
         test_prec=precision_score(y_test,y_test_pred_optimal,zero_division=0)
@@ -357,6 +353,71 @@ class AsymmetricVIXForecaster:
         metrics={"train":{"accuracy":float(train_acc),"avg_confidence":float(np.mean(np.maximum(y_train_proba,1-y_train_proba)))},"val":{"accuracy":float(val_acc),"avg_confidence":float(np.mean(np.maximum(y_val_proba,1-y_val_proba)))},"test":{"accuracy":float(test_acc),"precision":float(test_prec),"recall":float(test_rec),"f1":float(test_f1),"auc":float(test_auc),"optimal_threshold":float(best_threshold),"avg_confidence":float(np.mean(np.maximum(y_test_proba,1-y_test_proba)))}}
         logger.info(f"{name}: Train Acc={train_acc:.1%} | Val Acc={val_acc:.1%} | Test Acc={test_acc:.1%} | Prec={test_prec:.1%} | Rec={test_rec:.1%} | F1={test_f1:.1%} | AUC={test_auc:.3f} (thresh={best_threshold:.3f})")
         return model,metrics,y_val_proba,y_test_proba
+
+    def _optimize_balanced_threshold(self, y_true, y_proba, target_range, name):
+        """
+        Optimize threshold for balanced classifier performance.
+
+        Instead of maximizing F1 (which pushes toward high recall), we target
+        balanced accuracy within a specific range. This creates classifiers
+        that work well as ensemble building blocks.
+
+        Target ranges:
+        - UP: 52-62% accuracy (balanced, not overly conservative/aggressive)
+        - DOWN: 50-58% accuracy (DOWN naturally has more samples)
+        """
+        from sklearn.metrics import roc_curve
+
+        if len(np.unique(y_true)) <= 1:
+            return 0.5
+
+        fpr, tpr, thresholds = roc_curve(y_true, y_proba)
+
+        # Calculate balanced accuracy at each threshold
+        # Balanced acc = (sensitivity + specificity) / 2 = (TPR + (1-FPR)) / 2
+        balanced_accs = (tpr + (1 - fpr)) / 2
+
+        # Find thresholds that achieve target accuracy range
+        target_min, target_max = target_range
+
+        # Score each threshold by how well it fits our balanced accuracy target
+        scores = []
+        for i, (thresh, bal_acc) in enumerate(zip(thresholds, balanced_accs)):
+            y_pred = (y_proba >= thresh).astype(int)
+            acc = accuracy_score(y_true, y_pred)
+            prec = precision_score(y_true, y_pred, zero_division=0)
+            rec = recall_score(y_true, y_pred, zero_division=0)
+
+            # Penalize high recall (>95%) as it indicates overfitting or saying "yes" too often
+            recall_penalty = max(0, rec - 0.95) * 10.0
+
+            # Reward balanced precision/recall
+            pr_balance = 1.0 - abs(prec - rec)
+
+            # Reward accuracy in target range
+            if target_min <= acc <= target_max:
+                acc_score = 1.0
+            elif acc < target_min:
+                acc_score = max(0, 1.0 - (target_min - acc) * 2.0)
+            else:  # acc > target_max
+                acc_score = max(0, 1.0 - (acc - target_max) * 2.0)
+
+            # Combined score: prioritize target accuracy, then balance, penalize high recall
+            score = acc_score * 2.0 + pr_balance - recall_penalty
+            scores.append(score)
+
+        best_idx = np.argmax(scores)
+        best_threshold = float(thresholds[best_idx])
+
+        # Log the selected threshold's characteristics
+        y_pred_best = (y_proba >= best_threshold).astype(int)
+        final_acc = accuracy_score(y_true, y_pred_best)
+        final_prec = precision_score(y_true, y_pred_best, zero_division=0)
+        final_rec = recall_score(y_true, y_pred_best, zero_division=0)
+
+        logger.info(f"  {name} balanced threshold: {best_threshold:.3f} → acc={final_acc:.1%}, prec={final_prec:.1%}, rec={final_rec:.1%} (target: {target_min:.1%}-{target_max:.1%})")
+
+        return best_threshold
 
 
     def predict(self,X,current_vix):
