@@ -1,0 +1,33 @@
+{
+  "correlation_threshold": 0.9,
+  "n_removed_correlation": 5,
+  "n_samples": 4859,
+  "n_selected": 30,
+  "random_state": 42,
+  "target_type": "up",
+  "top_10_features": [
+    "vix_velocity_5d_regime_adj",
+    "vix_velocity_5d",
+    "vix_vs_ma10",
+    "hy_spread",
+    "skew_vix_ratio_percentile_252d",
+    "dxy_bb_position_20d",
+    "skew_vix_ratio",
+    "rsi_14",
+    "yield_curve_level",
+    "dxy_vs_ma21"
+  ],
+  "top_10_importance": [
+    0.008961668703705072,
+    0.007218137662857771,
+    0.006621710630133748,
+    0.006101157190278173,
+    0.005577549152076244,
+    0.00508767943829298,
+    0.0050263229291886095,
+    0.005001405207440257,
+    0.004832736006937921,
+    0.0046076591359451415
+  ],
+  "top_n": 30
+}
