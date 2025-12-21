@@ -2,9 +2,9 @@ import json,logging,pickle
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np,pandas as pd
-from sklearn.metrics import accuracy_score,mean_absolute_error,mean_squared_error,precision_score,recall_score,f1_score
+from sklearn.metrics import accuracy_score,mean_absolute_error,mean_squared_error,precision_score,recall_score,f1_score,roc_auc_score
 from xgboost import XGBRegressor,XGBClassifier
-from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE,REGIME_BOUNDARIES,REGIME_NAMES,QUALITY_FILTER_CONFIG,ENSEMBLE_CONFIG,EXPANSION_PARAMS,COMPRESSION_PARAMS,UP_CLASSIFIER_PARAMS,DOWN_CLASSIFIER_PARAMS,TRAIN_END_DATE,VAL_END_DATE
+from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE,REGIME_BOUNDARIES,REGIME_NAMES,QUALITY_FILTER_CONFIG,ENSEMBLE_CONFIG,EXPANSION_PARAMS,COMPRESSION_PARAMS,UP_CLASSIFIER_PARAMS,DOWN_CLASSIFIER_PARAMS,TRAIN_END_DATE,VAL_END_DATE,CLASSIFIER_THRESHOLDS
 
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
@@ -23,8 +23,8 @@ class AsymmetricVIXForecaster:
         self.up_features=None; self.down_features=None
         self.metrics={}
 
-        self.up_optimal_threshold = None
-        self.down_optimal_threshold = None
+        self.up_threshold = CLASSIFIER_THRESHOLDS['up']
+        self.down_threshold = CLASSIFIER_THRESHOLDS['down']
 
         self.use_ensemble = use_ensemble
 
@@ -244,23 +244,20 @@ class AsymmetricVIXForecaster:
         self.compression_model,comp_metrics=self._train_regressor_model(X_comp_train,y_comp_train,X_comp_val,y_comp_val,X_comp_test,y_comp_test,COMPRESSION_PARAMS,"Compression",train_df[train_down_mask],val_df[val_down_mask])
         self.metrics["compression"]=comp_metrics
         logger.info(f"\n{'='*60}")
-        logger.info("🔺 UP CLASSIFIER (F1-optimized)")
+        logger.info("🔺 UP CLASSIFIER (Balanced)")
         X_up_train=train_df[self.up_features]; y_up_train=train_df['target_direction']
         X_up_val=val_df[self.up_features]; y_up_val=val_df['target_direction']
         X_up_test=test_df[self.up_features]; y_up_test=test_df['target_direction']
         self.up_classifier,up_metrics,up_val_proba,up_test_proba=self._train_classifier_model(X_up_train,y_up_train,X_up_val,y_up_val,X_up_test,y_up_test,UP_CLASSIFIER_PARAMS,"UP",train_df,val_df,invert=False)
         self.metrics["up_classifier"]=up_metrics
 
-        self.up_optimal_threshold = up_metrics['test']['optimal_threshold']
-
         logger.info(f"\n{'='*60}")
-        logger.info("🔻 DOWN CLASSIFIER (F1-optimized)")
+        logger.info("🔻 DOWN CLASSIFIER (Balanced)")
         X_down_train=train_df[self.down_features]; y_down_train=1-train_df['target_direction']
         X_down_val=val_df[self.down_features]; y_down_val=1-val_df['target_direction']
         X_down_test=test_df[self.down_features]; y_down_test=1-test_df['target_direction']
         self.down_classifier,down_metrics,down_val_proba,down_test_proba=self._train_classifier_model(X_down_train,y_down_train,X_down_val,y_down_val,X_down_test,y_down_test,DOWN_CLASSIFIER_PARAMS,"DOWN",train_df,val_df,invert=True)
         self.metrics["down_classifier"]=down_metrics
-        self.down_optimal_threshold = down_metrics['test']['optimal_threshold']
 
         if self.ensemble_enabled:
             logger.info(f"\n{'='*60}")
@@ -327,35 +324,24 @@ class AsymmetricVIXForecaster:
         y_val_proba=model.predict_proba(X_val)[:,1]
         y_test_proba=model.predict_proba(X_test)[:,1]
 
-        y_train_pred=(y_train_proba>0.5).astype(int)
-        y_val_pred=(y_val_proba>0.5).astype(int)
-        y_test_pred=(y_test_proba>0.5).astype(int)
+        # Use config threshold instead of finding F1-optimal
+        threshold = self.up_threshold if name == "UP" else self.down_threshold
+
+        y_train_pred=(y_train_proba>=threshold).astype(int)
+        y_val_pred=(y_val_proba>=threshold).astype(int)
+        y_test_pred=(y_test_proba>=threshold).astype(int)
 
         train_acc=accuracy_score(y_train,y_train_pred)
         val_acc=accuracy_score(y_val,y_val_pred)
         test_acc=accuracy_score(y_test,y_test_pred)
-
-        from sklearn.metrics import roc_auc_score, roc_curve
-        best_threshold = 0.5
-        if len(np.unique(y_val)) > 1:
-            fpr, tpr, thresholds = roc_curve(y_val, y_val_proba)
-            f1_scores = []
-            for thresh in thresholds:
-                y_pred_thresh = (y_val_proba >= thresh).astype(int)
-                f1 = f1_score(y_val, y_pred_thresh, zero_division=0)
-                f1_scores.append(f1)
-            best_idx = np.argmax(f1_scores)
-            best_threshold = float(thresholds[best_idx])
-
-        y_test_pred_optimal=(y_test_proba>=best_threshold).astype(int)
-        test_prec=precision_score(y_test,y_test_pred_optimal,zero_division=0)
-        test_rec=recall_score(y_test,y_test_pred_optimal,zero_division=0)
-        test_f1=f1_score(y_test,y_test_pred_optimal,zero_division=0)
+        test_prec=precision_score(y_test,y_test_pred,zero_division=0)
+        test_rec=recall_score(y_test,y_test_pred,zero_division=0)
+        test_f1=f1_score(y_test,y_test_pred,zero_division=0)
 
         test_auc = roc_auc_score(y_test, y_test_proba) if len(np.unique(y_test)) > 1 else 0.0
 
-        metrics={"train":{"accuracy":float(train_acc),"avg_confidence":float(np.mean(np.maximum(y_train_proba,1-y_train_proba)))},"val":{"accuracy":float(val_acc),"avg_confidence":float(np.mean(np.maximum(y_val_proba,1-y_val_proba)))},"test":{"accuracy":float(test_acc),"precision":float(test_prec),"recall":float(test_rec),"f1":float(test_f1),"auc":float(test_auc),"optimal_threshold":float(best_threshold),"avg_confidence":float(np.mean(np.maximum(y_test_proba,1-y_test_proba)))}}
-        logger.info(f"{name}: Train Acc={train_acc:.1%} | Val Acc={val_acc:.1%} | Test Acc={test_acc:.1%} | Prec={test_prec:.1%} | Rec={test_rec:.1%} | F1={test_f1:.1%} | AUC={test_auc:.3f} (thresh={best_threshold:.3f})")
+        metrics={"train":{"accuracy":float(train_acc),"avg_confidence":float(np.mean(np.maximum(y_train_proba,1-y_train_proba)))},"val":{"accuracy":float(val_acc),"avg_confidence":float(np.mean(np.maximum(y_val_proba,1-y_val_proba)))},"test":{"accuracy":float(test_acc),"precision":float(test_prec),"recall":float(test_rec),"f1":float(test_f1),"auc":float(test_auc),"threshold":float(threshold),"avg_confidence":float(np.mean(np.maximum(y_test_proba,1-y_test_proba)))}}
+        logger.info(f"{name}: Train Acc={train_acc:.1%} | Val Acc={val_acc:.1%} | Test Acc={test_acc:.1%} | Prec={test_prec:.1%} | Rec={test_rec:.1%} | F1={test_f1:.1%} | AUC={test_auc:.3f} (thresh={threshold:.3f})")
         return model,metrics,y_val_proba,y_test_proba
 
 
@@ -443,20 +429,7 @@ class AsymmetricVIXForecaster:
         with open(models_path/"feature_names_up.json","r")as f: self.up_features=sorted(json.load(f))
         with open(models_path/"feature_names_down.json","r")as f: self.down_features=sorted(json.load(f))
         logger.info(f"✅ Loaded 4 models: {len(self.expansion_features)} exp, {len(self.compression_features)} comp, {len(self.up_features)} up, {len(self.down_features)} down features")
-
-        metrics_file = models_path / "training_metrics.json"
-        if metrics_file.exists():
-            with open(metrics_file, "r") as f:
-                metrics = json.load(f)
-
-            self.up_optimal_threshold = metrics.get('up_classifier', {}).get('test', {}).get('optimal_threshold', 0.5)
-            self.down_optimal_threshold = metrics.get('down_classifier', {}).get('test', {}).get('optimal_threshold', 0.5)
-
-            logger.info(f"✅ Loaded optimal thresholds: UP={self.up_optimal_threshold:.3f}, DOWN={self.down_optimal_threshold:.3f}")
-        else:
-            logger.warning("⚠️  No training_metrics.json found - using default thresholds (0.5)")
-            self.up_optimal_threshold = 0.5
-            self.down_optimal_threshold = 0.5
+        logger.info(f"✅ Using classifier thresholds: UP={self.up_threshold:.3f}, DOWN={self.down_threshold:.3f}")
 
     def _generate_diagnostics(self,test_df,save_dir):
         save_path=Path(save_dir); save_path.mkdir(parents=True,exist_ok=True)
@@ -483,16 +456,16 @@ class AsymmetricVIXForecaster:
             ax.set_title("Compression Regressor (DOWN samples)"); ax.grid(True,alpha=0.3)
             ax=axes[1,0]; X_up_test=test_df[self.up_features]; y_up_test=test_df['target_direction']
             up_proba=self.up_classifier.predict_proba(X_up_test)[:,1]
-            correct_mask=(up_proba>0.5)==y_up_test
+            correct_mask=(up_proba>=self.up_threshold)==y_up_test
             ax.hist([up_proba[correct_mask],up_proba[~correct_mask]],bins=20,alpha=0.7,label=['Correct','Wrong'],edgecolor='black')
             ax.set_xlabel("P(UP)"); ax.set_ylabel("Frequency"); ax.set_title("UP Classifier Distribution")
-            ax.legend(); ax.grid(True,alpha=0.3); ax.axvline(0.5,color='red',linestyle='--',alpha=0.5)
+            ax.legend(); ax.grid(True,alpha=0.3); ax.axvline(self.up_threshold,color='red',linestyle='--',alpha=0.5,label=f'Threshold={self.up_threshold:.2f}')
             ax=axes[1,1]; X_down_test=test_df[self.down_features]; y_down_test=1-test_df['target_direction']
             down_proba=self.down_classifier.predict_proba(X_down_test)[:,1]
-            correct_mask=(down_proba>0.5)==y_down_test
+            correct_mask=(down_proba>=self.down_threshold)==y_down_test
             ax.hist([down_proba[correct_mask],down_proba[~correct_mask]],bins=20,alpha=0.7,label=['Correct','Wrong'],edgecolor='black')
             ax.set_xlabel("P(DOWN)"); ax.set_ylabel("Frequency"); ax.set_title("DOWN Classifier Distribution")
-            ax.legend(); ax.grid(True,alpha=0.3); ax.axvline(0.5,color='red',linestyle='--',alpha=0.5)
+            ax.legend(); ax.grid(True,alpha=0.3); ax.axvline(self.down_threshold,color='red',linestyle='--',alpha=0.5,label=f'Threshold={self.down_threshold:.2f}')
             plt.tight_layout(); plot_file=save_path/"model_diagnostics.png"
             plt.savefig(plot_file,dpi=150,bbox_inches="tight"); plt.close()
         except Exception as e: logger.warning(f"  Could not generate plots: {e}")
@@ -504,11 +477,11 @@ class AsymmetricVIXForecaster:
         print(f"Compression: Train={self.metrics['compression']['train']['mae_pct']:.2f}% | Val={self.metrics['compression']['val']['mae_pct']:.2f}% | Test={self.metrics['compression']['test']['mae_pct']:.2f}% | Bias={self.metrics['compression']['test']['bias_pct']:+.2f}%")
 
         up_auc = self.metrics['up_classifier']['test'].get('auc', 0)
-        up_thresh = self.metrics['up_classifier']['test'].get('optimal_threshold', 0.5)
+        up_thresh = self.metrics['up_classifier']['test'].get('threshold', self.up_threshold)
         print(f"UP Classifier: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['up_classifier']['test']['precision']:.1%} | Rec={self.metrics['up_classifier']['test']['recall']:.1%} | F1={self.metrics['up_classifier']['test']['f1']:.1%} | AUC={up_auc:.3f} (thresh={up_thresh:.3f})")
 
         down_auc = self.metrics['down_classifier']['test'].get('auc', 0)
-        down_thresh = self.metrics['down_classifier']['test'].get('optimal_threshold', 0.5)
+        down_thresh = self.metrics['down_classifier']['test'].get('threshold', self.down_threshold)
         print(f"DOWN Classifier: Train={self.metrics['down_classifier']['train']['accuracy']:.1%} | Val={self.metrics['down_classifier']['val']['accuracy']:.1%} | Test={self.metrics['down_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['down_classifier']['test']['precision']:.1%} | Rec={self.metrics['down_classifier']['test']['recall']:.1%} | F1={self.metrics['down_classifier']['test']['f1']:.1%} | AUC={down_auc:.3f} (thresh={down_thresh:.3f})")
 
         if self.ensemble_enabled and 'ternary' in self.metrics:
