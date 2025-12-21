@@ -1,0 +1,16 @@
+{
+  "features_kept": 35,
+  "features_removed": 7,
+  "random_state": 42,
+  "removed_features": [
+    "copper_ret_63d",
+    "hy_bb_velocity_21d",
+    "hy_ccc_velocity_21d",
+    "macd",
+    "skew_vix_ratio",
+    "time_in_regime_pct",
+    "vx_oi_5d_change"
+  ],
+  "threshold": 0.9,
+  "total_features_before": 52
+}

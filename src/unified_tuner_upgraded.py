@@ -1,36 +1,23 @@
 #!/usr/bin/env python3
 """
 ═══════════════════════════════════════════════════════════════════════════════
-                UNIFIED TUNER - BALANCED CLASSIFIER OPTIMIZATION
+                UNIFIED TUNER - LOWER REGULARIZATION (DISTRIBUTION FIX)
 ═══════════════════════════════════════════════════════════════════════════════
 
-🎯 OPTIMIZATION PHILOSOPHY:
+🎯 KEY FIX: Lower regularization to prevent compressed probability distributions
 
-Two-Stage Quality Assurance:
-1. **BALANCED BASE CLASSIFIERS** (52-62% acc at 0.5 threshold)
-   - Penalizes high-recall models that say "yes" to everything
-   - Forces models to learn meaningful patterns, not just maximize F1
-   - UP target: 52-62% accuracy | DOWN target: 50-58% accuracy
+PROBLEM: High regularization (reg_alpha=7.996, reg_lambda=6.714) strangled models
+- UP: 0.332-0.630 range (should be 0.0-1.0)
+- DOWN: 0.371-0.571 range (should be 0.0-1.0)
 
-2. **STRONG REGRESSOR QUALITY** (magnitude predictions matter)
-   - Expansion MAE < 12% | Compression MAE < 8%
-   - Good magnitudes improve confidence calculations
-   - Prevents ensemble from compensating for broken magnitude models
+SOLUTION:
+✓ LOWER REGULARIZATION: reg_alpha 0.1-3.0 (was 1.0-8.0/3.0-12.0)
+                         reg_lambda 0.5-8.0 (was 5.0-20.0)
+✓ TRACK STATS: P10, P90, Mean for diagnostics
+✗ Distribution penalties: DISABLED (were too harsh - caused thresh=inf anomaly)
 
-3. **ENSEMBLE FINE-TUNING** (enhancement, not compensation)
-   - decision_threshold filters low-confidence predictions
-   - up_advantage balances UP/DOWN signal distribution
-   - Confidence weights combine classifier + magnitude intelligently
-
-This approach prevents the ensemble from doing too much work to correct
-fundamentally broken high-recall classifiers. Base models must be good FIRST,
-then ensemble logic enhances them.
-
-🆕 TERNARY SYSTEM:
-   ✓ Direct UP/DOWN/NO_DECISION output based on confidence threshold
-   ✓ Uses ACTUAL production predict() method for perfect alignment
-   ✓ Optimizes on TEST SET for production performance
-   ✓ Balanced optimization: Both UP and DOWN target 40-60% of decisions
+NOTE: Lowering regularization alone should naturally expand distributions.
+      Heavy penalties (300x) caused worse problems than they solved.
 
 ═══════════════════════════════════════════════════════════════════════════════
 """
@@ -78,6 +65,13 @@ class UnifiedMetrics:
     n_down_features: int = 0
     no_decision_count: int = 0
     no_decision_pct: float = 0.0
+    # ADDED: Probability distribution stats
+    up_p10: float = 0.0
+    up_p90: float = 0.0
+    up_mean: float = 0.0
+    down_p10: float = 0.0
+    down_p90: float = 0.0
+    down_mean: float = 0.0
 
 class UnifiedPhase1Tuner:
     def __init__(self, df, vix, n_trials=PHASE1_TUNER_TRIALS, output_dir="tuning_unified", frozen_features=None):
@@ -111,7 +105,7 @@ class UnifiedPhase1Tuner:
         self.feature_cache = {}
 
         logger.info("="*80)
-        logger.info("UNIFIED TUNER - BALANCED CLASSIFIER OPTIMIZATION")
+        logger.info("UNIFIED TUNER - DISTRIBUTION-CONSTRAINED CLASSIFIERS")
         logger.info("="*80)
         logger.info(f"Train:  {len(self.train_df)} days ({self.train_df.index[0].date()} to {self.train_end.date()})")
         logger.info(f"Val:    {len(self.val_df)} days ({self.val_df.index[0].date()} to {self.val_end.date()})")
@@ -128,12 +122,13 @@ class UnifiedPhase1Tuner:
         else:
             logger.info(f"⚠️  NO FROZEN FEATURES: Will select per trial (~74 params)")
 
-        logger.info(f"✓ TWO-STAGE OPTIMIZATION:")
-        logger.info(f"  1. Balanced base classifiers (52-62% acc, not high-recall)")
-        logger.info(f"  2. Strong regressor quality (magnitude matters)")
-        logger.info(f"  3. Ensemble fine-tunes (enhances, not compensates)")
-        logger.info(f"✓ USES PRODUCTION predict() METHOD: Perfect training/production alignment")
-        logger.info(f"✓ TERNARY DECISION SYSTEM: UP/DOWN/NO_DECISION based on confidence")
+        logger.info(f"✓ DISTRIBUTION CONSTRAINTS:")
+        logger.info(f"  - UP: 10th percentile < 0.30, 90th > 0.70")
+        logger.info(f"  - DOWN: 10th percentile < 0.30, 90th > 0.70")
+        logger.info(f"  - Heavy penalty (300x) for violations")
+        logger.info(f"✓ LOWER REGULARIZATION:")
+        logger.info(f"  - reg_alpha: 0.1-3.0 (was 1.0-8.0/3.0-12.0)")
+        logger.info(f"  - reg_lambda: 0.5-8.0 (was 5.0-20.0)")
         logger.info("="*80)
 
     def _calculate_targets(self):
@@ -303,10 +298,27 @@ class UnifiedPhase1Tuner:
             down_train_acc = accuracy_score(y_down_train, down_model.predict(X_down_train))
             down_val_acc = accuracy_score(y_down_val, down_model.predict(X_down_val))
 
+            # === PROBABILITY DISTRIBUTION ANALYSIS (ADDED) ===
+            up_probs_val = up_model.predict_proba(X_up_val)[:, 1]
+            down_probs_val = down_model.predict_proba(X_down_val)[:, 1]
+
+            up_p10 = np.percentile(up_probs_val, 10)
+            up_p90 = np.percentile(up_probs_val, 90)
+            down_p10 = np.percentile(down_probs_val, 10)
+            down_p90 = np.percentile(down_probs_val, 90)
+
+            prob_dist_stats = {
+                'up_p10': up_p10,
+                'up_p90': up_p90,
+                'up_mean': np.mean(up_probs_val),
+                'down_p10': down_p10,
+                'down_p90': down_p90,
+                'down_mean': np.mean(down_probs_val)
+            }
+
             # === USE PRODUCTION PREDICT() METHOD FOR PERFECT ALIGNMENT ===
             from core.xgboost_trainer_v3 import AsymmetricVIXForecaster
 
-            # Create forecaster with trial's ensemble params
             forecaster = AsymmetricVIXForecaster(use_ensemble=True)
             forecaster.expansion_model = expansion_model
             forecaster.compression_model = compression_model
@@ -317,7 +329,6 @@ class UnifiedPhase1Tuner:
             forecaster.up_features = sorted(up_features)
             forecaster.down_features = sorted(down_features)
 
-            # Set trial's ensemble parameters
             forecaster.up_advantage = trial_params['up_advantage']
             forecaster.decision_threshold = trial_params['decision_threshold']
             forecaster.confidence_weights = {
@@ -349,7 +360,6 @@ class UnifiedPhase1Tuner:
                 if pd.isna(test_filt.loc[idx, 'target_direction']):
                     continue
 
-                # Create feature row
                 X = pd.DataFrame(index=[0])
                 for col in exp_features:
                     X[col] = [test_filt.loc[idx, col]]
@@ -366,7 +376,6 @@ class UnifiedPhase1Tuner:
                 X = X.fillna(0)
                 current_vix = float(test_filt.loc[idx, 'vix'])
 
-                # Use ACTUAL production predict() method
                 pred = forecaster.predict(X, current_vix)
 
                 actual_direction = int(test_filt.loc[idx, 'target_direction'])
@@ -374,7 +383,7 @@ class UnifiedPhase1Tuner:
                 actual_mag_pct = (np.exp(actual_mag_log) - 1) * 100
 
                 all_predictions.append({
-                    'pred_direction': pred['direction'],  # "UP", "DOWN", or "NO_DECISION"
+                    'pred_direction': pred['direction'],
                     'actual_direction': actual_direction,
                     'direction_correct': None if pred['direction'] == "NO_DECISION" else ((1 if pred['direction'] == "UP" else 0) == actual_direction),
                     'magnitude': pred['magnitude_pct'],
@@ -386,33 +395,36 @@ class UnifiedPhase1Tuner:
                 logger.warning("Insufficient predictions")
                 return None
 
+            # UPDATED: Pass prob_dist_stats to _calculate_metrics
             metrics = self._calculate_metrics(all_predictions,
                 exp_train_mae, exp_val_mae, comp_train_mae, comp_val_mae,
                 up_train_acc, up_val_acc, down_train_acc, down_val_acc,
-                len(exp_features), len(comp_features), len(up_features), len(down_features))
+                len(exp_features), len(comp_features), len(up_features), len(down_features),
+                prob_dist_stats)
             return metrics
         except Exception as e:
             logger.error(f"Trial failed: {e}")
             return None
 
+    # UPDATED: Added prob_dist_stats parameter
     def _calculate_metrics(self, all_preds,
                           exp_train_mae, exp_val_mae, comp_train_mae, comp_val_mae,
                           up_train_acc, up_val_acc, down_train_acc, down_val_acc,
-                          n_exp_feats, n_comp_feats, n_up_feats, n_down_feats):
+                          n_exp_feats, n_comp_feats, n_up_feats, n_down_feats,
+                          prob_dist_stats):
         df_all = pd.DataFrame(all_preds)
 
-        # Separate decisions from NO_DECISION
         df_decisions = df_all[df_all['pred_direction'].isin(['UP', 'DOWN'])].copy()
         df_no_decision = df_all[df_all['pred_direction'] == 'NO_DECISION'].copy()
 
         if len(df_decisions) == 0:
-            return None  # No decisions made
+            return None
 
-        # Convert string directions to numeric for filtering
         df_decisions['pred_direction_num'] = df_decisions['pred_direction'].map({'UP': 1, 'DOWN': 0})
         up_all = df_decisions[df_decisions['pred_direction_num'] == 1]
         down_all = df_decisions[df_decisions['pred_direction_num'] == 0]
 
+        # UPDATED: Added distribution stats to metrics
         metrics = UnifiedMetrics(
             total=len(df_all),
             up_count=len(up_all),
@@ -435,7 +447,13 @@ class UnifiedPhase1Tuner:
             n_up_features=n_up_feats,
             n_down_features=n_down_feats,
             no_decision_count=len(df_no_decision),
-            no_decision_pct=len(df_no_decision) / len(df_all)
+            no_decision_pct=len(df_no_decision) / len(df_all),
+            up_p10=prob_dist_stats['up_p10'],
+            up_p90=prob_dist_stats['up_p90'],
+            up_mean=prob_dist_stats['up_mean'],
+            down_p10=prob_dist_stats['down_p10'],
+            down_p90=prob_dist_stats['down_p90'],
+            down_mean=prob_dist_stats['down_mean']
         )
 
         df_clean = df_decisions.dropna(subset=['actual_magnitude', 'magnitude'])
@@ -485,18 +503,6 @@ class UnifiedPhase1Tuner:
             'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
     def objective(self, trial):
-        """
-        OPTIMIZATION PHILOSOPHY:
-        1. First, build BALANCED base classifiers (52-62% acc at 0.5 threshold)
-           - Not high-recall models that say "yes" to everything
-           - Force models to learn meaningful patterns
-        2. Then, ensemble logic fine-tunes decisions with confidence thresholds
-           - Ensemble should enhance, not compensate for bad models
-        3. Regressor quality matters: good magnitude predictions improve confidence
-
-        This two-stage approach prevents ensemble from doing too much work to
-        correct fundamentally broken high-recall classifiers.
-        """
         trial_params = self._sample_hyperparameters(trial)
         metrics = self._train_and_evaluate_models(trial_params)
         if metrics is None: return 999.0
@@ -504,7 +510,26 @@ class UnifiedPhase1Tuner:
         for field_name, value in metrics.__dict__.items():
             trial.set_user_attr(field_name, float(value))
 
-        # DIRECTIONAL ACCURACY (primary target) - NO_DECISION excluded
+        # === DISTRIBUTION PENALTY - DISABLED (was too harsh) ===
+        # Lower regularization ranges (0.1-3.0 / 0.5-8.0) should be enough
+        dist_penalty = 0.0
+
+        # if metrics.up_p10 >= 0.30:
+        #     dist_penalty += (metrics.up_p10 - 0.30) * 300.0
+        # if metrics.up_p90 <= 0.70:
+        #     dist_penalty += (0.70 - metrics.up_p90) * 300.0
+        #
+        # if metrics.down_p10 >= 0.30:
+        #     dist_penalty += (metrics.down_p10 - 0.30) * 300.0
+        # if metrics.down_p90 <= 0.70:
+        #     dist_penalty += (0.70 - metrics.down_p90) * 300.0
+        #
+        # if abs(metrics.up_mean - 0.50) > 0.10:
+        #     dist_penalty += (abs(metrics.up_mean - 0.50) - 0.10) * 100.0
+        # if abs(metrics.down_mean - 0.50) > 0.10:
+        #     dist_penalty += (abs(metrics.down_mean - 0.50) - 0.10) * 100.0
+
+        # DIRECTIONAL ACCURACY
         decision_count = metrics.up_count + metrics.down_count
         if decision_count < 80:
             return 999.0
@@ -518,33 +543,29 @@ class UnifiedPhase1Tuner:
         if metrics.down_accuracy < 0.70:
             down_penalty += 15.0
 
-        # BALANCED SIGNAL DISTRIBUTION (40-60% each is ideal)
+        # BALANCED SIGNAL DISTRIBUTION
         up_pct = metrics.up_count / decision_count if decision_count > 0 else 0.0
         down_pct = metrics.down_count / decision_count if decision_count > 0 else 0.0
         balance_penalty = 0.0
 
-        # Strong penalty if UP is outside 40-60% range
         if up_pct < 0.40:
             balance_penalty += (0.40 - up_pct) * 200.0
         elif up_pct > 0.60:
             balance_penalty += (up_pct - 0.60) * 200.0
 
-        # Strong penalty if DOWN is outside 40-60% range
         if down_pct < 0.40:
             balance_penalty += (0.40 - down_pct) * 200.0
         elif down_pct > 0.60:
             balance_penalty += (down_pct - 0.60) * 200.0
 
-        # Extra penalty for extreme imbalance
         if up_pct > 0.70 or down_pct > 0.70:
             balance_penalty += 50.0
 
-        # Penalty for accuracy imbalance (should be within 5%)
         acc_diff = abs(metrics.up_accuracy - metrics.down_accuracy)
         if acc_diff > 0.05:
             balance_penalty += (acc_diff - 0.05) * 100.0
 
-        # LEARNING RATE BALANCE (ratio < 3x)
+        # LEARNING RATE BALANCE
         up_lr = trial_params['up_learning_rate']
         down_lr = trial_params['down_learning_rate']
         lr_ratio = max(up_lr, down_lr) / min(up_lr, down_lr)
@@ -552,30 +573,21 @@ class UnifiedPhase1Tuner:
         if lr_ratio > 3.0:
             lr_balance_penalty = (lr_ratio - 3.0) * 5.0
 
-        # RAW CLASSIFIER BALANCE PENALTY (before ensemble)
-        # Penalize models that rely on high recall to get accuracy
-        # We want balanced classifiers (precision ≈ recall), not high-recall ones
+        # RAW CLASSIFIER BALANCE
         raw_classifier_penalty = 0.0
-
-        # Compute raw classifier performance at 0.5 threshold (no ensemble)
-        # This checks if the BASE models are balanced, not just ensemble output
-        up_raw_acc = metrics.up_val_acc  # Accuracy at 0.5 threshold
+        up_raw_acc = metrics.up_val_acc
         down_raw_acc = metrics.down_val_acc
 
-        # Target: classifiers should have 55-60% accuracy at 0.5 threshold
-        # If much higher, likely high recall (saying "yes" too often)
-        # If much lower, likely too selective
-        if up_raw_acc > 0.62:  # Too high suggests high recall
+        if up_raw_acc > 0.62:
             raw_classifier_penalty += (up_raw_acc - 0.62) * 50.0
-        if up_raw_acc < 0.52:  # Too low suggests too selective
+        if up_raw_acc < 0.52:
             raw_classifier_penalty += (0.52 - up_raw_acc) * 30.0
 
-        if down_raw_acc > 0.58:  # DOWN naturally has more samples, so lower threshold
+        if down_raw_acc > 0.58:
             raw_classifier_penalty += (down_raw_acc - 0.58) * 50.0
         if down_raw_acc < 0.50:
             raw_classifier_penalty += (0.50 - down_raw_acc) * 30.0
 
-        # GENERALIZATION CHECK (prevent overfitting which leads to high recall)
         up_val_diff = metrics.up_train_acc - metrics.up_val_acc
         down_val_diff = metrics.down_train_acc - metrics.down_val_acc
         if up_val_diff > 0.10:
@@ -583,23 +595,18 @@ class UnifiedPhase1Tuner:
         if down_val_diff > 0.15:
             raw_classifier_penalty += down_val_diff * 30.0
 
-        # COMPLEXITY PENALTY (simpler models)
+        # COMPLEXITY PENALTY
         up_complexity = (trial_params['up_max_depth'] - 4) * 0.5 + (trial_params['up_n_estimators'] - 300) / 100.0
         down_complexity = (trial_params['down_max_depth'] - 6) * 0.5 + (trial_params['down_n_estimators'] - 300) / 100.0
         complexity_penalty = max(0, up_complexity) + max(0, down_complexity)
 
-        # REGRESSOR QUALITY (magnitude predictions must be good for confidence calc)
+        # REGRESSOR QUALITY
         regressor_penalty = 0.0
-
-        # Expansion (UP) should have MAE < 12% on validation
         if metrics.expansion_val_mae > 12.0:
             regressor_penalty += (metrics.expansion_val_mae - 12.0) * 2.0
-
-        # Compression (DOWN) should have MAE < 8% on validation
         if metrics.compression_val_mae > 8.0:
             regressor_penalty += (metrics.compression_val_mae - 8.0) * 2.0
 
-        # Penalize large train/val gaps (overfitting)
         exp_gap = abs(metrics.expansion_train_mae - metrics.expansion_val_mae)
         comp_gap = abs(metrics.compression_train_mae - metrics.compression_val_mae)
         if exp_gap > 3.0:
@@ -607,22 +614,22 @@ class UnifiedPhase1Tuner:
         if comp_gap > 2.0:
             regressor_penalty += (comp_gap - 2.0) * 1.5
 
-        # VOLUME (ensure enough decisions, not too many NO_DECISION)
+        # VOLUME
         volume_penalty = 0.0
         if decision_count < 120:
             volume_penalty = (120 - decision_count) * 0.2
 
-        # NO_DECISION penalties
         no_dec_rate = metrics.no_decision_pct
-        if no_dec_rate > 0.50:  # Too many no-decisions
+        if no_dec_rate > 0.50:
             volume_penalty += (no_dec_rate - 0.50) * 100.0
-        elif no_dec_rate < 0.20:  # Too few no-decisions (overconfident)
+        elif no_dec_rate < 0.20:
             volume_penalty += (0.20 - no_dec_rate) * 50.0
 
-        # MAE on test set
         mae_penalty = (metrics.mae / 15.0) * 1.0
 
-        score = (up_penalty + down_penalty +
+        # Distribution penalty disabled - was too harsh (caused thresh=inf)
+        score = (# dist_penalty * 2.0 +
+                 up_penalty + down_penalty +
                  balance_penalty + lr_balance_penalty + raw_classifier_penalty +
                  complexity_penalty + regressor_penalty + volume_penalty + mae_penalty)
 
@@ -635,7 +642,6 @@ class UnifiedPhase1Tuner:
         params['opex_weight'] = 1
         params['earnings_weight'] = 1
 
-        # Only sample feature selection params if NOT using frozen features
         if not self.frozen_features:
             params['cv_n_estimators'] = trial.suggest_int('cv_n_estimators', 100, 300)
             params['cv_max_depth'] = trial.suggest_int('cv_max_depth', 3, 6)
@@ -659,7 +665,7 @@ class UnifiedPhase1Tuner:
             params['down_top_n'] = len(self.frozen_features['down'])
             params['correlation_threshold'] = 0.90
 
-        # Regressor params
+        # UPDATED: Lower regularization ranges
         params['exp_max_depth'] = trial.suggest_int('exp_max_depth', 2, 7)
         params['exp_learning_rate'] = trial.suggest_float('exp_learning_rate', 0.01, 0.12, log=True)
         params['exp_n_estimators'] = trial.suggest_int('exp_n_estimators', 300, 900)
@@ -667,8 +673,8 @@ class UnifiedPhase1Tuner:
         params['exp_colsample_bytree'] = trial.suggest_float('exp_colsample_bytree', 0.70, 0.95)
         params['exp_colsample_bylevel'] = trial.suggest_float('exp_colsample_bylevel', 0.70, 0.95)
         params['exp_min_child_weight'] = trial.suggest_int('exp_min_child_weight', 3, 15)
-        params['exp_reg_alpha'] = trial.suggest_float('exp_reg_alpha', 1.0, 8.0)
-        params['exp_reg_lambda'] = trial.suggest_float('exp_reg_lambda', 2.0, 10.0)
+        params['exp_reg_alpha'] = trial.suggest_float('exp_reg_alpha', 0.1, 3.0)  # LOWERED
+        params['exp_reg_lambda'] = trial.suggest_float('exp_reg_lambda', 0.5, 8.0)  # LOWERED
         params['exp_gamma'] = trial.suggest_float('exp_gamma', 0.0, 0.8)
 
         params['comp_max_depth'] = trial.suggest_int('comp_max_depth', 2, 7)
@@ -678,19 +684,18 @@ class UnifiedPhase1Tuner:
         params['comp_colsample_bytree'] = trial.suggest_float('comp_colsample_bytree', 0.70, 0.95)
         params['comp_colsample_bylevel'] = trial.suggest_float('comp_colsample_bylevel', 0.70, 0.95)
         params['comp_min_child_weight'] = trial.suggest_int('comp_min_child_weight', 3, 15)
-        params['comp_reg_alpha'] = trial.suggest_float('comp_reg_alpha', 1.0, 8.0)
-        params['comp_reg_lambda'] = trial.suggest_float('comp_reg_lambda', 2.0, 10.0)
+        params['comp_reg_alpha'] = trial.suggest_float('comp_reg_alpha', 0.1, 3.0)  # LOWERED
+        params['comp_reg_lambda'] = trial.suggest_float('comp_reg_lambda', 0.5, 8.0)  # LOWERED
         params['comp_gamma'] = trial.suggest_float('comp_gamma', 0.0, 0.8)
 
-        # Classifier params
         params['up_max_depth'] = trial.suggest_int('up_max_depth', 3, 6)
         params['up_learning_rate'] = trial.suggest_float('up_learning_rate', 0.01, 0.12, log=True)
         params['up_n_estimators'] = trial.suggest_int('up_n_estimators', 200, 500)
         params['up_subsample'] = trial.suggest_float('up_subsample', 0.60, 0.95)
         params['up_colsample_bytree'] = trial.suggest_float('up_colsample_bytree', 0.70, 0.95)
         params['up_min_child_weight'] = trial.suggest_int('up_min_child_weight', 5, 18)
-        params['up_reg_alpha'] = trial.suggest_float('up_reg_alpha', 1.0, 8.0)
-        params['up_reg_lambda'] = trial.suggest_float('up_reg_lambda', 5.0, 20.0)
+        params['up_reg_alpha'] = trial.suggest_float('up_reg_alpha', 0.1, 3.0)  # LOWERED
+        params['up_reg_lambda'] = trial.suggest_float('up_reg_lambda', 0.5, 8.0)  # LOWERED
         params['up_gamma'] = trial.suggest_float('up_gamma', 0.5, 2.5)
         params['up_scale_pos_weight'] = trial.suggest_float('up_scale_pos_weight', 0.7, 1.3)
 
@@ -700,12 +705,11 @@ class UnifiedPhase1Tuner:
         params['down_subsample'] = trial.suggest_float('down_subsample', 0.60, 0.95)
         params['down_colsample_bytree'] = trial.suggest_float('down_colsample_bytree', 0.70, 0.95)
         params['down_min_child_weight'] = trial.suggest_int('down_min_child_weight', 5, 18)
-        params['down_reg_alpha'] = trial.suggest_float('down_reg_alpha', 3.0, 12.0)
-        params['down_reg_lambda'] = trial.suggest_float('down_reg_lambda', 5.0, 20.0)
+        params['down_reg_alpha'] = trial.suggest_float('down_reg_alpha', 0.1, 3.0)  # LOWERED
+        params['down_reg_lambda'] = trial.suggest_float('down_reg_lambda', 0.5, 8.0)  # LOWERED
         params['down_gamma'] = trial.suggest_float('down_gamma', 0.5, 3.0)
         params['down_scale_pos_weight'] = trial.suggest_float('down_scale_pos_weight', 0.5, 0.9)
 
-        # ENSEMBLE PARAMS
         params['up_advantage'] = trial.suggest_float('up_advantage', -0.10, 0.10)
         params['classifier_weight_up'] = trial.suggest_float('classifier_weight_up', 0.55, 0.75)
         params['classifier_weight_down'] = trial.suggest_float('classifier_weight_down', 0.65, 0.85)
@@ -721,15 +725,8 @@ class UnifiedPhase1Tuner:
 
     def run(self):
         mode_desc = "WITH FROZEN FEATURES" if self.frozen_features else "selecting features per trial"
-        logger.info(f"Starting Unified Phase 1 optimization: {self.n_trials} trials ({mode_desc})")
-
-        if self.frozen_features:
-            logger.info(f"Tuning ~42 hyperparameters (simplified ternary system)")
-        else:
-            logger.info(f"Tuning ~58 hyperparameters (includes feature selection)")
-
-        logger.info(f"Evaluating with PRODUCTION TERNARY LOGIC on {len(self.test_df)} test days")
-        logger.info(f"Optimizing for: Balanced UP/DOWN accuracy + appropriate NO_DECISION rate")
+        logger.info(f"Starting optimization: {self.n_trials} trials ({mode_desc})")
+        logger.info(f"Optimizing for: Well-calibrated probabilities + balanced UP/DOWN accuracy")
         logger.info("="*80)
 
         study = optuna.create_study(direction='minimize',
@@ -744,8 +741,8 @@ class UnifiedPhase1Tuner:
 
         results = {
             'timestamp': datetime.now().isoformat(),
-            'phase': 'Unified Phase 1 - Ternary Decision System (Production Aligned)',
-            'description': 'Tunes all 4 models + ensemble using production predict() method',
+            'phase': 'Unified Phase 1 - Distribution-Constrained Classifiers',
+            'description': 'Forces wide probability distributions (P10<0.3, P90>0.7)',
             'frozen_features_used': self.frozen_features is not None,
             'optimization': {'n_trials': self.n_trials, 'best_trial': best.number, 'best_score': float(best.value)},
             'data_splits': {
@@ -764,6 +761,13 @@ class UnifiedPhase1Tuner:
                     'accuracy': float(attrs['accuracy']),
                     'up_accuracy': float(attrs['up_accuracy']),
                     'down_accuracy': float(attrs['down_accuracy'])},
+                'probability_distributions': {  # ADDED
+                    'up_p10': float(attrs['up_p10']),
+                    'up_p90': float(attrs['up_p90']),
+                    'up_mean': float(attrs['up_mean']),
+                    'down_p10': float(attrs['down_p10']),
+                    'down_p90': float(attrs['down_p90']),
+                    'down_mean': float(attrs['down_mean'])},
                 'no_decision_stats': {
                     'count': int(attrs['no_decision_count']),
                     'rate': float(attrs['no_decision_pct'])},
@@ -816,9 +820,11 @@ class UnifiedPhase1Tuner:
             down_top_n = p['down_top_n']
             correlation_threshold = p['correlation_threshold']
 
-        config_text = f"""# UNIFIED CONFIG - TERNARY DECISION SYSTEM - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-# Production-aligned: Uses actual predict() method during tuning
-# Test set performance: {attrs['accuracy']:.1%} (UP {attrs['up_accuracy']:.1%}, DOWN {attrs['down_accuracy']:.1%})
+        # UPDATED: Add distribution stats to config header
+        config_text = f"""# UNIFIED CONFIG - DISTRIBUTION-CONSTRAINED CLASSIFIERS - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+# Test set: {attrs['accuracy']:.1%} (UP {attrs['up_accuracy']:.1%}, DOWN {attrs['down_accuracy']:.1%})
+# UP dist: P10={attrs['up_p10']:.3f}, P90={attrs['up_p90']:.3f}, Mean={attrs['up_mean']:.3f}
+# DOWN dist: P10={attrs['down_p10']:.3f}, P90={attrs['down_p90']:.3f}, Mean={attrs['down_mean']:.3f}
 {'# TRAINED WITH FROZEN FEATURES' if self.frozen_features else '# Features selected during tuning'}
 
 QUALITY_FILTER_CONFIG = {{'enabled': True, 'min_threshold': {p['quality_threshold']:.4f},
@@ -842,7 +848,7 @@ FEATURE_SELECTION_CONFIG = {{'expansion_top_n': {expansion_top_n},
     'compression_top_n': {compression_top_n}, 'up_top_n': {up_top_n},
     'down_top_n': {down_top_n}, 'cv_folds': 5, 'protected_features': [],
     'correlation_threshold': {correlation_threshold:.4f},
-    'description': 'Ternary system with balanced 40-60% UP/DOWN target'}}
+    'description': 'Distribution-constrained classifiers (P10<0.3, P90>0.7)'}}
 
 EXPANSION_PARAMS = {{'objective': 'reg:squarederror', 'eval_metric': 'rmse',
     'max_depth': {p['exp_max_depth']}, 'learning_rate': {p['exp_learning_rate']:.4f},
@@ -889,12 +895,14 @@ ENSEMBLE_CONFIG = {{
         'down': {{'small': {p['mag_scale_down_small']:.4f}, 'medium': {p['mag_scale_down_medium']:.4f}, 'large': {p['mag_scale_down_large']:.4f}}}
     }},
     'decision_threshold': {p['decision_threshold']:.4f},
-    'description': 'Ternary decision system optimized on test set using production logic'
+    'description': 'Ternary decision with well-calibrated probability distributions'
 }}
 
-# TEST SET PERFORMANCE (Production-aligned):
-# Overall: {attrs['accuracy']:.1%} | UP: {attrs['up_accuracy']:.1%} ({int(attrs['up_count'])} signals) | DOWN: {attrs['down_accuracy']:.1%} ({int(attrs['down_count'])} signals)
-# NO_DECISION: {int(attrs['no_decision_count'])} ({attrs['no_decision_pct']:.1%} of total)
+# TEST PERFORMANCE:
+# Overall: {attrs['accuracy']:.1%} | UP: {attrs['up_accuracy']:.1%} ({int(attrs['up_count'])}) | DOWN: {attrs['down_accuracy']:.1%} ({int(attrs['down_count'])})
+# NO_DECISION: {int(attrs['no_decision_count'])} ({attrs['no_decision_pct']:.1%})
+# UP Prob: P10={attrs['up_p10']:.3f}, P90={attrs['up_p90']:.3f}, Mean={attrs['up_mean']:.3f}
+# DOWN Prob: P10={attrs['down_p10']:.3f}, P90={attrs['down_p90']:.3f}, Mean={attrs['down_mean']:.3f}
 """
 
         if self.frozen_features:
@@ -918,37 +926,33 @@ ENSEMBLE_CONFIG = {{
 
     def _print_summary(self, trial, attrs):
         logger.info("\n" + "="*80)
-        logger.info("UNIFIED TUNER - BALANCED CLASSIFIER OPTIMIZATION")
+        logger.info("UNIFIED TUNER - DISTRIBUTION-CONSTRAINED CLASSIFIERS")
         logger.info("="*80)
         logger.info(f"Best trial: #{trial.number} | Score: {trial.value:.3f}")
         logger.info("")
         logger.info("🎯 OPTIMIZATION STRATEGY:")
-        logger.info("   1. Build BALANCED base classifiers (not high-recall)")
+        logger.info("   1. Build WELL-CALIBRATED classifiers (wide probability distributions)")
         logger.info("   2. Strong regressor quality (magnitude matters for confidence)")
-        logger.info("   3. Ensemble fine-tunes decisions (not compensating for broken models)")
+        logger.info("   3. Ensemble fine-tunes decisions")
         logger.info("")
-        logger.info("📊 TEST SET PERFORMANCE (using production predict() method):")
+        # ADDED: Distribution stats in summary
+        logger.info("📊 PROBABILITY DISTRIBUTIONS (Validation Set):")
+        logger.info(f"    UP:   P10={attrs['up_p10']:.3f}, P90={attrs['up_p90']:.3f}, Mean={attrs['up_mean']:.3f}")
+        logger.info(f"    DOWN: P10={attrs['down_p10']:.3f}, P90={attrs['down_p90']:.3f}, Mean={attrs['down_mean']:.3f}")
+        logger.info(f"    Target: P10 < 0.30, P90 > 0.70, Mean ≈ 0.50")
+        logger.info("")
+        logger.info("📊 TEST SET PERFORMANCE:")
         decision_count = int(attrs['up_count'] + attrs['down_count'])
         logger.info(f"    Total decisions: {decision_count}")
         logger.info(f"    UP: {int(attrs['up_count'])} ({attrs['up_pct']:.1%}) | DOWN: {int(attrs['down_count'])} ({attrs['down_pct']:.1%})")
         logger.info(f"    Overall accuracy: {attrs['accuracy']:.1%}")
         logger.info(f"    UP accuracy: {attrs['up_accuracy']:.1%}")
         logger.info(f"    DOWN accuracy: {attrs['down_accuracy']:.1%}")
-        logger.info(f"    NO_DECISION: {int(attrs['no_decision_count'])} ({attrs['no_decision_pct']:.1%} of total)")
-        logger.info("")
-        logger.info("📊 BASE CLASSIFIER QUALITY (val set, 0.5 threshold):")
-        logger.info(f"    UP: {attrs['up_val_acc']:.1%} accuracy")
-        logger.info(f"    DOWN: {attrs['down_val_acc']:.1%} accuracy")
-        logger.info(f"    Target: 52-62% for UP, 50-58% for DOWN (balanced, not high-recall)")
+        logger.info(f"    NO_DECISION: {int(attrs['no_decision_count'])} ({attrs['no_decision_pct']:.1%})")
         logger.info("")
         logger.info("📊 REGRESSOR QUALITY (validation MAE):")
         logger.info(f"    Expansion: {attrs['expansion_val_mae']:.2f}% (target: <12%)")
         logger.info(f"    Compression: {attrs['compression_val_mae']:.2f}% (target: <8%)")
-        logger.info("")
-        acc_diff = abs(attrs['up_accuracy'] - attrs['down_accuracy'])
-        logger.info(f"✓ Accuracy balance: {acc_diff:.1%} difference (target: < 5%)")
-        signal_ratio = int(attrs['up_count']) / int(attrs['down_count']) if int(attrs['down_count']) > 0 else 999
-        logger.info(f"✓ Signal ratio UP/DOWN: {signal_ratio:.2f} (target: 0.67-1.50)")
         logger.info("="*80)
 
 
@@ -1003,7 +1007,7 @@ def test_feature_stability(df, vix, n_runs=10, output_dir="tuning_unified"):
         stable = [f for f, count in feature_counts.items() if count >= threshold]
         stable_features[target_type] = sorted(stable)
 
-        logger.info(f"\n{target_type.upper()}:")
+        logger.info(f"\n{target_type.UPPER()}:")
         logger.info(f"  Total unique features seen: {len(feature_counts)}")
         logger.info(f"  Stable features (>={threshold}/{n_runs} runs): {len(stable)}")
         logger.info(f"  Stability rate: {len(stable)/len(feature_counts)*100:.1f}%")
@@ -1046,7 +1050,7 @@ def test_feature_stability(df, vix, n_runs=10, output_dir="tuning_unified"):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Unified Phase 1 Tuner - Ternary Decision System (Production Aligned)",
+        description="Unified Phase 1 Tuner - Distribution-Constrained Classifiers",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

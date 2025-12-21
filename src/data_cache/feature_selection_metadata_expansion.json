@@ -1,0 +1,33 @@
+{
+  "correlation_threshold": 0.9,
+  "n_removed_correlation": 7,
+  "n_samples": 2246,
+  "n_selected": 35,
+  "random_state": 42,
+  "target_type": "expansion",
+  "top_10_features": [
+    "days_in_regime",
+    "vix_percentile_126d",
+    "hy_velocity_21d",
+    "fin_stress_index",
+    "copper_momentum_63d",
+    "vvix",
+    "vx_spread_x_vix_expiry",
+    "credit_stress_composite",
+    "hy_spread",
+    "vx_oi_surge"
+  ],
+  "top_10_importance": [
+    0.016687495121732353,
+    0.015349295269697905,
+    0.008957504201680422,
+    0.008736956678330899,
+    0.008284474071115256,
+    0.007711957045830786,
+    0.007300769258290529,
+    0.006916981306858361,
+    0.006903486466035247,
+    0.0068341723643243315
+  ],
+  "top_n": 35
+}
