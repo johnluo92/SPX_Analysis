@@ -94,6 +94,88 @@ class AsymmetricVIXForecaster:
 
         return float(ensemble_conf)
 
+    def _evaluate_ternary_decisions(self, test_df, test_up_mask, test_down_mask):
+        """Evaluate using production ternary decision logic"""
+
+        results = []
+        for idx in test_df.index:
+            obs = test_df.loc[idx]
+
+            # Create feature row
+            X = pd.DataFrame(index=[0])
+            for col in self.expansion_features: X[col] = [obs[col]]
+            for col in self.compression_features:
+                if col not in X.columns: X[col] = [obs[col]]
+            for col in self.up_features:
+                if col not in X.columns: X[col] = [obs[col]]
+            for col in self.down_features:
+                if col not in X.columns: X[col] = [obs[col]]
+
+            current_vix = float(obs["vix"])
+            actual_direction = int(obs["target_direction"])
+
+            # Make prediction using production logic
+            pred = self.predict(X, current_vix)
+
+            results.append({
+                'predicted_direction': pred['direction'],
+                'actual_direction': 'UP' if actual_direction == 1 else 'DOWN',
+                'confidence': pred['direction_confidence'],
+                'magnitude_pct': pred['magnitude_pct']
+            })
+
+        results_df = pd.DataFrame(results)
+
+        # Calculate metrics
+        total = len(results_df)
+        no_decision = (results_df['predicted_direction'] == 'NO_DECISION').sum()
+        made_decision = total - no_decision
+
+        # Filter to decisions only
+        decisions = results_df[results_df['predicted_direction'] != 'NO_DECISION'].copy()
+
+        if len(decisions) > 0:
+            decisions['correct'] = decisions['predicted_direction'] == decisions['actual_direction']
+
+            overall_acc = decisions['correct'].mean()
+
+            up_decisions = decisions[decisions['predicted_direction'] == 'UP']
+            down_decisions = decisions[decisions['predicted_direction'] == 'DOWN']
+
+            up_acc = up_decisions['correct'].mean() if len(up_decisions) > 0 else 0
+            down_acc = down_decisions['correct'].mean() if len(down_decisions) > 0 else 0
+
+            up_conf = up_decisions['confidence'].mean() if len(up_decisions) > 0 else 0
+            down_conf = down_decisions['confidence'].mean() if len(down_decisions) > 0 else 0
+
+            up_mag = up_decisions['magnitude_pct'].mean() if len(up_decisions) > 0 else 0
+            down_mag = down_decisions['magnitude_pct'].mean() if len(down_decisions) > 0 else 0
+        else:
+            overall_acc = up_acc = down_acc = 0
+            up_conf = down_conf = up_mag = down_mag = 0
+
+        logger.info(f"Ternary Performance (threshold={self.decision_threshold:.1%}):")
+        logger.info(f"  Total: {total} | Decisions: {made_decision} ({made_decision/total:.1%}) | NO_DECISION: {no_decision} ({no_decision/total:.1%})")
+        logger.info(f"  Overall Accuracy: {overall_acc:.1%}")
+        logger.info(f"  UP: n={len(up_decisions)} | acc={up_acc:.1%} | conf={up_conf:.1%} | mag={up_mag:+.2f}%")
+        logger.info(f"  DOWN: n={len(down_decisions)} | acc={down_acc:.1%} | conf={down_conf:.1%} | mag={down_mag:+.2f}%")
+
+        return {
+            'total_samples': int(total),
+            'made_decision': int(made_decision),
+            'no_decision': int(no_decision),
+            'no_decision_pct': float(no_decision / total),
+            'overall_accuracy': float(overall_acc),
+            'up_count': int(len(up_decisions)),
+            'up_accuracy': float(up_acc),
+            'up_confidence': float(up_conf),
+            'up_magnitude': float(up_mag),
+            'down_count': int(len(down_decisions)),
+            'down_accuracy': float(down_acc),
+            'down_confidence': float(down_conf),
+            'down_magnitude': float(down_mag)
+        }
+
     def train(self,df,expansion_features=None,compression_features=None,up_features=None,down_features=None,save_dir="models"):
         df = df.sort_index()
 
@@ -179,6 +261,12 @@ class AsymmetricVIXForecaster:
         self.down_classifier,down_metrics,down_val_proba,down_test_proba=self._train_classifier_model(X_down_train,y_down_train,X_down_val,y_down_val,X_down_test,y_down_test,DOWN_CLASSIFIER_PARAMS,"DOWN",train_df,val_df,invert=True)
         self.metrics["down_classifier"]=down_metrics
         self.down_optimal_threshold = down_metrics['test']['optimal_threshold']
+
+        if self.ensemble_enabled:
+            logger.info(f"\n{'='*60}")
+            logger.info("📊 TERNARY DECISION EVALUATION (Production Logic)")
+            ternary_metrics = self._evaluate_ternary_decisions(test_df, test_up_mask, test_down_mask)
+            self.metrics["ternary"] = ternary_metrics
 
         self._save_models(save_dir)
         self._generate_diagnostics(test_df,save_dir)
@@ -412,20 +500,24 @@ class AsymmetricVIXForecaster:
     def _print_summary(self):
         print("\nASYMMETRIC 4-MODEL TRAINING SUMMARY")
         print(f"Models: Expansion + Compression Regressors | UP + DOWN Classifiers | Training through: {TRAINING_END_DATE}")
-        if self.ensemble_enabled: print(f"✓ Ternary decision: Confidence threshold = {self.decision_threshold:.1%}")
         print(f"Expansion: Train={self.metrics['expansion']['train']['mae_pct']:.2f}% | Val={self.metrics['expansion']['val']['mae_pct']:.2f}% | Test={self.metrics['expansion']['test']['mae_pct']:.2f}% | Bias={self.metrics['expansion']['test']['bias_pct']:+.2f}%")
         print(f"Compression: Train={self.metrics['compression']['train']['mae_pct']:.2f}% | Val={self.metrics['compression']['val']['mae_pct']:.2f}% | Test={self.metrics['compression']['test']['mae_pct']:.2f}% | Bias={self.metrics['compression']['test']['bias_pct']:+.2f}%")
 
         up_auc = self.metrics['up_classifier']['test'].get('auc', 0)
         up_thresh = self.metrics['up_classifier']['test'].get('optimal_threshold', 0.5)
-        print(f"UP: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['up_classifier']['test']['precision']:.1%} | Rec={self.metrics['up_classifier']['test']['recall']:.1%} | F1={self.metrics['up_classifier']['test']['f1']:.1%} | AUC={up_auc:.3f} (thresh={up_thresh:.3f})")
+        print(f"UP Classifier: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['up_classifier']['test']['precision']:.1%} | Rec={self.metrics['up_classifier']['test']['recall']:.1%} | F1={self.metrics['up_classifier']['test']['f1']:.1%} | AUC={up_auc:.3f} (thresh={up_thresh:.3f})")
 
         down_auc = self.metrics['down_classifier']['test'].get('auc', 0)
         down_thresh = self.metrics['down_classifier']['test'].get('optimal_threshold', 0.5)
-        print(f"DOWN: Train={self.metrics['down_classifier']['train']['accuracy']:.1%} | Val={self.metrics['down_classifier']['val']['accuracy']:.1%} | Test={self.metrics['down_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['down_classifier']['test']['precision']:.1%} | Rec={self.metrics['down_classifier']['test']['recall']:.1%} | F1={self.metrics['down_classifier']['test']['f1']:.1%} | AUC={down_auc:.3f} (thresh={down_thresh:.3f})")
+        print(f"DOWN Classifier: Train={self.metrics['down_classifier']['train']['accuracy']:.1%} | Val={self.metrics['down_classifier']['val']['accuracy']:.1%} | Test={self.metrics['down_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['down_classifier']['test']['precision']:.1%} | Rec={self.metrics['down_classifier']['test']['recall']:.1%} | F1={self.metrics['down_classifier']['test']['f1']:.1%} | AUC={down_auc:.3f} (thresh={down_thresh:.3f})")
 
-        if self.up_optimal_threshold and self.down_optimal_threshold:
-            print(f"\n✓ Optimal thresholds stored: UP={self.up_optimal_threshold:.3f}, DOWN={self.down_optimal_threshold:.3f}")
+        if self.ensemble_enabled and 'ternary' in self.metrics:
+            print(f"\n✓ TERNARY DECISION (Production Logic - threshold={self.decision_threshold:.1%}):")
+            t = self.metrics['ternary']
+            print(f"  Decisions: {t['made_decision']}/{t['total_samples']} ({t['made_decision']/t['total_samples']:.1%}) | NO_DECISION: {t['no_decision']} ({t['no_decision_pct']:.1%})")
+            print(f"  Overall Accuracy: {t['overall_accuracy']:.1%}")
+            print(f"  UP: n={t['up_count']} | acc={t['up_accuracy']:.1%} | conf={t['up_confidence']:.1%} | mag={t['up_magnitude']:+.2f}%")
+            print(f"  DOWN: n={t['down_count']} | acc={t['down_accuracy']:.1%} | conf={t['down_confidence']:.1%} | mag={t['down_magnitude']:+.2f}%")
         print()
 
 def train_asymmetric_forecaster(df,expansion_features=None,compression_features=None,up_features=None,down_features=None,save_dir="models"):

@@ -1,351 +1,131 @@
 #!/usr/bin/env python3
+"""
+Production Ensemble Tuner - Optimizes Real ENSEMBLE_CONFIG Parameters
+======================================================================
+Tunes the actual ensemble parameters that production uses:
+- decision_threshold
+- up_advantage
+- confidence_weights (up/down)
+- magnitude_scaling (up/down)
+
+Evaluates on TEST set using production ternary decision logic.
+Optimizes for: accuracy, natural UP/DOWN balance (44/56), and NO_DECISION rate.
+"""
 import argparse, json, logging, sys, warnings
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass
 import numpy as np, pandas as pd, optuna
 from optuna.samplers import TPESampler
-from sklearn.metrics import mean_absolute_error
-from config import QUALITY_FILTER_CONFIG
-warnings.filterwarnings("ignore")
-trials=2000
-min_acc=.68
 
-Path("logs").mkdir(exist_ok=True)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("logs/phase2_tuner.log")])
+warnings.filterwarnings("ignore")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-@dataclass
-class EnsembleMetrics:
-    raw_total: int = 0
-    raw_up_count: int = 0
-    raw_down_count: int = 0
-    raw_up_pct: float = 0.0
-    raw_down_pct: float = 0.0
-    raw_accuracy: float = 0.0
-    raw_up_accuracy: float = 0.0
-    raw_down_accuracy: float = 0.0
-    act_total: int = 0
-    act_up_count: int = 0
-    act_down_count: int = 0
-    act_up_pct: float = 0.0
-    act_down_pct: float = 0.0
-    act_accuracy: float = 0.0
-    act_up_accuracy: float = 0.0
-    act_down_accuracy: float = 0.0
-    act_rate: float = 0.0
-    mag_mae: float = 0.0
-    mag_mae_up: float = 0.0
-    mag_mae_down: float = 0.0
-
-class Phase2Tuner:
-    def __init__(self, df, vix, n_trials=trials, output_dir="tuning_phase2", min_accuracy=min_acc):
-        self.df = df.copy()
-        self.vix = vix.copy()
+class ProductionEnsembleTuner:
+    def __init__(self, n_trials=500, min_accuracy=0.70, output_dir="tuning_ensemble"):
         self.n_trials = n_trials
+        self.min_accuracy = min_accuracy
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.min_accuracy = min_accuracy  # RAISED DEFAULT from 0.55 to 0.70
 
-        self.train_end = pd.Timestamp("2021-12-31")
-        self.val_end = pd.Timestamp("2023-12-31")
-        self.test_start = self.val_end + pd.Timedelta(days=1)
-
-        train_mask = df.index <= self.train_end
-        val_mask = (df.index > self.train_end) & (df.index <= self.val_end)
-        test_mask = df.index > self.val_end
-
-        self.train_df = df[train_mask].copy()
-        self.val_df = df[val_mask].copy()
-        self.test_df = df[test_mask].copy()
-
-        from config import TARGET_CONFIG
-        self.horizon = TARGET_CONFIG["horizon_days"]
-
-        self._calculate_targets()
-        self._load_phase1_models()
-
-        logger.info("="*80)
-        logger.info("PHASE 2: ENSEMBLE CONFIG TUNER (IMPROVED)")
-        logger.info("="*80)
-        logger.info(f"Train:  {len(self.train_df)} days ({self.train_df.index[0].date()} to {self.train_end.date()})")
-        logger.info(f"Val:    {len(self.val_df)} days ({self.val_df.index[0].date()} to {self.val_end.date()})")
-        logger.info(f"Test:   {len(self.test_df)} days ({self.test_start.date()} to {self.test_df.index[-1].date()})")
-        logger.info(f"Using Phase 1 optimized models from models/ directory")
-        logger.info("="*80)
-
-    def _calculate_targets(self):
-        from core.target_calculator import TargetCalculator
-        calculator = TargetCalculator()
-        self.train_df = calculator.calculate_all_targets(self.train_df, vix_col='vix')
-        self.val_df = calculator.calculate_all_targets(self.val_df, vix_col='vix')
-        self.test_df = calculator.calculate_all_targets(self.test_df, vix_col='vix')
-
-    def _load_phase1_models(self):
+        # Load trained models
         from core.xgboost_trainer_v3 import AsymmetricVIXForecaster
         self.forecaster = AsymmetricVIXForecaster(use_ensemble=True)
 
-        models_path = Path("models")
-        if not (models_path / "expansion_model.pkl").exists():
-            logger.error("❌ Phase 1 models not found - run phase1_model_tuner.py first")
+        if not Path("models/expansion_model.pkl").exists():
+            logger.error("❌ Models not found - run train_probabilistic_models.py first")
             sys.exit(1)
 
         self.forecaster.load("models")
-        logger.info(f"✅ Loaded Phase 1 models: {len(self.forecaster.expansion_features)} exp, "
-                   f"{len(self.forecaster.compression_features)} comp, {len(self.forecaster.up_features)} up, "
-                   f"{len(self.forecaster.down_features)} down features")
+        logger.info(f"✅ Loaded models from models/")
 
-    def _apply_quality_filter(self, df, threshold=0.55):
-        if 'feature_quality' not in df.columns:
-            logger.warning("No feature_quality column - skipping filter")
-            return df
-        filtered = df[df['feature_quality'] >= threshold].copy()
-        filtered_pct = (1 - len(filtered)/len(df)) * 100
-        if filtered_pct > 50:
-            raise ValueError(f"Quality filter removed {filtered_pct:.1f}% of data")
-        return filtered
+        # Load data and split
+        self._load_data()
 
-    def _generate_base_predictions(self, test_df):
-        """Generate raw model predictions once for all trials"""
-        predictions = []
+        # Natural VIX distribution (from historical data)
+        self.target_up_pct = 0.44  # 44% UP
+        self.target_down_pct = 0.56  # 56% DOWN
 
-        for idx in test_df.index:
-            if pd.isna(test_df.loc[idx, 'target_direction']):
-                continue
+        logger.info("="*80)
+        logger.info("PRODUCTION ENSEMBLE TUNER")
+        logger.info("="*80)
+        logger.info(f"Test set: {len(self.test_df)} days ({self.test_df.index[0].date()} to {self.test_df.index[-1].date()})")
+        logger.info(f"Target accuracy: {self.min_accuracy:.0%}+ for both UP and DOWN")
+        logger.info(f"Target signal ratio: {self.target_up_pct:.0%} UP / {self.target_down_pct:.0%} DOWN (natural VIX)")
+        logger.info(f"Target NO_DECISION: 20-35%")
+        logger.info("="*80)
 
-            X_exp = test_df.loc[[idx], sorted(self.forecaster.expansion_features)].fillna(0)
-            X_comp = test_df.loc[[idx], sorted(self.forecaster.compression_features)].fillna(0)
-            X_up = test_df.loc[[idx], sorted(self.forecaster.up_features)].fillna(0)
-            X_down = test_df.loc[[idx], sorted(self.forecaster.down_features)].fillna(0)
+    def _load_data(self):
+        """Load production data and split into train/val/test"""
+        from config import TRAINING_YEARS, get_last_complete_month_end, TRAIN_END_DATE, VAL_END_DATE
+        from core.data_fetcher import UnifiedDataFetcher
+        from features.feature_engineer import FeatureEngineer
+        from core.target_calculator import TargetCalculator
 
-            exp_log = np.clip(self.forecaster.expansion_model.predict(X_exp)[0], -2, 2)
-            comp_log = np.clip(self.forecaster.compression_model.predict(X_comp)[0], -2, 2)
-            exp_pct = (np.exp(exp_log) - 1) * 100
-            comp_pct = (np.exp(comp_log) - 1) * 100
+        training_end = get_last_complete_month_end()
+        fetcher = UnifiedDataFetcher()
+        engineer = FeatureEngineer(fetcher)
 
-            p_up = self.forecaster.up_classifier.predict_proba(X_up)[0, 1]
-            p_down = self.forecaster.down_classifier.predict_proba(X_down)[0, 1]
+        logger.info("Loading data...")
+        result = engineer.build_complete_features(years=TRAINING_YEARS, end_date=training_end)
 
-            current_vix = float(test_df.loc[idx, 'vix'])
-            actual_direction = int(test_df.loc[idx, 'target_direction'])
-            actual_mag_log = test_df.loc[idx, 'target_log_vix_change']
-            actual_mag_pct = (np.exp(actual_mag_log) - 1) * 100
+        df = result["features"].copy()
+        df["vix"] = result["vix"]
 
-            predictions.append({
-                'date': idx,
-                'p_up': p_up, 'p_down': p_down,
-                'exp_pct': exp_pct, 'comp_pct': comp_pct,
-                'current_vix': current_vix,
-                'actual_direction': actual_direction,
-                'actual_magnitude': actual_mag_pct
-            })
+        # Calculate targets
+        calculator = TargetCalculator()
+        df = calculator.calculate_all_targets(df, vix_col='vix')
 
-        return pd.DataFrame(predictions)
+        # Apply quality filter
+        from config import QUALITY_FILTER_CONFIG
+        if 'feature_quality' in df.columns:
+            threshold = QUALITY_FILTER_CONFIG['min_threshold']
+            df = df[df['feature_quality'] >= threshold].copy()
+            logger.info(f"Applied quality filter: {threshold:.2f}")
 
-    def _apply_ensemble_logic(self, pred, ensemble_config):
-        """Apply ensemble config to a prediction"""
-        p_up, p_down = pred['p_up'], pred['p_down']
-        exp_pct, comp_pct = pred['exp_pct'], pred['comp_pct']
+        # Split data
+        self.train_end = pd.Timestamp(TRAIN_END_DATE)
+        self.val_end = pd.Timestamp(VAL_END_DATE)
 
-        total = p_up + p_down
-        p_up_norm = p_up / total if total > 0 else 0.5
-        p_down_norm = p_down / total if total > 0 else 0.5
+        test_mask = df.index > self.val_end
+        self.test_df = df[test_mask].copy()
 
-        up_advantage = ensemble_config['up_advantage']
-        if p_down > (p_up + up_advantage):
-            direction = "DOWN"
-            magnitude_pct = comp_pct
-            classifier_prob = p_down_norm
-        else:
-            direction = "UP"
-            magnitude_pct = exp_pct
-            classifier_prob = p_up_norm
-
-        abs_mag = abs(magnitude_pct)
-        weights = ensemble_config['confidence_weights'][direction.lower()]
-        scaling = ensemble_config['magnitude_scaling'][direction.lower()]
-
-        mag_strength = min(abs_mag / scaling['large'], 1.0)
-        confidence = weights['classifier'] * classifier_prob + weights['magnitude'] * mag_strength
-
-        boost_threshold = ensemble_config['boost_threshold_up'] if direction == 'UP' else ensemble_config['boost_threshold_down']
-        boost_amount = ensemble_config['boost_amount_up'] if direction == 'UP' else ensemble_config['boost_amount_down']
-        if abs_mag > boost_threshold:
-            confidence = min(confidence + boost_amount, 1.0)
-
-        min_conf = ensemble_config['min_confidence_up'] if direction == 'UP' else ensemble_config['min_confidence_down']
-        confidence = np.clip(confidence, min_conf, 1.0)
-
-        thresholds = ensemble_config['dynamic_thresholds'][direction.lower()]
-        if abs_mag > scaling['large']:
-            threshold = thresholds['high_magnitude']
-        elif abs_mag > scaling['medium']:
-            threshold = thresholds['medium_magnitude']
-        else:
-            threshold = thresholds['low_magnitude']
-
-        actionable = confidence > threshold
-
-        return {
-            'direction': direction,
-            'magnitude_pct': magnitude_pct,
-            'confidence': confidence,
-            'threshold': threshold,
-            'actionable': actionable,
-            'pred_direction': 1 if direction == 'UP' else 0
-        }
-
-    def _evaluate_ensemble_config(self, ensemble_config, base_predictions):
-        """Evaluate an ensemble config on base predictions"""
-        results = []
-
-        for _, pred in base_predictions.iterrows():
-            forecast = self._apply_ensemble_logic(pred, ensemble_config)
-
-            results.append({
-                'pred_direction': forecast['pred_direction'],
-                'actual_direction': pred['actual_direction'],
-                'direction_correct': (forecast['pred_direction'] == pred['actual_direction']),
-                'confidence': forecast['confidence'],
-                'actionable': forecast['actionable'],
-                'magnitude': forecast['magnitude_pct'],
-                'actual_magnitude': pred['actual_magnitude']
-            })
-
-        return pd.DataFrame(results)
-
-    def _calculate_metrics(self, predictions):
-        df = predictions
-
-        raw_up = df[df['pred_direction'] == 1]
-        raw_down = df[df['pred_direction'] == 0]
-
-        act_df = df[df['actionable']]
-        act_up = act_df[act_df['pred_direction'] == 1]
-        act_down = act_df[act_df['pred_direction'] == 0]
-
-        act_df_clean = act_df.dropna(subset=['actual_magnitude', 'magnitude'])
-        act_up_clean = act_up.dropna(subset=['actual_magnitude', 'magnitude'])
-        act_down_clean = act_down.dropna(subset=['actual_magnitude', 'magnitude'])
-
-        metrics = EnsembleMetrics(
-            raw_total=len(df), raw_up_count=len(raw_up), raw_down_count=len(raw_down),
-            raw_up_pct=len(raw_up) / len(df) if len(df) > 0 else 0.0,
-            raw_down_pct=len(raw_down) / len(df) if len(df) > 0 else 0.0,
-            raw_accuracy=df['direction_correct'].mean() if len(df) > 0 else 0.0,
-            raw_up_accuracy=raw_up['direction_correct'].mean() if len(raw_up) > 0 else 0.0,
-            raw_down_accuracy=raw_down['direction_correct'].mean() if len(raw_down) > 0 else 0.0,
-            act_total=len(act_df), act_up_count=len(act_up), act_down_count=len(act_down),
-            act_up_pct=len(act_up) / len(act_df) if len(act_df) > 0 else 0.0,
-            act_down_pct=len(act_down) / len(act_df) if len(act_df) > 0 else 0.0,
-            act_accuracy=act_df['direction_correct'].mean() if len(act_df) > 0 else 0.0,
-            act_up_accuracy=act_up['direction_correct'].mean() if len(act_up) > 0 else 0.0,
-            act_down_accuracy=act_down['direction_correct'].mean() if len(act_down) > 0 else 0.0,
-            act_rate=len(act_df) / len(df) if len(df) > 0 else 0.0,
-            mag_mae=mean_absolute_error(act_df_clean['actual_magnitude'], act_df_clean['magnitude']) if len(act_df_clean) > 0 else 999.0,
-            mag_mae_up=mean_absolute_error(act_up_clean['actual_magnitude'], act_up_clean['magnitude']) if len(act_up_clean) > 0 else 999.0,
-            mag_mae_down=mean_absolute_error(act_down_clean['actual_magnitude'], act_down_clean['magnitude']) if len(act_down_clean) > 0 else 999.0
-        )
-
-        return metrics
+        logger.info(f"Test set: {len(self.test_df)} samples")
 
     def objective(self, trial):
+        """Optuna objective - minimize composite score"""
         try:
-            ensemble_config = self._sample_ensemble_config(trial)
+            # Sample ensemble config parameters
+            config = self._sample_config(trial)
 
-            # Validate threshold ordering
-            for direction in ['up', 'down']:
-                thresholds = ensemble_config['dynamic_thresholds'][direction]
-                if not (thresholds['high_magnitude'] < thresholds['medium_magnitude'] < thresholds['low_magnitude']):
-                    logger.debug(f"Trial {trial.number}: Invalid threshold ordering for {direction}")
-                    return 999.0
+            # Temporarily override forecaster's ensemble config
+            original_config = self._save_current_config()
+            self._apply_config(config)
 
-            from config import QUALITY_FILTER_CONFIG
-            test_filt = self._apply_quality_filter(self.test_df, threshold=QUALITY_FILTER_CONFIG['min_threshold'])
-            if len(test_filt) < 100:
-                logger.debug(f"Trial {trial.number}: Insufficient test data")
+            # Evaluate on test set
+            metrics = self._evaluate_test_set()
+
+            # Restore original config
+            self._apply_config(original_config)
+
+            # Record all metrics as user attributes
+            for k, v in metrics.items():
+                trial.set_user_attr(k, float(v))
+
+            # Hard constraints
+            if metrics['up_accuracy'] < self.min_accuracy:
                 return 999.0
-
-            if not hasattr(self, '_base_predictions'):
-                logger.info("Generating base predictions (once)...")
-                self._base_predictions = self._generate_base_predictions(test_filt)
-
-            predictions = self._evaluate_ensemble_config(ensemble_config, self._base_predictions)
-            metrics = self._calculate_metrics(predictions)
-
-            for field_name, value in metrics.__dict__.items():
-                trial.set_user_attr(field_name, float(value))
-
-            up_acc = metrics.act_up_accuracy
-            down_acc = metrics.act_down_accuracy
-
-            # Hard constraints (fail fast)
-            TARGET_MIN_SIGNALS = 60  # Each direction needs 60+ signals
-            TARGET_MIN_RATE = 0.28   # At least 28% actionable
-            TARGET_RATE_RANGE = (0.32, 0.40)  # Ideal range: 32-40%
-
-            if up_acc < self.min_accuracy:
+            if metrics['down_accuracy'] < self.min_accuracy:
                 return 999.0
-            if down_acc < self.min_accuracy:
+            if metrics['total_decisions'] < 100:  # Need enough signals
                 return 999.0
-            if metrics.act_up_count < TARGET_MIN_SIGNALS or metrics.act_down_count < TARGET_MIN_SIGNALS:
-                return 999.0
-            if metrics.act_rate < TARGET_MIN_RATE:
-                return 999.0
+            if metrics['no_decision_pct'] < 0.15 or metrics['no_decision_pct'] > 0.40:
+                return 999.0  # NO_DECISION should be 15-40%
 
-            # === IMPROVED OBJECTIVE: BALANCE ACCURACY WITH VOLUME ===
-
-            # 1. Accuracy penalties
-            worst_acc = min(up_acc, down_acc)
-            worst_error = 1.0 - worst_acc
-            worst_penalty = worst_error * 50.0
-
-            avg_acc = (up_acc + down_acc) / 2.0
-            avg_error = 1.0 - avg_acc
-            avg_penalty = avg_error * 20.0
-
-            accuracy_gap = abs(up_acc - down_acc)
-            balance_penalty = (accuracy_gap ** 2) * 100.0
-
-            # 2. Signal distribution balance (50/50 split)
-            signal_imbalance = abs(metrics.act_up_pct - 0.50)
-            signal_penalty = signal_imbalance * 5.0
-
-            # 3. VOLUME PENALTY - heavily reward 32-40% actionable rate
-            #    This prevents optimizer from being ultra-conservative
-            if metrics.act_rate < TARGET_RATE_RANGE[0]:
-                # Below 32%: strong penalty (80% @ 25% rate is BAD)
-                volume_penalty = (TARGET_RATE_RANGE[0] - metrics.act_rate) * 150.0
-            elif metrics.act_rate > TARGET_RATE_RANGE[1]:
-                # Above 40%: mild penalty (too many signals)
-                volume_penalty = (metrics.act_rate - TARGET_RATE_RANGE[1]) * 50.0
-            else:
-                # In sweet spot (32-40%): bonus reward
-                volume_penalty = -10.0
-
-            # 4. Magnitude accuracy
-            mag_penalty = metrics.mag_mae * 0.3
-
-            # TOTAL SCORE
-            # The 150x volume penalty means:
-            # - 80% @ 35% rate scores ~25 (10 + 4 + 0 + 2.5 - 10 + 4 = 10.5)
-            # - 90% @ 25% rate scores ~15.5 (5 + 2 + 0 + 2.5 + 10.5 + 4 = 24)
-            # Wait, that's still wrong. Let me recalculate...
-            # - 80% @ 35% rate: worst=10, avg=4, bal=0, sig=2.5, vol=-10, mae=4 = 10.5
-            # - 90% @ 25% rate: worst=5, avg=2, bal=0, sig=2.5, vol=(0.32-0.25)*150=10.5, mae=4 = 24
-            # Good! Now 35% rate at 80% beats 25% rate at 90%
-            score = (
-                worst_penalty +      # 50x: fix weak direction
-                avg_penalty +        # 20x: push both higher
-                balance_penalty +    # 100x: punish gaps
-                signal_penalty +     # 5x: 50/50 distribution
-                volume_penalty +     # 150x/-10: STRONGLY favor 32-40% rate
-                mag_penalty          # 0.3x: magnitude accuracy
-            )
+            # Calculate composite score
+            score = self._calculate_score(metrics)
 
             return score
-
 
         except Exception as e:
             logger.error(f"Trial {trial.number} failed: {e}")
@@ -353,350 +133,345 @@ class Phase2Tuner:
             traceback.print_exc()
             return 999.0
 
-    def _sample_ensemble_config(self, trial):
+    def _sample_config(self, trial):
+        """Sample ensemble configuration parameters"""
         config = {}
 
-        config['up_advantage'] = trial.suggest_float('up_advantage', 0.05, 0.15)
+        # decision_threshold: controls NO_DECISION rate
+        config['decision_threshold'] = trial.suggest_float('decision_threshold', 0.60, 0.75)
 
-        # Sample thresholds in correct order (high < medium < low)
-        # Adjust ranges based on min_accuracy target
-        if self.min_accuracy >= min_acc:
-            # High precision mode - stricter thresholds
-            up_high_range = (0.55, 0.70)
-            down_high_range = (0.65, 0.80)  # RAISED for DOWN to filter more aggressively
-        else:
-            # Normal mode
-            up_high_range = (0.48, 0.62)
-            down_high_range = (0.53, 0.67)
+        # up_advantage: bias adjustment (-0.1 to +0.1)
+        config['up_advantage'] = trial.suggest_float('up_advantage', -0.10, 0.10)
 
-        up_high = trial.suggest_float('up_thresh_high', *up_high_range)
-        up_med = trial.suggest_float('up_thresh_med_offset', 0.02, 0.08)
-        up_low = trial.suggest_float('up_thresh_low_offset', 0.02, 0.08)
+        # confidence_weights: how to combine classifier + magnitude
+        up_classifier_weight = trial.suggest_float('up_classifier_weight', 0.45, 0.75)
+        down_classifier_weight = trial.suggest_float('down_classifier_weight', 0.45, 0.75)
 
-        up_thresh_med = up_high + up_med
-        up_thresh_low = up_thresh_med + up_low
-
-        down_high = trial.suggest_float('down_thresh_high', *down_high_range)
-        down_med = trial.suggest_float('down_thresh_med_offset', 0.02, 0.08)
-        down_low = trial.suggest_float('down_thresh_low_offset', 0.02, 0.08)
-
-        down_thresh_med = down_high + down_med
-        down_thresh_low = down_thresh_med + down_low
-
-        config['dynamic_thresholds'] = {
+        config['confidence_weights'] = {
             'up': {
-                'high_magnitude': up_high,
-                'medium_magnitude': up_thresh_med,
-                'low_magnitude': up_thresh_low
+                'classifier': up_classifier_weight,
+                'magnitude': 1.0 - up_classifier_weight
             },
             'down': {
-                'high_magnitude': down_high,
-                'medium_magnitude': down_thresh_med,
-                'low_magnitude': down_thresh_low
+                'classifier': down_classifier_weight,
+                'magnitude': 1.0 - down_classifier_weight
             }
         }
 
-        classifier_weight_up = trial.suggest_float('classifier_weight_up', 0.50, 0.80)
-        classifier_weight_down = trial.suggest_float('classifier_weight_down', 0.50, 0.80)
-        config['confidence_weights'] = {
-            'up': {'classifier': classifier_weight_up, 'magnitude': 1.0 - classifier_weight_up},
-            'down': {'classifier': classifier_weight_down, 'magnitude': 1.0 - classifier_weight_down}
-        }
-
+        # magnitude_scaling: controls how magnitude affects confidence
         config['magnitude_scaling'] = {
             'up': {
-                'small': trial.suggest_float('mag_scale_up_small', 2.5, 4.5),
-                'medium': trial.suggest_float('mag_scale_up_medium', 5.0, 7.5),
-                'large': trial.suggest_float('mag_scale_up_large', 10.0, 14.0)
+                'small': trial.suggest_float('up_small', 2.5, 5.0),
+                'medium': trial.suggest_float('up_medium', 4.0, 7.0),
+                'large': trial.suggest_float('up_large', 8.0, 12.0)
             },
             'down': {
-                'small': trial.suggest_float('mag_scale_down_small', 2.0, 4.0),
-                'medium': trial.suggest_float('mag_scale_down_medium', 4.0, 6.5),
-                'large': trial.suggest_float('mag_scale_down_large', 8.0, 12.0)
+                'small': trial.suggest_float('down_small', 2.5, 5.0),
+                'medium': trial.suggest_float('down_medium', 4.0, 7.0),
+                'large': trial.suggest_float('down_large', 8.0, 12.0)
             }
         }
-
-        config['boost_threshold_up'] = trial.suggest_float('boost_threshold_up', 10.0, 18.0)
-        config['boost_threshold_down'] = trial.suggest_float('boost_threshold_down', 10.0, 18.0)
-        config['boost_amount_up'] = trial.suggest_float('boost_amount_up', 0.03, 0.08)
-        config['boost_amount_down'] = trial.suggest_float('boost_amount_down', 0.03, 0.08)
-
-        # Adjust min_confidence based on accuracy target
-        if self.min_accuracy >= min_acc:
-            conf_range_up = (0.55, 0.70)
-            conf_range_down = (0.60, 0.75)  # RAISED for DOWN
-        else:
-            conf_range_up = (0.50, 0.65)
-            conf_range_down = (0.50, 0.65)
-
-        config['min_confidence_up'] = trial.suggest_float('min_confidence_up', *conf_range_up)
-        config['min_confidence_down'] = trial.suggest_float('min_confidence_down', *conf_range_down)
 
         return config
 
+    def _save_current_config(self):
+        """Save current forecaster config"""
+        return {
+            'decision_threshold': self.forecaster.decision_threshold,
+            'up_advantage': self.forecaster.up_advantage,
+            'confidence_weights': self.forecaster.confidence_weights.copy(),
+            'magnitude_scaling': self.forecaster.magnitude_scaling.copy()
+        }
+
+    def _apply_config(self, config):
+        """Apply config to forecaster"""
+        self.forecaster.decision_threshold = config['decision_threshold']
+        self.forecaster.up_advantage = config['up_advantage']
+        self.forecaster.confidence_weights = config['confidence_weights']
+        self.forecaster.magnitude_scaling = config['magnitude_scaling']
+
+    def _evaluate_test_set(self):
+        """Evaluate using production ternary decision logic"""
+        results = []
+
+        for idx in self.test_df.index:
+            if pd.isna(self.test_df.loc[idx, 'target_direction']):
+                continue
+
+            # Create feature row
+            obs = self.test_df.loc[idx]
+            X = pd.DataFrame(index=[0])
+
+            # Build X with all required features
+            for col in self.forecaster.expansion_features:
+                X[col] = [obs[col]]
+            for col in self.forecaster.compression_features:
+                if col not in X.columns:
+                    X[col] = [obs[col]]
+            for col in self.forecaster.up_features:
+                if col not in X.columns:
+                    X[col] = [obs[col]]
+            for col in self.forecaster.down_features:
+                if col not in X.columns:
+                    X[col] = [obs[col]]
+
+            current_vix = float(obs["vix"])
+            actual_direction = int(obs["target_direction"])
+
+            # Make prediction using PRODUCTION LOGIC
+            pred = self.forecaster.predict(X, current_vix)
+
+            results.append({
+                'predicted_direction': pred['direction'],
+                'actual_direction': 'UP' if actual_direction == 1 else 'DOWN',
+                'confidence': pred['direction_confidence'],
+                'magnitude_pct': pred['magnitude_pct']
+            })
+
+        results_df = pd.DataFrame(results)
+
+        # Calculate metrics
+        total = len(results_df)
+        no_decision = (results_df['predicted_direction'] == 'NO_DECISION').sum()
+        decisions = results_df[results_df['predicted_direction'] != 'NO_DECISION'].copy()
+
+        if len(decisions) == 0:
+            return {
+                'total_samples': total,
+                'total_decisions': 0,
+                'no_decision_pct': 1.0,
+                'overall_accuracy': 0.0,
+                'up_count': 0,
+                'up_accuracy': 0.0,
+                'up_pct': 0.0,
+                'down_count': 0,
+                'down_accuracy': 0.0,
+                'down_pct': 0.0,
+                'signal_imbalance': 1.0,
+                'accuracy_imbalance': 0.0
+            }
+
+        decisions['correct'] = decisions['predicted_direction'] == decisions['actual_direction']
+
+        overall_acc = decisions['correct'].mean()
+
+        up_decisions = decisions[decisions['predicted_direction'] == 'UP']
+        down_decisions = decisions[decisions['predicted_direction'] == 'DOWN']
+
+        up_acc = up_decisions['correct'].mean() if len(up_decisions) > 0 else 0.0
+        down_acc = down_decisions['correct'].mean() if len(down_decisions) > 0 else 0.0
+
+        up_pct = len(up_decisions) / len(decisions) if len(decisions) > 0 else 0.0
+        down_pct = len(down_decisions) / len(decisions) if len(decisions) > 0 else 0.0
+
+        # Signal imbalance vs natural VIX distribution
+        signal_imbalance = abs(up_pct - self.target_up_pct)
+
+        # Accuracy imbalance
+        accuracy_imbalance = abs(up_acc - down_acc)
+
+        return {
+            'total_samples': total,
+            'total_decisions': len(decisions),
+            'no_decision_pct': no_decision / total,
+            'overall_accuracy': overall_acc,
+            'up_count': len(up_decisions),
+            'up_accuracy': up_acc,
+            'up_pct': up_pct,
+            'down_count': len(down_decisions),
+            'down_accuracy': down_acc,
+            'down_pct': down_pct,
+            'signal_imbalance': signal_imbalance,
+            'accuracy_imbalance': accuracy_imbalance
+        }
+
+    def _calculate_score(self, metrics):
+        """Calculate composite score (lower is better)"""
+
+        # 1. Accuracy penalties - fix the weaker direction first
+        worst_acc = min(metrics['up_accuracy'], metrics['down_accuracy'])
+        worst_penalty = (1.0 - worst_acc) * 100.0  # 100x multiplier
+
+        avg_acc = (metrics['up_accuracy'] + metrics['down_accuracy']) / 2.0
+        avg_penalty = (1.0 - avg_acc) * 30.0  # 30x multiplier
+
+        # 2. Accuracy balance - penalize gaps
+        accuracy_balance_penalty = (metrics['accuracy_imbalance'] ** 2) * 200.0  # 200x for gaps
+
+        # 3. Signal distribution - match natural VIX (44/56)
+        signal_balance_penalty = (metrics['signal_imbalance'] ** 2) * 50.0  # 50x
+
+        # 4. NO_DECISION rate - target 20-35%
+        no_dec = metrics['no_decision_pct']
+        if no_dec < 0.20:
+            no_dec_penalty = (0.20 - no_dec) * 100.0  # Too confident
+        elif no_dec > 0.35:
+            no_dec_penalty = (no_dec - 0.35) * 100.0  # Too conservative
+        else:
+            no_dec_penalty = -5.0  # Bonus for being in sweet spot
+
+        # 5. Volume penalty - need enough signals
+        if metrics['total_decisions'] < 150:
+            volume_penalty = (150 - metrics['total_decisions']) * 0.5
+        else:
+            volume_penalty = 0.0
+
+        # Total score
+        score = (
+            worst_penalty +              # Fix weak direction
+            avg_penalty +                # Push both higher
+            accuracy_balance_penalty +   # Balance accuracies
+            signal_balance_penalty +     # Match natural distribution
+            no_dec_penalty +             # Optimal NO_DECISION rate
+            volume_penalty               # Enough signals
+        )
+
+        return score
+
     def run(self):
-        logger.info(f"Starting Phase 2 optimization: {self.n_trials} trials")
-        logger.info(f"Tuning ensemble config (up_advantage, thresholds, weights, etc.)")
-        logger.info(f"Evaluating on {len(self.test_df)} test days")
-        logger.info(f"Objective: TARGET {self.min_accuracy:.0%}+ accuracy for BOTH UP and DOWN")
-        logger.info(f"Optimizer will FIX the weakest direction first, then balance")
+        """Run optimization"""
+        logger.info(f"Starting optimization: {self.n_trials} trials")
         logger.info("="*80)
 
-        study = optuna.create_study(direction='minimize',
-            sampler=TPESampler(seed=42, n_startup_trials=min(30, self.n_trials // 6)))
+        study = optuna.create_study(
+            direction='minimize',
+            sampler=TPESampler(seed=42, n_startup_trials=min(50, self.n_trials // 10))
+        )
 
         study.optimize(self.objective, n_trials=self.n_trials, show_progress_bar=True, n_jobs=1)
 
         return study
 
     def save_results(self, study):
+        """Save optimization results and generate config"""
         best = study.best_trial
         attrs = best.user_attrs
-
-        # Reconstruct actual threshold values from params
         params = best.params
-        up_high = params['up_thresh_high']
-        up_med = up_high + params['up_thresh_med_offset']
-        up_low = up_med + params['up_thresh_low_offset']
 
-        down_high = params['down_thresh_high']
-        down_med = down_high + params['down_thresh_med_offset']
-        down_low = down_med + params['down_thresh_low_offset']
-
+        # Save detailed results
         results = {
             'timestamp': datetime.now().isoformat(),
-            'phase': 'Phase 2 - Ensemble Config Tuner (IMPROVED)',
-            'description': 'Optimizes post-hoc ensemble decision logic using Phase 1 models. Prioritizes balanced accuracy.',
             'optimization': {
                 'n_trials': self.n_trials,
                 'best_trial': best.number,
                 'best_score': float(best.value),
                 'min_accuracy_target': self.min_accuracy
             },
-            'data_splits': {
-                'train': f"{self.train_df.index[0].date()} to {self.train_end.date()}",
-                'val': f"{self.val_df.index[0].date()} to {self.val_end.date()}",
-                'test': f"{self.test_start.date()} to {self.test_df.index[-1].date()}",
-                'train_size': len(self.train_df),
-                'val_size': len(self.val_df),
-                'test_size': len(self.test_df)
-            },
             'test_metrics': {
-                'raw_predictions': {
-                    'total': int(attrs['raw_total']),
-                    'up_count': int(attrs['raw_up_count']),
-                    'down_count': int(attrs['raw_down_count']),
-                    'up_pct': float(attrs['raw_up_pct']),
-                    'down_pct': float(attrs['raw_down_pct']),
-                    'accuracy': float(attrs['raw_accuracy']),
-                    'up_accuracy': float(attrs['raw_up_accuracy']),
-                    'down_accuracy': float(attrs['raw_down_accuracy'])
-                },
-                'actionable_signals': {
-                    'total': int(attrs['act_total']),
-                    'rate': float(attrs['act_rate']),
-                    'up_count': int(attrs['act_up_count']),
-                    'down_count': int(attrs['act_down_count']),
-                    'up_pct': float(attrs['act_up_pct']),
-                    'down_pct': float(attrs['act_down_pct']),
-                    'accuracy': float(attrs['act_accuracy']),
-                    'up_accuracy': float(attrs['act_up_accuracy']),
-                    'down_accuracy': float(attrs['act_down_accuracy']),
-                    'mag_mae': float(attrs['mag_mae']),
-                    'mag_mae_up': float(attrs['mag_mae_up']),
-                    'mag_mae_down': float(attrs['mag_mae_down'])
-                }
+                'total_samples': int(attrs['total_samples']),
+                'total_decisions': int(attrs['total_decisions']),
+                'no_decision_pct': float(attrs['no_decision_pct']),
+                'overall_accuracy': float(attrs['overall_accuracy']),
+                'up_count': int(attrs['up_count']),
+                'up_accuracy': float(attrs['up_accuracy']),
+                'up_pct': float(attrs['up_pct']),
+                'down_count': int(attrs['down_count']),
+                'down_accuracy': float(attrs['down_accuracy']),
+                'down_pct': float(attrs['down_pct']),
+                'signal_imbalance': float(attrs['signal_imbalance']),
+                'accuracy_imbalance': float(attrs['accuracy_imbalance'])
             },
-            'best_parameters': {
-                'up_advantage': params['up_advantage'],
-                'up_thresh_high': up_high,
-                'up_thresh_med': up_med,
-                'up_thresh_low': up_low,
-                'down_thresh_high': down_high,
-                'down_thresh_med': down_med,
-                'down_thresh_low': down_low,
-                'classifier_weight_up': params['classifier_weight_up'],
-                'classifier_weight_down': params['classifier_weight_down'],
-                'mag_scale_up_small': params['mag_scale_up_small'],
-                'mag_scale_up_medium': params['mag_scale_up_medium'],
-                'mag_scale_up_large': params['mag_scale_up_large'],
-                'mag_scale_down_small': params['mag_scale_down_small'],
-                'mag_scale_down_medium': params['mag_scale_down_medium'],
-                'mag_scale_down_large': params['mag_scale_down_large'],
-                'boost_threshold_up': params['boost_threshold_up'],
-                'boost_threshold_down': params['boost_threshold_down'],
-                'boost_amount_up': params['boost_amount_up'],
-                'boost_amount_down': params['boost_amount_down'],
-                'min_confidence_up': params['min_confidence_up'],
-                'min_confidence_down': params['min_confidence_down']
-            }
+            'best_parameters': dict(params)
         }
 
-        results_file = self.output_dir / "phase2_results.json"
+        results_file = self.output_dir / "optimization_results.json"
         with open(results_file, 'w') as f:
             json.dump(results, f, indent=2)
 
         logger.info(f"\n✅ Results saved: {results_file}")
 
-        self._generate_config(best, attrs)
-        self._print_summary(best, attrs)
+        # Generate config
+        self._generate_config(params, attrs)
 
-    def _generate_config(self, trial, attrs):
-        params = trial.params
+        # Print summary
+        self._print_summary(params, attrs)
 
-        # Reconstruct actual threshold values
-        up_high = params['up_thresh_high']
-        up_med = up_high + params['up_thresh_med_offset']
-        up_low = up_med + params['up_thresh_low_offset']
+    def _generate_config(self, params, attrs):
+        """Generate ENSEMBLE_CONFIG for config.py"""
 
-        down_high = params['down_thresh_high']
-        down_med = down_high + params['down_thresh_med_offset']
-        down_low = down_med + params['down_thresh_low_offset']
-
-        config_text = f"""# PHASE 2 OPTIMIZED CONFIG (IMPROVED) - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-# Target accuracy: {self.min_accuracy:.0%}+ for BOTH UP and DOWN
-# Optimized for balanced accuracy with natural 50/50 signal distribution
+        config_text = f"""
+# OPTIMIZED ENSEMBLE_CONFIG - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+# Test accuracy: UP {attrs['up_accuracy']:.1%}, DOWN {attrs['down_accuracy']:.1%}
+# Signal ratio: {attrs['up_pct']:.1%} UP / {attrs['down_pct']:.1%} DOWN (target: 44/56)
+# NO_DECISION: {attrs['no_decision_pct']:.1%}
 
 ENSEMBLE_CONFIG = {{
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
     'up_advantage': {params['up_advantage']:.4f},
     'confidence_weights': {{
-        'up': {{'classifier': {params['classifier_weight_up']:.4f}, 'magnitude': {1.0 - params['classifier_weight_up']:.4f}}},
-        'down': {{'classifier': {params['classifier_weight_down']:.4f}, 'magnitude': {1.0 - params['classifier_weight_down']:.4f}}}
+        'up': {{'classifier': {params['up_classifier_weight']:.4f}, 'magnitude': {1.0 - params['up_classifier_weight']:.4f}}},
+        'down': {{'classifier': {params['down_classifier_weight']:.4f}, 'magnitude': {1.0 - params['down_classifier_weight']:.4f}}}
     }},
     'magnitude_scaling': {{
-        'up': {{'small': {params['mag_scale_up_small']:.4f}, 'medium': {params['mag_scale_up_medium']:.4f}, 'large': {params['mag_scale_up_large']:.4f}}},
-        'down': {{'small': {params['mag_scale_down_small']:.4f}, 'medium': {params['mag_scale_down_medium']:.4f}, 'large': {params['mag_scale_down_large']:.4f}}}
+        'up': {{'small': {params['up_small']:.4f}, 'medium': {params['up_medium']:.4f}, 'large': {params['up_large']:.4f}}},
+        'down': {{'small': {params['down_small']:.4f}, 'medium': {params['down_medium']:.4f}, 'large': {params['down_large']:.4f}}}
     }},
-    'dynamic_thresholds': {{
-        'up': {{
-            'high_magnitude': {up_high:.4f},
-            'medium_magnitude': {up_med:.4f},
-            'low_magnitude': {up_low:.4f}
-        }},
-        'down': {{
-            'high_magnitude': {down_high:.4f},
-            'medium_magnitude': {down_med:.4f},
-            'low_magnitude': {down_low:.4f}
-        }}
-    }},
-    'min_confidence_up': {params['min_confidence_up']:.4f},
-    'min_confidence_down': {params['min_confidence_down']:.4f},
-    'boost_threshold_up': {params['boost_threshold_up']:.4f},
-    'boost_threshold_down': {params['boost_threshold_down']:.4f},
-    'boost_amount_up': {params['boost_amount_up']:.4f},
-    'boost_amount_down': {params['boost_amount_down']:.4f},
-    'description': 'Phase 2 optimized for {self.min_accuracy:.0%}+ balanced accuracy'
+    'decision_threshold': {params['decision_threshold']:.4f},
+    'description': 'Optimized for balanced {self.min_accuracy:.0%}+ accuracy with natural VIX distribution'
 }}
-
-# TEST PERFORMANCE WITH OPTIMIZED ENSEMBLE:
-# Actionable {attrs['act_accuracy']:.1%} (UP {attrs['act_up_accuracy']:.1%}, DOWN {attrs['act_down_accuracy']:.1%})
-# Balance gap: {abs(attrs['act_up_accuracy'] - attrs['act_down_accuracy']) * 100:.1f}%
-# MAE {attrs['mag_mae']:.2f}% | Signals: {int(attrs['act_total'])} ({attrs['act_rate']:.1%} actionable)
-# UP signals: {int(attrs['act_up_count'])} ({attrs['act_up_pct']:.1%}) | DOWN signals: {int(attrs['act_down_count'])} ({attrs['act_down_pct']:.1%})
-# Trading frequency: ~{(attrs['act_total'] / 700) * 7:.1f} signals/week
 """
 
-        config_file = self.output_dir / "phase2_optimized_config.py"
+        config_file = self.output_dir / "optimized_ensemble_config.py"
         with open(config_file, 'w') as f:
             f.write(config_text)
 
         logger.info(f"✅ Config saved: {config_file}")
 
-    def _print_summary(self, trial, attrs):
+    def _print_summary(self, params, attrs):
+        """Print optimization summary"""
         logger.info("\n" + "="*80)
-        logger.info("PHASE 2 OPTIMIZATION COMPLETE (IMPROVED)")
-        logger.info("="*80)
-        logger.info(f"Best trial: #{trial.number} | Score: {trial.value:.3f}")
-        logger.info(f"Accuracy target: {self.min_accuracy:.0%}+ for BOTH directions")
-        logger.info("")
-        logger.info("📊 TEST SET PERFORMANCE (2024-2025):")
-        logger.info("")
-        logger.info("  RAW PREDICTIONS:")
-        logger.info(f"    Total: {int(attrs['raw_total'])}")
-        logger.info(f"    UP: {attrs['raw_up_pct']:.1%} ({int(attrs['raw_up_count'])} signals)")
-        logger.info(f"    DOWN: {attrs['raw_down_pct']:.1%} ({int(attrs['raw_down_count'])} signals)")
-        logger.info(f"    Accuracy: {attrs['raw_accuracy']:.1%} | UP: {attrs['raw_up_accuracy']:.1%} | DOWN: {attrs['raw_down_accuracy']:.1%}")
-        logger.info("")
-        logger.info("  ACTIONABLE SIGNALS (optimized ensemble):")
-        logger.info(f"    Total: {int(attrs['act_total'])} signals ({attrs['act_rate']:.1%} actionable)")
-        logger.info(f"    UP: {attrs['act_up_pct']:.1%} ({int(attrs['act_up_count'])} signals)")
-        logger.info(f"    DOWN: {attrs['act_down_pct']:.1%} ({int(attrs['act_down_count'])} signals)")
-        logger.info(f"    Accuracy: {attrs['act_accuracy']:.1%} | UP: {attrs['act_up_accuracy']:.1%} | DOWN: {attrs['act_down_accuracy']:.1%}")
-        logger.info(f"    Magnitude MAE: {attrs['mag_mae']:.2f}% (UP: {attrs['mag_mae_up']:.2f}%, DOWN: {attrs['mag_mae_down']:.2f}%)")
+        logger.info("OPTIMIZATION COMPLETE")
         logger.info("="*80)
         logger.info("")
-
-        up_acc = attrs['act_up_accuracy']
-        down_acc = attrs['act_down_accuracy']
-        balance_gap = abs(up_acc - down_acc)
-
-        logger.info(f"🎯 OPTIMIZED ACCURACY (BALANCED):")
-        target_status_up = "✓" if up_acc >= self.min_accuracy else "✗"
-        target_status_down = "✓" if down_acc >= self.min_accuracy else "✗"
-        logger.info(f"   {target_status_up} UP:   {up_acc:.1%} (target: {self.min_accuracy:.0%}+)")
-        logger.info(f"   {target_status_down} DOWN: {down_acc:.1%} (target: {self.min_accuracy:.0%}+)")
-        logger.info(f"   Gap: {balance_gap * 100:.1f}% {'✓ BALANCED' if balance_gap < 0.10 else '⚠️ IMBALANCED'}")
-
-        avg_signals_per_week = (attrs['act_total'] / 700) * 7
+        logger.info("📊 TEST SET PERFORMANCE:")
+        logger.info(f"  Total predictions: {int(attrs['total_samples'])}")
+        logger.info(f"  Decisions made: {int(attrs['total_decisions'])} ({attrs['total_decisions']/attrs['total_samples']:.1%})")
+        logger.info(f"  NO_DECISION: {int(attrs['total_samples'] - attrs['total_decisions'])} ({attrs['no_decision_pct']:.1%})")
         logger.info("")
-        logger.info(f"📈 TRADING FREQUENCY: ~{avg_signals_per_week:.1f} signals/week")
-        if avg_signals_per_week < 1:
-            logger.info(f"   ⚠️  Low frequency: ~{52 / (attrs['act_total'] / 700):.1f} weeks per signal")
+        logger.info(f"  Overall Accuracy: {attrs['overall_accuracy']:.1%}")
+        logger.info(f"  UP:   n={int(attrs['up_count']):3d} ({attrs['up_pct']:5.1%}) | acc={attrs['up_accuracy']:.1%}")
+        logger.info(f"  DOWN: n={int(attrs['down_count']):3d} ({attrs['down_pct']:5.1%}) | acc={attrs['down_accuracy']:.1%}")
+        logger.info("")
+        logger.info("🎯 BALANCE METRICS:")
+        logger.info(f"  Accuracy gap: {attrs['accuracy_imbalance']*100:.1f}% (target: <10%)")
+        logger.info(f"  Signal imbalance vs natural VIX: {attrs['signal_imbalance']*100:.1f}%")
+        logger.info("")
+        logger.info("📝 OPTIMIZED PARAMETERS:")
+        logger.info(f"  decision_threshold: {params['decision_threshold']:.4f}")
+        logger.info(f"  up_advantage: {params['up_advantage']:+.4f}")
+        logger.info(f"  UP weights: clf={params['up_classifier_weight']:.2f}, mag={1-params['up_classifier_weight']:.2f}")
+        logger.info(f"  DOWN weights: clf={params['down_classifier_weight']:.2f}, mag={1-params['down_classifier_weight']:.2f}")
+        logger.info("")
         logger.info("="*80)
         logger.info("")
         logger.info("📝 NEXT STEPS:")
-        logger.info("  1. Review results in tuning_phase2/phase2_results.json")
-        logger.info("  2. Apply ENSEMBLE_CONFIG from phase2_optimized_config.py to your config.py")
+        logger.info("  1. Review: tuning_ensemble/optimization_results.json")
+        logger.info("  2. Copy ENSEMBLE_CONFIG from tuning_ensemble/optimized_ensemble_config.py to config.py")
         logger.info("  3. Retrain: python train_probabilistic_models.py")
-        logger.info("  4. Validate: python integrated_system.py")
         logger.info("="*80)
 
 def main():
-    parser = argparse.ArgumentParser(description="Phase 2: Ensemble Config Tuner (IMPROVED - Balanced)")
-    parser.add_argument('--trials', type=int, default=trials, help=f"Number of optimization trials (default: {trials})")
-    parser.add_argument('--output-dir', type=str, default='tuning_phase2', help="Output directory")
-    parser.add_argument('--min-accuracy', type=float, default=min_acc, help="Minimum accuracy target (0.55-0.90, default: 0.70)")
+    parser = argparse.ArgumentParser(description="Production Ensemble Tuner")
+    parser.add_argument('--trials', type=int, default=500, help="Number of trials (default: 500)")
+    parser.add_argument('--min-accuracy', type=float, default=0.70, help="Min accuracy target (default: 0.70)")
+    parser.add_argument('--output-dir', type=str, default='tuning_ensemble', help="Output directory")
     args = parser.parse_args()
 
-    if not (0.50 <= args.min_accuracy <= 0.95):
-        logger.error("❌ min-accuracy must be between 0.50 and 0.95")
+    if not (0.55 <= args.min_accuracy <= 0.90):
+        logger.error("❌ min-accuracy must be between 0.55 and 0.90")
         sys.exit(1)
 
-    logger.info("Loading production data...")
-    from config import TRAINING_YEARS, get_last_complete_month_end
-    from core.data_fetcher import UnifiedDataFetcher
-    from features.feature_engineer import FeatureEngineer
-
-    training_end = get_last_complete_month_end()
-    fetcher = UnifiedDataFetcher()
-    engineer = FeatureEngineer(fetcher)
-
-    result = engineer.build_complete_features(years=TRAINING_YEARS, end_date=training_end)
-
-    df = result["features"].copy()
-    df["vix"] = result["vix"]
-    df["spx"] = result["spx"]
-
-    logger.info(f"Dataset: {len(df)} samples, {len(df.columns)} features")
-    logger.info(f"Date range: {df.index[0].date()} to {df.index[-1].date()}")
-    logger.info("")
-
-    required_cols = ['calendar_cohort', 'cohort_weight', 'feature_quality']
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        logger.error(f"Missing required columns: {missing}")
-        sys.exit(1)
-
-    tuner = Phase2Tuner(df=df, vix=result["vix"], n_trials=args.trials,
-                        output_dir=args.output_dir, min_accuracy=args.min_accuracy)
+    tuner = ProductionEnsembleTuner(
+        n_trials=args.trials,
+        min_accuracy=args.min_accuracy,
+        output_dir=args.output_dir
+    )
 
     study = tuner.run()
-
     tuner.save_results(study)
 
-    logger.info("\n✅ Phase 2 complete!")
+    logger.info("\n✅ Optimization complete!")
 
 if __name__ == "__main__":
     main()

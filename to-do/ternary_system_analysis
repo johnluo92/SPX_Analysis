@@ -1,0 +1,226 @@
+# CRITICAL ISSUE ANALYSIS: High-Recall Classifier Problem
+
+## Executive Summary
+
+**The tuner IS working correctly** - it produces balanced classifiers (58.1% UP, 56.1% DOWN at 0.5 threshold). However, **`xgboost_trainer_v3.py` sabotages this** by finding "F1-optimal thresholds" after training, which push recall to 99.6% and 97.6%, forcing the ensemble to do all the work.
+
+---
+
+## The Three Different Results Explained
+
+### 1. TUNER Results (Test Set)
+```
+Base Classifiers: UP 58.1% val acc, DOWN 56.1% val acc ← BALANCED!
+Ternary Output: 73.2% overall (UP 75.0%, DOWN 71.9%)
+```
+- **Why balanced?** Tuner penalizes high-recall classifiers
+- **Uses:** Models just trained, NO saved thresholds yet
+
+### 2. TRAINING Results (Same Test Set)
+```
+Classifiers: UP Rec=99.6%, DOWN Rec=97.6% ← HIGH RECALL!
+Ternary Output: 69.2% overall (UP 71.9%, DOWN 67.1%)
+```
+- **Why high recall?** Trainer finds F1-optimal thresholds (0.338, 0.395)
+- **Uses:** Same hyperparams but WITH F1-optimal thresholds
+
+### 3. PRODUCTION Results (Actuals)
+```
+Overall: 76.1% (UP 82.2%, DOWN 71.3%)
+Imbalance: 10.8%
+```
+- **Why better?** Real data + calibration
+- **Uses:** Models with F1-optimal thresholds (0.338, 0.395)
+
+---
+
+## Root Cause: The Threshold Sabotage
+
+**Location:** `xgboost_trainer_v3.py`, line ~335-350
+
+```python
+def _train_classifier_model(self, ...):
+    # 1. Train model with tuned hyperparameters
+    model.fit(X_train, y_train, ...)
+    
+    # 2. Find F1-optimal threshold on validation set
+    fpr, tpr, thresholds = roc_curve(y_val, y_val_proba)
+    for thresh in thresholds:
+        y_pred_thresh = (y_val_proba >= thresh).astype(int)
+        f1 = f1_score(y_val, y_pred_thresh)
+        f1_scores.append(f1)
+    
+    best_threshold = thresholds[np.argmax(f1_scores)]
+    # ^^^ THIS FINDS 0.338 (UP) and 0.395 (DOWN)
+    # ^^^ WHICH GIVES 99.6% and 97.6% RECALL
+    
+    # 3. Save this threshold
+    self.up_optimal_threshold = best_threshold
+```
+
+**The Problem:**
+- F1 score is maximized when recall is high (say "yes" to everything)
+- Threshold of 0.338 means "call it UP if probability > 33.8%"
+- This bypasses ALL the tuner's work to create balanced classifiers
+
+**Why Tuner Doesn't See This:**
+- Tuner trains models and immediately evaluates them
+- No threshold optimization happens during tuning
+- Models effectively use 0.5 threshold (or ensemble filters them)
+- When production trainer retrains with same hyperparams, it THEN adds F1-optimal thresholds
+
+---
+
+## Why High Recall Persists Despite Tuner Penalties
+
+The tuner has these penalties:
+```python
+# Penalize if UP val acc > 62% (high recall indicator)
+if up_raw_acc > 0.62:
+    raw_classifier_penalty += (up_raw_acc - 0.62) * 50.0
+```
+
+**But this checks validation accuracy at 0.5 threshold:**
+- UP model: 58.1% val acc at 0.5 ✓ (passes penalty check)
+- But then trainer finds threshold 0.338 → 99.6% recall ✗
+
+**The disconnect:**
+1. Tuner optimizes hyperparams for balanced performance at 0.5
+2. Trainer takes those hyperparams and adds F1-optimal thresholds
+3. F1-optimal thresholds destroy the balance
+
+---
+
+## Why This Feels Like "System Split in 2"
+
+You're exactly right - the system IS split:
+
+**Part 1: Model Hyperparameters** (tuned for balance)
+- Regularization (reg_alpha, reg_lambda, gamma)
+- Tree structure (max_depth, min_child_weight)
+- Learning (learning_rate, n_estimators)
+- These produce balanced models at 0.5 threshold
+
+**Part 2: F1-Optimal Thresholds** (optimized for recall)
+- Found AFTER hyperparameter training
+- Maximize F1 score → high recall
+- Override the balanced behavior from Part 1
+
+**Result:** Ensemble does heroic work to fix what F1-optimization broke
+
+---
+
+## Proposed Solution
+
+### Option A: Remove F1-Threshold Optimization (RECOMMENDED)
+
+**Change in `xgboost_trainer_v3.py`:**
+
+```python
+def _train_classifier_model(self, ...):
+    # Train model
+    model.fit(...)
+    
+    # DON'T find F1-optimal threshold
+    # Just use 0.5 or a config-based threshold
+    
+    # Store 0.5 as default
+    best_threshold = 0.5
+    
+    # Evaluate at 0.5
+    y_test_pred_optimal = (y_test_proba >= 0.5).astype(int)
+    # ... calculate metrics ...
+```
+
+**Why this works:**
+- Classifiers output probabilities
+- Ensemble `decision_threshold` (0.667) already filters low-confidence
+- No need for classifier-level thresholds at all
+- Tuner's balanced hyperparams actually get used
+
+### Option B: Use Ensemble-Aware Thresholds
+
+**Change threshold optimization to optimize ternary performance:**
+
+```python
+def _find_ensemble_aware_threshold(self, y_val, y_val_proba, direction):
+    """Find threshold that maximizes ternary accuracy, not F1"""
+    best_threshold = 0.5
+    best_ternary_acc = 0.0
+    
+    for thresh in np.linspace(0.3, 0.7, 100):
+        # Simulate ternary evaluation with this threshold
+        # (similar to tuner's approach)
+        ternary_acc = self._evaluate_ternary_with_threshold(
+            y_val, y_val_proba, thresh, direction
+        )
+        
+        if ternary_acc > best_ternary_acc:
+            best_ternary_acc = ternary_acc
+            best_threshold = thresh
+    
+    return best_threshold
+```
+
+**Why this works:**
+- Optimizes for what we actually care about (ternary accuracy)
+- Accounts for ensemble filtering
+- Won't push recall to 100% if that hurts ternary performance
+
+### Option C: Fixed Thresholds from Config
+
+```python
+# In config.py
+CLASSIFIER_THRESHOLDS = {
+    'up': 0.55,    # Slightly favor precision
+    'down': 0.50,  # Balanced
+}
+
+# In trainer
+def _train_classifier_model(self, ...):
+    # Use config threshold
+    best_threshold = CLASSIFIER_THRESHOLDS['up']  # or 'down'
+```
+
+---
+
+## Next Steps for Implementation
+
+### Immediate Action
+1. **Modify `xgboost_trainer_v3.py`** to use 0.5 threshold (Option A)
+2. **Retrain** with existing config from tuner
+3. **Verify** that training shows balanced classifiers (not 99% recall)
+4. **Check** that ternary performance matches tuner expectations
+
+### Validation Checklist
+After fix, training should show:
+- [ ] UP classifier: 55-65% test accuracy (not 99% recall)
+- [ ] DOWN classifier: 55-65% test accuracy (not 97% recall)
+- [ ] Ternary evaluation: ~73% (matching tuner)
+- [ ] Production actuals: Maintain or improve 76% accuracy
+
+### Tuner Improvements (If Needed)
+If Option A works but performance degrades:
+1. Add penalty for train/val probability distribution mismatch
+2. Tune ensemble `decision_threshold` more aggressively
+3. Add separate "precision_weight" vs "recall_weight" hyperparams
+
+---
+
+## Key Insights
+
+1. **Tuner is NOT broken** - it produces balanced classifiers (58.1%, 56.1%)
+2. **Trainer IS the problem** - F1-threshold optimization ruins balance
+3. **Ensemble does too much work** - compensating for 99% recall classifiers
+4. **Simple fix exists** - use 0.5 threshold, let ensemble handle filtering
+
+The system's current 76% accuracy suggests the approach is fundamentally sound. Fixing the threshold issue should maintain accuracy while making the system more robust and interpretable.
+
+---
+
+## Questions for Next Claude
+
+1. Should classifier thresholds be completely removed (just output probabilities)?
+2. Should ensemble `decision_threshold` be raised if classifier thresholds become 0.5?
+3. Is there value in optimizing thresholds for ternary accuracy rather than F1?
+4. Should the tuner also optimize classifier thresholds as hyperparameters?
