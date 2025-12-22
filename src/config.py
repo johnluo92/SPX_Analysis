@@ -51,14 +51,7 @@ REGIME_NAMES={0:"Low Vol",1:"Normal",2:"Elevated",3:"Crisis"}
 
 HYPERPARAMETER_TUNING_CONFIG={"enabled":False,"method":"optuna","n_trials":500,"cv_folds":5,"timeout_hours":24,"magnitude_param_space":{"max_depth":(2,8),"learning_rate":(0.005,0.1),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"colsample_bylevel":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0)},"direction_param_space":{"max_depth":(3,10),"learning_rate":(0.01,0.15),"n_estimators":(100,1000),"subsample":(0.6,1.0),"colsample_bytree":(0.6,1.0),"min_child_weight":(1,15),"reg_alpha":(0.0,5.0),"reg_lambda":(0.0,10.0),"gamma":(0.0,2.0),"scale_pos_weight":(0.8,2.0)},"description":"Hyperparameter optimization with Optuna - run after ensemble implementation"}
 
-# CLASSIFIER THRESHOLDS - Fixed balanced thresholds (no F1-optimization)
-CLASSIFIER_THRESHOLDS = {
-    'up': 0.5,
-    'down': 0.5,
-    'description': 'Balanced 0.5 thresholds - classifiers output probabilities, ensemble handles filtering'
-}
-
-QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.6010,
+QUALITY_FILTER_CONFIG = {'enabled': True, 'min_threshold': 0.5504,
     'warn_pct': 20.0, 'error_pct': 50.0, 'strategy': 'raise'}
 
 CALENDAR_COHORTS = {
@@ -82,49 +75,49 @@ FEATURE_SELECTION_CONFIG = {'expansion_top_n': 35,
     'description': 'Ternary system with balanced 40-60% UP/DOWN target'}
 
 EXPANSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 3, 'learning_rate': 0.0568,
-    'n_estimators': 525, 'subsample': 0.7429,
-    'colsample_bytree': 0.7669, 'colsample_bylevel': 0.8084,
-    'min_child_weight': 11, 'reg_alpha': 6.9131,
-    'reg_lambda': 8.4442, 'gamma': 0.2447,
+    'max_depth': 3, 'learning_rate': 0.0324,
+    'n_estimators': 333, 'subsample': 0.7978,
+    'colsample_bytree': 0.7505, 'colsample_bylevel': 0.7693,
+    'min_child_weight': 10, 'reg_alpha': 7.0565,
+    'reg_lambda': 9.2889, 'gamma': 0.7995,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 COMPRESSION_PARAMS = {'objective': 'reg:squarederror', 'eval_metric': 'rmse',
-    'max_depth': 5, 'learning_rate': 0.0518,
-    'n_estimators': 425, 'subsample': 0.8733,
-    'colsample_bytree': 0.8959, 'colsample_bylevel': 0.8160,
-    'min_child_weight': 5, 'reg_alpha': 4.1977,
-    'reg_lambda': 4.8079, 'gamma': 0.4272,
+    'max_depth': 6, 'learning_rate': 0.0485,
+    'n_estimators': 814, 'subsample': 0.8100,
+    'colsample_bytree': 0.8817, 'colsample_bylevel': 0.7893,
+    'min_child_weight': 7, 'reg_alpha': 1.1534,
+    'reg_lambda': 5.0506, 'gamma': 0.4110,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 UP_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'logloss',
-    'max_depth': 4, 'learning_rate': 0.0557,
-    'n_estimators': 209, 'subsample': 0.9302,
-    'colsample_bytree': 0.7787, 'min_child_weight': 9,
-    'reg_alpha': 3.8747, 'reg_lambda': 18.5912,
-    'gamma': 1.6774, 'scale_pos_weight': 0.7311,
+    'max_depth': 4, 'learning_rate': 0.0407,
+    'n_estimators': 222, 'subsample': 0.8815,
+    'colsample_bytree': 0.9494, 'min_child_weight': 15,
+    'reg_alpha': 5.2808, 'reg_lambda': 7.5008,
+    'gamma': 1.1478, 'scale_pos_weight': 0.7001,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 DOWN_CLASSIFIER_PARAMS = {'objective': 'binary:logistic', 'eval_metric': 'logloss',
-    'max_depth': 4, 'learning_rate': 0.0191,
-    'n_estimators': 293, 'subsample': 0.8437,
-    'colsample_bytree': 0.9412, 'min_child_weight': 9,
-    'reg_alpha': 3.8104, 'reg_lambda': 13.9756,
-    'gamma': 1.9401, 'scale_pos_weight': 0.7199,
+    'max_depth': 4, 'learning_rate': 0.0538,
+    'n_estimators': 248, 'subsample': 0.7543,
+    'colsample_bytree': 0.7146, 'min_child_weight': 13,
+    'reg_alpha': 5.7437, 'reg_lambda': 16.2084,
+    'gamma': 1.8454, 'scale_pos_weight': 0.5860,
     'early_stopping_rounds': 50, 'seed': 42, 'n_jobs': 1, 'random_state': 42}
 
 ENSEMBLE_CONFIG = {
     'enabled': True,
     'reconciliation_method': 'winner_takes_all',
-    'up_advantage': 0.0484,
+    'up_advantage': -0.0452,
     'confidence_weights': {
-        'up': {'classifier': 0.6533, 'magnitude': 0.3467},
-        'down': {'classifier': 0.7371, 'magnitude': 0.2629}
+        'up': {'classifier': 0.6011, 'magnitude': 0.3989},
+        'down': {'classifier': 0.6624, 'magnitude': 0.3376}
     },
     'magnitude_scaling': {
-        'up': {'small': 3.7312, 'medium': 7.2221, 'large': 11.5749},
-        'down': {'small': 3.5946, 'medium': 7.7682, 'large': 9.5340}
+        'up': {'small': 3.0879, 'medium': 6.0725, 'large': 9.9973},
+        'down': {'small': 3.0478, 'medium': 6.9760, 'large': 9.2031}
     },
-    'decision_threshold': 0.6778,
+    'decision_threshold': 0.6840,
     'description': 'Ternary decision system optimized on test set using production logic'
 }

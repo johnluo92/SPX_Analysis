@@ -2,29 +2,21 @@ import json,logging,pickle
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np,pandas as pd
-from sklearn.metrics import accuracy_score,mean_absolute_error,mean_squared_error,precision_score,recall_score,f1_score,roc_auc_score
+from sklearn.metrics import accuracy_score,mean_absolute_error,mean_squared_error,roc_auc_score
 from xgboost import XGBRegressor,XGBClassifier
-from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE,REGIME_BOUNDARIES,REGIME_NAMES,QUALITY_FILTER_CONFIG,ENSEMBLE_CONFIG,EXPANSION_PARAMS,COMPRESSION_PARAMS,UP_CLASSIFIER_PARAMS,DOWN_CLASSIFIER_PARAMS,TRAIN_END_DATE,VAL_END_DATE,CLASSIFIER_THRESHOLDS
+from config import TARGET_CONFIG,XGBOOST_CONFIG,TRAINING_END_DATE,REGIME_BOUNDARIES,REGIME_NAMES,QUALITY_FILTER_CONFIG,ENSEMBLE_CONFIG,EXPANSION_PARAMS,COMPRESSION_PARAMS,UP_CLASSIFIER_PARAMS,DOWN_CLASSIFIER_PARAMS,TRAIN_END_DATE,VAL_END_DATE
 
 logging.basicConfig(level=logging.INFO)
 logger=logging.getLogger(__name__)
 
 class AsymmetricVIXForecaster:
     def __init__(self, use_ensemble=True):
-        """
-        Args:
-            use_ensemble: If False, disables all Phase 2 ensemble logic
-                         (used during Phase 1 tuning)
-        """
         self.horizon=TARGET_CONFIG["horizon_days"]
         self.expansion_model=None; self.compression_model=None
         self.up_classifier=None; self.down_classifier=None
         self.expansion_features=None; self.compression_features=None
         self.up_features=None; self.down_features=None
         self.metrics={}
-
-        self.up_threshold = CLASSIFIER_THRESHOLDS['up']
-        self.down_threshold = CLASSIFIER_THRESHOLDS['down']
 
         self.use_ensemble = use_ensemble
 
@@ -81,7 +73,6 @@ class AsymmetricVIXForecaster:
         return filtered_df
 
     def _compute_ensemble_confidence(self,classifier_prob,magnitude_pct,direction):
-        """Compute ensemble confidence with directional parameters"""
         if not self.ensemble_enabled: return float(classifier_prob)
 
         weights = self.confidence_weights[direction.lower()]
@@ -95,13 +86,10 @@ class AsymmetricVIXForecaster:
         return float(ensemble_conf)
 
     def _evaluate_ternary_decisions(self, test_df, test_up_mask, test_down_mask):
-        """Evaluate using production ternary decision logic"""
-
         results = []
         for idx in test_df.index:
             obs = test_df.loc[idx]
 
-            # Create feature row
             X = pd.DataFrame(index=[0])
             for col in self.expansion_features: X[col] = [obs[col]]
             for col in self.compression_features:
@@ -114,7 +102,6 @@ class AsymmetricVIXForecaster:
             current_vix = float(obs["vix"])
             actual_direction = int(obs["target_direction"])
 
-            # Make prediction using production logic
             pred = self.predict(X, current_vix)
 
             results.append({
@@ -126,12 +113,10 @@ class AsymmetricVIXForecaster:
 
         results_df = pd.DataFrame(results)
 
-        # Calculate metrics
         total = len(results_df)
         no_decision = (results_df['predicted_direction'] == 'NO_DECISION').sum()
         made_decision = total - no_decision
 
-        # Filter to decisions only
         decisions = results_df[results_df['predicted_direction'] != 'NO_DECISION'].copy()
 
         if len(decisions) > 0:
@@ -244,7 +229,7 @@ class AsymmetricVIXForecaster:
         self.compression_model,comp_metrics=self._train_regressor_model(X_comp_train,y_comp_train,X_comp_val,y_comp_val,X_comp_test,y_comp_test,COMPRESSION_PARAMS,"Compression",train_df[train_down_mask],val_df[val_down_mask])
         self.metrics["compression"]=comp_metrics
         logger.info(f"\n{'='*60}")
-        logger.info("🔺 UP CLASSIFIER (Balanced)")
+        logger.info("🔺 UP CLASSIFIER")
         X_up_train=train_df[self.up_features]; y_up_train=train_df['target_direction']
         X_up_val=val_df[self.up_features]; y_up_val=val_df['target_direction']
         X_up_test=test_df[self.up_features]; y_up_test=test_df['target_direction']
@@ -252,7 +237,7 @@ class AsymmetricVIXForecaster:
         self.metrics["up_classifier"]=up_metrics
 
         logger.info(f"\n{'='*60}")
-        logger.info("🔻 DOWN CLASSIFIER (Balanced)")
+        logger.info("🔻 DOWN CLASSIFIER")
         X_down_train=train_df[self.down_features]; y_down_train=1-train_df['target_direction']
         X_down_val=val_df[self.down_features]; y_down_val=1-val_df['target_direction']
         X_down_test=test_df[self.down_features]; y_down_test=1-test_df['target_direction']
@@ -324,24 +309,18 @@ class AsymmetricVIXForecaster:
         y_val_proba=model.predict_proba(X_val)[:,1]
         y_test_proba=model.predict_proba(X_test)[:,1]
 
-        # Use config threshold instead of finding F1-optimal
-        threshold = self.up_threshold if name == "UP" else self.down_threshold
-
-        y_train_pred=(y_train_proba>=threshold).astype(int)
-        y_val_pred=(y_val_proba>=threshold).astype(int)
-        y_test_pred=(y_test_proba>=threshold).astype(int)
+        y_train_pred=(y_train_proba>=0.5).astype(int)
+        y_val_pred=(y_val_proba>=0.5).astype(int)
+        y_test_pred=(y_test_proba>=0.5).astype(int)
 
         train_acc=accuracy_score(y_train,y_train_pred)
         val_acc=accuracy_score(y_val,y_val_pred)
         test_acc=accuracy_score(y_test,y_test_pred)
-        test_prec=precision_score(y_test,y_test_pred,zero_division=0)
-        test_rec=recall_score(y_test,y_test_pred,zero_division=0)
-        test_f1=f1_score(y_test,y_test_pred,zero_division=0)
 
         test_auc = roc_auc_score(y_test, y_test_proba) if len(np.unique(y_test)) > 1 else 0.0
 
-        metrics={"train":{"accuracy":float(train_acc),"avg_confidence":float(np.mean(np.maximum(y_train_proba,1-y_train_proba)))},"val":{"accuracy":float(val_acc),"avg_confidence":float(np.mean(np.maximum(y_val_proba,1-y_val_proba)))},"test":{"accuracy":float(test_acc),"precision":float(test_prec),"recall":float(test_rec),"f1":float(test_f1),"auc":float(test_auc),"threshold":float(threshold),"avg_confidence":float(np.mean(np.maximum(y_test_proba,1-y_test_proba)))}}
-        logger.info(f"{name}: Train Acc={train_acc:.1%} | Val Acc={val_acc:.1%} | Test Acc={test_acc:.1%} | Prec={test_prec:.1%} | Rec={test_rec:.1%} | F1={test_f1:.1%} | AUC={test_auc:.3f} (thresh={threshold:.3f})")
+        metrics={"train":{"accuracy":float(train_acc)},"val":{"accuracy":float(val_acc)},"test":{"accuracy":float(test_acc),"auc":float(test_auc)}}
+        logger.info(f"{name}: Train={train_acc:.1%} | Val={val_acc:.1%} | Test={test_acc:.1%} | AUC={test_auc:.3f}")
         return model,metrics,y_val_proba,y_test_proba
 
 
@@ -429,7 +408,6 @@ class AsymmetricVIXForecaster:
         with open(models_path/"feature_names_up.json","r")as f: self.up_features=sorted(json.load(f))
         with open(models_path/"feature_names_down.json","r")as f: self.down_features=sorted(json.load(f))
         logger.info(f"✅ Loaded 4 models: {len(self.expansion_features)} exp, {len(self.compression_features)} comp, {len(self.up_features)} up, {len(self.down_features)} down features")
-        logger.info(f"✅ Using classifier thresholds: UP={self.up_threshold:.3f}, DOWN={self.down_threshold:.3f}")
 
     def _generate_diagnostics(self,test_df,save_dir):
         save_path=Path(save_dir); save_path.mkdir(parents=True,exist_ok=True)
@@ -456,33 +434,34 @@ class AsymmetricVIXForecaster:
             ax.set_title("Compression Regressor (DOWN samples)"); ax.grid(True,alpha=0.3)
             ax=axes[1,0]; X_up_test=test_df[self.up_features]; y_up_test=test_df['target_direction']
             up_proba=self.up_classifier.predict_proba(X_up_test)[:,1]
-            correct_mask=(up_proba>=self.up_threshold)==y_up_test
+            correct_mask=(up_proba>=0.5)==y_up_test
             ax.hist([up_proba[correct_mask],up_proba[~correct_mask]],bins=20,alpha=0.7,label=['Correct','Wrong'],edgecolor='black')
-            ax.set_xlabel("P(UP)"); ax.set_ylabel("Frequency"); ax.set_title("UP Classifier Distribution")
-            ax.legend(); ax.grid(True,alpha=0.3); ax.axvline(self.up_threshold,color='red',linestyle='--',alpha=0.5,label=f'Threshold={self.up_threshold:.2f}')
+            ax.set_xlabel("P(UP)"); ax.set_ylabel("Frequency"); ax.set_title("UP Classifier Probabilities")
+            ax.legend(); ax.grid(True,alpha=0.3)
             ax=axes[1,1]; X_down_test=test_df[self.down_features]; y_down_test=1-test_df['target_direction']
             down_proba=self.down_classifier.predict_proba(X_down_test)[:,1]
-            correct_mask=(down_proba>=self.down_threshold)==y_down_test
+            correct_mask=(down_proba>=0.5)==y_down_test
             ax.hist([down_proba[correct_mask],down_proba[~correct_mask]],bins=20,alpha=0.7,label=['Correct','Wrong'],edgecolor='black')
-            ax.set_xlabel("P(DOWN)"); ax.set_ylabel("Frequency"); ax.set_title("DOWN Classifier Distribution")
-            ax.legend(); ax.grid(True,alpha=0.3); ax.axvline(self.down_threshold,color='red',linestyle='--',alpha=0.5,label=f'Threshold={self.down_threshold:.2f}')
+            ax.set_xlabel("P(DOWN)"); ax.set_ylabel("Frequency"); ax.set_title("DOWN Classifier Probabilities")
+            ax.legend(); ax.grid(True,alpha=0.3)
             plt.tight_layout(); plot_file=save_path/"model_diagnostics.png"
             plt.savefig(plot_file,dpi=150,bbox_inches="tight"); plt.close()
         except Exception as e: logger.warning(f"  Could not generate plots: {e}")
 
     def _print_summary(self):
-        print("\nASYMMETRIC 4-MODEL TRAINING SUMMARY")
+        print("\n"+"="*80)
+        print("ASYMMETRIC 4-MODEL TRAINING SUMMARY")
         print(f"Models: Expansion + Compression Regressors | UP + DOWN Classifiers | Training through: {TRAINING_END_DATE}")
         print(f"Expansion: Train={self.metrics['expansion']['train']['mae_pct']:.2f}% | Val={self.metrics['expansion']['val']['mae_pct']:.2f}% | Test={self.metrics['expansion']['test']['mae_pct']:.2f}% | Bias={self.metrics['expansion']['test']['bias_pct']:+.2f}%")
         print(f"Compression: Train={self.metrics['compression']['train']['mae_pct']:.2f}% | Val={self.metrics['compression']['val']['mae_pct']:.2f}% | Test={self.metrics['compression']['test']['mae_pct']:.2f}% | Bias={self.metrics['compression']['test']['bias_pct']:+.2f}%")
 
+        print("\n📊 CLASSIFIERS OUTPUT PROBABILITIES")
+        print("   Ensemble uses probabilities directly - no thresholds applied")
         up_auc = self.metrics['up_classifier']['test'].get('auc', 0)
-        up_thresh = self.metrics['up_classifier']['test'].get('threshold', self.up_threshold)
-        print(f"UP Classifier: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['up_classifier']['test']['precision']:.1%} | Rec={self.metrics['up_classifier']['test']['recall']:.1%} | F1={self.metrics['up_classifier']['test']['f1']:.1%} | AUC={up_auc:.3f} (thresh={up_thresh:.3f})")
+        print(f"UP Classifier: Train={self.metrics['up_classifier']['train']['accuracy']:.1%} | Val={self.metrics['up_classifier']['val']['accuracy']:.1%} | Test={self.metrics['up_classifier']['test']['accuracy']:.1%} | AUC={up_auc:.3f}")
 
         down_auc = self.metrics['down_classifier']['test'].get('auc', 0)
-        down_thresh = self.metrics['down_classifier']['test'].get('threshold', self.down_threshold)
-        print(f"DOWN Classifier: Train={self.metrics['down_classifier']['train']['accuracy']:.1%} | Val={self.metrics['down_classifier']['val']['accuracy']:.1%} | Test={self.metrics['down_classifier']['test']['accuracy']:.1%} | Prec={self.metrics['down_classifier']['test']['precision']:.1%} | Rec={self.metrics['down_classifier']['test']['recall']:.1%} | F1={self.metrics['down_classifier']['test']['f1']:.1%} | AUC={down_auc:.3f} (thresh={down_thresh:.3f})")
+        print(f"DOWN Classifier: Train={self.metrics['down_classifier']['train']['accuracy']:.1%} | Val={self.metrics['down_classifier']['val']['accuracy']:.1%} | Test={self.metrics['down_classifier']['test']['accuracy']:.1%} | AUC={down_auc:.3f}")
 
         if self.ensemble_enabled and 'ternary' in self.metrics:
             print(f"\n✓ TERNARY DECISION (Production Logic - threshold={self.decision_threshold:.1%}):")
@@ -491,7 +470,7 @@ class AsymmetricVIXForecaster:
             print(f"  Overall Accuracy: {t['overall_accuracy']:.1%}")
             print(f"  UP: n={t['up_count']} | acc={t['up_accuracy']:.1%} | conf={t['up_confidence']:.1%} | mag={t['up_magnitude']:+.2f}%")
             print(f"  DOWN: n={t['down_count']} | acc={t['down_accuracy']:.1%} | conf={t['down_confidence']:.1%} | mag={t['down_magnitude']:+.2f}%")
-        print()
+        print("="*80+"\n")
 
 def train_asymmetric_forecaster(df,expansion_features=None,compression_features=None,up_features=None,down_features=None,save_dir="models"):
     forecaster=AsymmetricVIXForecaster()
