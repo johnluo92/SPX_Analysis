@@ -964,7 +964,7 @@ Examples:
         sys.exit(1)
 
     if args.test_feature_stability:
-        output_dir = args.output_dir if args.output_dir != 'tuning_unified' else 'feature_stability'
+        output_dir = args.output_dir
         test_feature_stability(df, result["vix"], n_runs=args.test_feature_stability,
                                output_dir=output_dir)
         return
