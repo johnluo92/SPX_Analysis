@@ -1,0 +1,28 @@
+# Data - Claude doesn't need to read this
+src/json_data/
+src/data_cache/
+src/CBOE_Data_Archive/
+src/CBOE_VX_ALL/
+cache/
+*.csv
+*.parquet
+*.pkl
+
+# Notebooks (large, messy for Claude)
+*.ipynb
+
+# Old/archive
+old/
+src/tuning_phase2/
+src/logs/
+src/diagnostics/
+
+# Build artifacts
+__pycache__/
+*.pyc
+*.log
+*.db
+
+# Misc
+.DS_Store
+.env
