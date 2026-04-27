@@ -1,0 +1,33 @@
+{
+  "correlation_threshold": 0.9,
+  "n_removed_correlation": 5,
+  "n_samples": 2570,
+  "n_selected": 42,
+  "random_state": 42,
+  "target_type": "compression",
+  "top_10_features": [
+    "vix_vs_ma63",
+    "vix_vs_ma21",
+    "vix_percentile_126d",
+    "vix_velocity_5d_regime_adj",
+    "vix_zscore_252d",
+    "vvix_velocity_10d",
+    "bb_position_20d",
+    "vix_vel_spx_rv_ratio",
+    "vvix",
+    "liquidity_stress_composite"
+  ],
+  "top_10_importance": [
+    0.05322011336684227,
+    0.025814561545848845,
+    0.016988856345415117,
+    0.015856492146849633,
+    0.012468432378955185,
+    0.009820093325106426,
+    0.009001861698925495,
+    0.008912967005744576,
+    0.008510643849149346,
+    0.0081938375136815
+  ],
+  "top_n": 42
+}

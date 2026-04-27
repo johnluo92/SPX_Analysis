@@ -1,0 +1,33 @@
+{
+  "correlation_threshold": 0.9,
+  "n_removed_correlation": 1,
+  "n_samples": 4776,
+  "n_selected": 31,
+  "random_state": 42,
+  "target_type": "down",
+  "top_10_features": [
+    "vix_velocity_5d_regime_adj",
+    "vix_velocity_5d",
+    "credit_stress_composite",
+    "vix_vel_spx_rv_ratio",
+    "skew_vix_ratio_percentile_252d",
+    "vix_percentile_63d",
+    "rsi_14",
+    "dxy_bb_position_20d",
+    "spx_ret_5d",
+    "vix_vs_ma10"
+  ],
+  "top_10_importance": [
+    0.007232805341482162,
+    0.006759727373719215,
+    0.006123582320287824,
+    0.005380078498274088,
+    0.0053532647900283335,
+    0.005014243070036173,
+    0.004956187261268496,
+    0.004941708920523524,
+    0.004786703921854496,
+    0.00458893678151071
+  ],
+  "top_n": 31
+}
