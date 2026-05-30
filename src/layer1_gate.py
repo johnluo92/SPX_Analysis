@@ -71,8 +71,13 @@ def build_gate_features(as_of: str = None) -> pd.DataFrame:
     rv_21d = spx.pct_change().rolling(21).std() * np.sqrt(252) * 100
     f["vix_vs_rv_21d"] = vix - rv_21d
 
-    # C3: VVIX not extreme — below 85th pct in 63d window
-    f["vvix_percentile_63d"] = _percentile_63d(vvix)
+    # C3: VVIX not extreme — absolute level below historical p85.
+    # Threshold 110.41 = p85 of full VVIX history (n=4,873 days, yahoo_VVIX.parquet).
+    # Fires on 7.7% of entry-regime days (VIX < 24.41), catching pre-crisis VVIX spikes
+    # (e.g., Aug 2007: VIX=22.9, VVIX=117.5) that VIX regime alone would not block.
+    # Absolute threshold is stable across market contexts; rolling-pct was context-dependent
+    # and could trigger during low-vol stretches when VVIX ticked up from a suppressed base.
+    f["vvix"] = vvix
 
     # C4: Credit spreads not widening
     if credit_available:
@@ -91,13 +96,14 @@ def build_gate_features(as_of: str = None) -> pd.DataFrame:
         labels=[0, 1, 2, 3],
     ).astype(float)
 
-    # C6: VVIX/VIX ratio — vol-of-vol relative to vol level. Bollerslev & Todorov (2011):
-    # spikes in this ratio precede VIX jumps by 1-5 days (leading indicator, not coincident).
-    # Distinct from C3 (absolute VVIX level): C6 catches pre-spike scenarios where VIX is
-    # still calm but VIX options are being bid up, signaling anticipated regime shift.
+    # VVIX/VIX ratio stored for display context only — not a gate condition.
+    # Dropped as C6: ratio is regime-conditional (R0 mean=6.44, R1 mean=4.87) so a single
+    # full-history threshold (p85=6.664) fires on 32.6% of R0 days and 0.9% of R1 days —
+    # blocking precisely the low-VIX high-VRP environments we want to enter. VRP when ratio
+    # fires (3.87 pts) exceeds VRP when it passes (3.40 pts). C3 covers the absolute VVIX
+    # danger case. If a regime-conditional ratio threshold is added later, it belongs here.
     vvix_vix_ratio = vvix / vix.where(vix >= 5, other=np.nan)
     f["vvix_vix_ratio"] = vvix_vix_ratio
-    f["vvix_vix_pct63d"] = _percentile_63d(vvix_vix_ratio)
 
     # C7: Uniform VX contango through VX3 — extends C1 (VX2/VX1 only).
     # A kinked curve (VX1<VX2 but VX2≥VX3) passes C1 but signals unstable regime transition.
@@ -121,15 +127,14 @@ def build_gate_features(as_of: str = None) -> pd.DataFrame:
 
 
 def evaluate_gate(f: pd.DataFrame) -> pd.Series:
-    """Apply all 7 conditions → boolean GO series."""
+    """Apply 6 conditions → boolean GO series."""
     c1 = f["vx_contango_pct"] > 0
     c2 = f["vix_vs_rv_21d"] > 2
-    c3 = f["vvix_percentile_63d"] < 85
+    c3 = f["vvix"] < 110.41
     c4 = f["credit_widening_regime"] == 0
     c5 = f["stress_regime"] <= 1
-    c6 = f["vvix_vix_pct63d"] < 85
-    c7 = f["vx_c7_ok"].fillna(0) == 1
-    return (c1 & c2 & c3 & c4 & c5 & c6 & c7).rename("gate_open")
+    c6 = f["vx_c7_ok"].fillna(0) == 1
+    return (c1 & c2 & c3 & c4 & c5 & c6).rename("gate_open")
 
 
 def print_current_status(f: pd.DataFrame, go: pd.Series):
@@ -143,21 +148,15 @@ def print_current_status(f: pd.DataFrame, go: pd.Series):
     print(f"  Status: {status}")
     print(f"{'='*58}")
 
-    vvix_vix_pct = row["vvix_vix_pct63d"]
-    vvix_vix_ratio = row["vvix_vix_ratio"]
+    vvix_ratio = row["vvix_vix_ratio"]
     vx_c7 = row["vx_c7_ok"]
     curve_score = row["vx_curve_score"]
 
-    c6_pass = (not pd.isna(vvix_vix_pct)) and (vvix_vix_pct < 85)
+    c6_pass = (not pd.isna(vx_c7)) and (vx_c7 == 1)
     c6_display = (
-        f"{vvix_vix_pct:.1f}th pct  (ratio={vvix_vix_ratio:.2f})"
-        if not pd.isna(vvix_vix_pct)
-        else "STALE — insufficient data"
-    )
-    c7_pass = (not pd.isna(vx_c7)) and (vx_c7 == 1)
-    c7_display = (
         f"score={curve_score:.3f}" if not pd.isna(curve_score) else "VX3 STALE — NO-GO"
     )
+    ratio_display = f"ratio={vvix_ratio:.3f}" if not pd.isna(vvix_ratio) else "n/a"
 
     checks = [
         ("C1 VX Contango > 0%",
@@ -166,22 +165,22 @@ def print_current_status(f: pd.DataFrame, go: pd.Series):
         ("C2 VIX vs RV21d > +2 pts",
          row["vix_vs_rv_21d"] > 2,
          f"{row['vix_vs_rv_21d']:+.2f} pts"),
-        ("C3 VVIX pct63d < 85th",
-         row["vvix_percentile_63d"] < 85,
-         f"{row['vvix_percentile_63d']:.1f}th pct"),
+        ("C3 VVIX < 110.41",
+         row["vvix"] < 110.41,
+         f"VVIX={row['vvix']:.1f}"),
         ("C4 Credit widening = 0",
          row["credit_widening_regime"] == 0,
          f"regime={row['credit_widening_regime']:.0f}"),
         ("C5 Stress regime ≤ 1",
          row["stress_regime"] <= 1,
          f"regime={row['stress_regime']:.0f}  (raw={row['stress_raw']:.3f})"),
-        ("C6 VVIX/VIX pct63d < 85th", c6_pass, c6_display),
-        ("C7 VX1 < VX2 < VX3",        c7_pass, c7_display),
+        ("C6 VX1 < VX2 < VX3",   c6_pass, c6_display),
     ]
 
     for label, passed, display in checks:
         icon = "✓" if passed else "✗"
         print(f"  [{icon}] {label:<30} {display}")
+    print(f"  [·] VVIX/VIX (context only)         {ratio_display}  [p85=6.664, R0-norm=6.44]")
     print()
 
 
@@ -216,11 +215,10 @@ def print_backtest(f: pd.DataFrame, go: pd.Series):
     cond_stats = {
         "C1 VX Contango > 0%":    (f["vx_contango_pct"] > 0).mean() * 100,
         "C2 VIX vs RV21d > +2":   (f["vix_vs_rv_21d"] > 2).mean() * 100,
-        "C3 VVIX pct63d < 85":    (f["vvix_percentile_63d"] < 85).mean() * 100,
+        "C3 VVIX < 110.41":        (f["vvix"] < 110.41).mean() * 100,
         "C4 Credit widening = 0":  (f["credit_widening_regime"] == 0).mean() * 100,
         "C5 Stress regime ≤ 1":    (f["stress_regime"] <= 1).mean() * 100,
-        "C6 VVIX/VIX pct63d < 85": (f["vvix_vix_pct63d"] < 85).mean() * 100,
-        "C7 VX1 < VX2 < VX3":      (f["vx_c7_ok"].fillna(0) == 1).mean() * 100,
+        "C6 VX1 < VX2 < VX3":     (f["vx_c7_ok"].fillna(0) == 1).mean() * 100,
     }
     print("  Condition pass rates (% of valid days):")
     for name, rate in cond_stats.items():
