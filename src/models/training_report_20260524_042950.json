@@ -1,0 +1,267 @@
+{
+  "timestamp": "2026-05-24T04:29:50.659628",
+  "system_version": "v6.1_unified_selector",
+  "training_end": "2026-04-30",
+  "data_splits": {
+    "train_end_date": "2021-12-31",
+    "val_end_date": "2023-12-31",
+    "feature_selection_split_date": "2023-12-31",
+    "description": {
+      "train": "Training data: up to 2021-12-31",
+      "val": "Validation data: 2022-01-01 to 2023-12-31",
+      "test": "Test data: 2024-01-01 onwards",
+      "feature_selection": "Uses Train+Val (up to 2023-12-31), excludes Test"
+    }
+  },
+  "feature_selection": {
+    "expansion": {
+      "top_n": 35,
+      "selected": 35,
+      "features": [
+        "VXTH",
+        "copper",
+        "copper_momentum_63d",
+        "credit_quality_spread",
+        "credit_stress_composite",
+        "days_in_regime",
+        "dxy_vs_ma252",
+        "fin_stress_index",
+        "gvz_velocity_21d",
+        "hy_spread",
+        "hy_velocity_21d",
+        "macd_signal",
+        "ovx",
+        "ovx_zscore_252d",
+        "risk_premium_ma21",
+        "risk_premium_percentile_252d",
+        "rsi_14",
+        "spx_realized_vol_63d",
+        "spx_realized_vol_63d_x_regime_1",
+        "spx_vix_corr_63d",
+        "spx_vol_ratio_10_21",
+        "spx_vol_ratio_10_63",
+        "vix_percentile_126d",
+        "vix_rv_ratio_10d",
+        "vix_vs_ma252",
+        "vix_vs_rv_10d",
+        "vvix_ret_21d",
+        "vvix_vix_ratio",
+        "vx_oi_surge",
+        "vx_roll_cost_5d",
+        "vx_spread_x_vix_expiry",
+        "yield_10y3m",
+        "yield_30y10y",
+        "yield_curve_vol_avg",
+        "yield_curve_vol_avg_fred"
+      ]
+    },
+    "compression": {
+      "top_n": 42,
+      "selected": 42,
+      "features": [
+        "bb_position_20d",
+        "dxy_zscore_252d",
+        "gold_momentum_21d",
+        "gold_ret_63d",
+        "gold_spx_divergence",
+        "gold_zscore_252d",
+        "joint_regime_volatility",
+        "natgas",
+        "ovx_percentile_252d",
+        "ovx_velocity_10d",
+        "ovx_zscore_252d",
+        "reversion_strength_63d",
+        "risk_premium_percentile_252d",
+        "risk_premium_x_opex",
+        "skew_vix_ratio_percentile_252d",
+        "spx_realized_vol_63d",
+        "spx_realized_vol_63d_x_regime_0",
+        "spx_ret_63d",
+        "spx_vs_ma50",
+        "vix_percentile_126d",
+        "vix_rv_ratio_10d",
+        "vix_skew_joint_regime",
+        "vix_term_curvature",
+        "vix_term_curvature_zscore",
+        "vix_term_slope_short",
+        "vix_vel_spx_rv_ratio",
+        "vix_vel_x_opex_prox",
+        "vix_velocity_5d",
+        "vix_velocity_5d_regime_adj",
+        "vix_vol_21d",
+        "vix_vol_x_opex_week",
+        "vix_vs_ma21",
+        "vix_vs_ma63",
+        "vix_vs_rv_10d",
+        "vix_vs_rv_21d",
+        "vix_zscore_252d",
+        "vix_zscore_63d",
+        "vvix",
+        "vvix_velocity_10d",
+        "vx_curve_4_3_ratio",
+        "yield_2y3m_velocity_63d",
+        "yield_curve_vol_avg"
+      ]
+    },
+    "up": {
+      "top_n": 30,
+      "selected": 30,
+      "features": [
+        "6m_vol_63d_fred",
+        "bb_width_20d",
+        "claims_zscore_52w",
+        "day_of_month",
+        "dxy_gold_corr_63d",
+        "dxy_velocity_10d",
+        "dxy_vs_ma252",
+        "dxy_zscore_21d",
+        "gold_zscore_63d",
+        "month",
+        "natgas_vol_21d",
+        "reversion_strength_63d",
+        "risk_premium_percentile_252d",
+        "rsi_14",
+        "skew_vix_ratio",
+        "skew_vix_ratio_percentile_252d",
+        "spx_realized_vol_63d_x_regime_1",
+        "spx_ret_5d",
+        "vix_accel_5d",
+        "vix_accel_x_opex_prox",
+        "vix_bb_position_20d",
+        "vix_boundary_distance",
+        "vix_term_ratio_zscore_63d",
+        "vix_velocity_10d",
+        "vix_velocity_5d_regime_adj",
+        "vix_velocity_5d_x_regime_0",
+        "vix_vol_63d",
+        "vix_vs_ma10",
+        "vix_vs_ma63",
+        "yield_curve_vol_avg"
+      ]
+    },
+    "down": {
+      "top_n": 31,
+      "selected": 31,
+      "features": [
+        "6m_vol_63d_fred",
+        "bb_width_20d",
+        "claims_zscore_52w",
+        "day_of_month",
+        "dxy_gold_corr_63d",
+        "dxy_velocity_10d",
+        "dxy_vs_ma252",
+        "dxy_zscore_21d",
+        "dxy_zscore_252d",
+        "gold_zscore_63d",
+        "month",
+        "natgas_vol_21d",
+        "reversion_strength_63d",
+        "risk_premium_percentile_252d",
+        "rsi_14",
+        "skew_vix_ratio",
+        "skew_vix_ratio_percentile_252d",
+        "spx_realized_vol_63d_x_regime_1",
+        "spx_ret_5d",
+        "vix_accel_5d",
+        "vix_accel_x_opex_prox",
+        "vix_bb_position_20d",
+        "vix_boundary_distance",
+        "vix_term_ratio_zscore_63d",
+        "vix_velocity_10d",
+        "vix_velocity_5d_regime_adj",
+        "vix_velocity_5d_x_regime_0",
+        "vix_vol_63d",
+        "vix_vs_ma10",
+        "vix_vs_ma63",
+        "yield_curve_vol_avg"
+      ]
+    }
+  },
+  "metrics": {
+    "expansion": {
+      "train": {
+        "mae_log": 0.08348725210808004,
+        "rmse_log": 0.11954221359655347,
+        "mae_pct": 9.899494139677836,
+        "bias_pct": -0.9005865543345627,
+        "clipped_pct": 0.0
+      },
+      "val": {
+        "mae_log": 0.07703072159400198,
+        "rmse_log": 0.09456556620092177,
+        "mae_pct": 8.761866856359585,
+        "bias_pct": 0.5890709590523284,
+        "clipped_pct": 0.0
+      },
+      "test": {
+        "mae_log": 0.08593425136826842,
+        "rmse_log": 0.13287570720277606,
+        "mae_pct": 10.465349428208617,
+        "bias_pct": -2.4026768409497143,
+        "clipped_pct": 0.0
+      }
+    },
+    "compression": {
+      "train": {
+        "mae_log": 0.05558454137073973,
+        "rmse_log": 0.0724870973948594,
+        "mae_pct": 4.925549467597804,
+        "bias_pct": -0.27459762378599273,
+        "clipped_pct": 0.0
+      },
+      "val": {
+        "mae_log": 0.053313745953953474,
+        "rmse_log": 0.06645699221428551,
+        "mae_pct": 4.82334582670378,
+        "bias_pct": -1.4021665717599827,
+        "clipped_pct": 0.0
+      },
+      "test": {
+        "mae_log": 0.06783993448516538,
+        "rmse_log": 0.09655603017016404,
+        "mae_pct": 5.811391988061484,
+        "bias_pct": 0.30182462501644997,
+        "clipped_pct": 0.0
+      }
+    },
+    "up_classifier": {
+      "train": {
+        "accuracy": 0.5338504936530324
+      },
+      "val": {
+        "accuracy": 0.5688622754491018
+      },
+      "test": {
+        "accuracy": 0.5154109589041096,
+        "auc": 0.6734031438197763
+      }
+    },
+    "down_classifier": {
+      "train": {
+        "accuracy": 0.580865068171133
+      },
+      "val": {
+        "accuracy": 0.4231536926147705
+      },
+      "test": {
+        "accuracy": 0.5496575342465754,
+        "auc": 0.653170233497294
+      }
+    },
+    "ternary": {
+      "total_samples": 584,
+      "made_decision": 391,
+      "no_decision": 193,
+      "no_decision_pct": 0.3304794520547945,
+      "overall_accuracy": 0.6828644501278772,
+      "up_count": 143,
+      "up_accuracy": 0.7272727272727273,
+      "up_confidence": 0.7437998711214743,
+      "up_magnitude": 12.226933165268973,
+      "down_count": 248,
+      "down_accuracy": 0.657258064516129,
+      "down_confidence": 0.7247347726915012,
+      "down_magnitude": -11.827172190473176
+    }
+  }
+}

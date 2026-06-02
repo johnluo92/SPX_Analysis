@@ -7,9 +7,9 @@
     "hy_bb_velocity_21d",
     "hy_ccc_spread",
     "hy_ccc_velocity_21d",
+    "risk_premium_percentile_126d",
     "time_in_regime_pct",
-    "vx_oi_5d_change",
-    "vx_spread_x_opex_prox"
+    "vx_oi_5d_change"
   ],
   "threshold": 0.9,
   "total_features_before": 52

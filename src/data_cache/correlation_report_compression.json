@@ -1,12 +1,11 @@
 {
   "features_kept": 42,
-  "features_removed": 5,
+  "features_removed": 4,
   "random_state": 42,
   "removed_features": [
-    "risk_premium_percentile_126d",
     "vix_percentile_252d",
     "vix_percentile_63d",
-    "vix_ret_5d",
+    "vix_stretch_ma63",
     "vix_vs_ma252"
   ],
   "threshold": 0.9,
