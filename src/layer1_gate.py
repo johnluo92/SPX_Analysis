@@ -71,13 +71,13 @@ def build_gate_features(as_of: str = None) -> pd.DataFrame:
     rv_21d = spx.pct_change().rolling(21).std() * np.sqrt(252) * 100
     f["vix_vs_rv_21d"] = vix - rv_21d
 
-    # C3: VVIX not extreme — absolute level below historical p85.
-    # Threshold 110.41 = p85 of full VVIX history (n=4,873 days, yahoo_VVIX.parquet).
-    # Fires on 7.7% of entry-regime days (VIX < 24.41), catching pre-crisis VVIX spikes
-    # (e.g., Aug 2007: VIX=22.9, VVIX=117.5) that VIX regime alone would not block.
-    # Absolute threshold is stable across market contexts; rolling-pct was context-dependent
-    # and could trigger during low-vol stretches when VVIX ticked up from a suppressed base.
+    # C3: VVIX not extreme — adaptive rolling 252-day trailing p85 of VVIX.
+    # min_periods=126: require at least half a year of history before computing threshold.
+    # .shift(1) ensures current day's VVIX is not in its own threshold computation (look-ahead-free).
+    # Threshold auto-adjusts as VVIX regime shifts — no manual recalibration needed.
+    vvix_rolling_p85 = vvix.rolling(252, min_periods=126).quantile(0.85).shift(1)
     f["vvix"] = vvix
+    f["c3_vvix_threshold"] = vvix_rolling_p85
 
     # C4: Credit spreads not widening
     if credit_available:
@@ -108,7 +108,7 @@ def build_gate_features(as_of: str = None) -> pd.DataFrame:
     # C7: Uniform VX contango through VX3 — extends C1 (VX2/VX1 only).
     # A kinked curve (VX1<VX2 but VX2≥VX3) passes C1 but signals unstable regime transition.
     # Treat missing VX3 as NO-GO (NaN → 0.0 in evaluate_gate).
-    f["vx_c7_ok"] = np.where(
+    f["vx_curve_ok"] = np.where(
         vx3.isna(),
         np.nan,
         ((vx2 > vx1) & (vx3 > vx2)).astype(float),
@@ -127,14 +127,18 @@ def build_gate_features(as_of: str = None) -> pd.DataFrame:
 
 
 def evaluate_gate(f: pd.DataFrame) -> pd.Series:
-    """Apply 6 conditions → boolean GO series."""
+    """Apply C1–C5 → boolean GO series. VVIX/VIX ratio DP block removed 2026-06-01 (pct>85
+    episodes empirically safer for DP). VX curve (vx_curve_ok) computed in build_gate_features()
+    for display context only — never in this gate verdict.
+
+    C3: VVIX < trailing 252-day p85 of VVIX (adaptive; recalibrates daily).
+    """
     c1 = f["vx_contango_pct"] > 0
     c2 = f["vix_vs_rv_21d"] > 2
-    c3 = f["vvix"] < 110.41
+    c3 = f["vvix"] < f["c3_vvix_threshold"]
     c4 = f["credit_widening_regime"] == 0
     c5 = f["stress_regime"] <= 1
-    c6 = f["vx_c7_ok"].fillna(0) == 1
-    return (c1 & c2 & c3 & c4 & c5 & c6).rename("gate_open")
+    return (c1 & c2 & c3 & c4 & c5).rename("gate_open")
 
 
 def print_current_status(f: pd.DataFrame, go: pd.Series):
@@ -149,10 +153,10 @@ def print_current_status(f: pd.DataFrame, go: pd.Series):
     print(f"{'='*58}")
 
     vvix_ratio = row["vvix_vix_ratio"]
-    vx_c7 = row["vx_c7_ok"]
+    vx_curve = row["vx_curve_ok"]
     curve_score = row["vx_curve_score"]
 
-    c6_pass = (not pd.isna(vx_c7)) and (vx_c7 == 1)
+    c6_pass = (not pd.isna(vx_curve)) and (vx_curve == 1)
     c6_display = (
         f"score={curve_score:.3f}" if not pd.isna(curve_score) else "VX3 STALE — NO-GO"
     )
@@ -165,22 +169,35 @@ def print_current_status(f: pd.DataFrame, go: pd.Series):
         ("C2 VIX vs RV21d > +2 pts",
          row["vix_vs_rv_21d"] > 2,
          f"{row['vix_vs_rv_21d']:+.2f} pts"),
-        ("C3 VVIX < 110.41",
-         row["vvix"] < 110.41,
-         f"VVIX={row['vvix']:.1f}"),
+        ("C3 VVIX < rolling p85",
+         row["vvix"] < row["c3_vvix_threshold"],
+         f"VVIX={row['vvix']:.1f}  threshold={row['c3_vvix_threshold']:.1f} (252d p85)"),
         ("C4 Credit widening = 0",
          row["credit_widening_regime"] == 0,
          f"regime={row['credit_widening_regime']:.0f}"),
         ("C5 Stress regime ≤ 1",
          row["stress_regime"] <= 1,
          f"regime={row['stress_regime']:.0f}  (raw={row['stress_raw']:.3f})"),
-        ("C6 VX1 < VX2 < VX3",   c6_pass, c6_display),
+        ("C6 VX1 < VX2 < VX3", c6_pass, c6_display),
     ]
 
     for label, passed, display in checks:
         icon = "✓" if passed else "✗"
         print(f"  [{icon}] {label:<30} {display}")
     print(f"  [·] VVIX/VIX (context only)         {ratio_display}  [p85=6.664, R0-norm=6.44]")
+
+    # display only — not in gate verdict; Q2/Q3 boundary at 8% (dTR +14pp)
+    ctg = row["vx_contango_pct"]
+    if pd.isna(ctg):
+        ctg_label = "n/a"
+    elif ctg >= 8:
+        ctg_label = "[strong]"
+    elif ctg >= 4:
+        ctg_label = "[moderate]"
+    else:
+        ctg_label = "[weak / backwardation]"
+    ctg_display = f"{ctg:+.1f}%" if not pd.isna(ctg) else "n/a"
+    print(f"  [·] Contango magnitude (VX2/VX1−1)  {ctg_display}  {ctg_label:<22}  (flag < 8%)")
     print()
 
 
@@ -215,10 +232,10 @@ def print_backtest(f: pd.DataFrame, go: pd.Series):
     cond_stats = {
         "C1 VX Contango > 0%":    (f["vx_contango_pct"] > 0).mean() * 100,
         "C2 VIX vs RV21d > +2":   (f["vix_vs_rv_21d"] > 2).mean() * 100,
-        "C3 VVIX < 110.41":        (f["vvix"] < 110.41).mean() * 100,
+        "C3 VVIX < rolling p85":   (f["vvix"] < f["c3_vvix_threshold"]).mean() * 100,
         "C4 Credit widening = 0":  (f["credit_widening_regime"] == 0).mean() * 100,
         "C5 Stress regime ≤ 1":    (f["stress_regime"] <= 1).mean() * 100,
-        "C6 VX1 < VX2 < VX3":     (f["vx_c7_ok"].fillna(0) == 1).mean() * 100,
+        "C6 VX1 < VX2 < VX3 [display only, not in gate verdict]": (f["vx_curve_ok"].fillna(0) == 1).mean() * 100,
     }
     print("  Condition pass rates (% of valid days):")
     for name, rate in cond_stats.items():
