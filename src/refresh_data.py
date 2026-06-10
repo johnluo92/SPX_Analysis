@@ -84,7 +84,8 @@ def refresh_fred_gate() -> None:
 
     fetcher = UnifiedDataFetcher()
     for series_id in FRED_GATE_SERIES:
-        result = fetcher.fetch_fred(series_id, incremental=True)
+        # STLFSI4 is weekly — incremental fetch has a gap-fill bug for low-frequency series
+        result = fetcher.fetch_fred(series_id, incremental=(series_id != "STLFSI4"))
         if result is not None and not result.empty:
             last_dt = result.index[-1].strftime("%Y-%m-%d")
             val     = result.iloc[-1]
