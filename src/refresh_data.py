@@ -109,16 +109,21 @@ def refresh_yahoo() -> None:
             print(f"  {sym:<10}   FAILED — check network or yfinance")
 
 
-def main():
+def main(fred_only: bool = False):
     t0 = datetime.now()
-    print(f"\n  Data Refresh — {t0.strftime('%Y-%m-%d %H:%M')}")
+    tag = " [FRED-only]" if fred_only else ""
+    print(f"\n  Data Refresh{tag} — {t0.strftime('%Y-%m-%d %H:%M')}")
     print(f"  {'─'*46}")
 
-    print("\n  VX Continuous Contracts")
-    refresh_vx()
+    # FRED-only: credit/stress (C4/C5) publish on a different cadence than the price parquets,
+    # so the caller re-pulls just these 3 series cheaply on every gate-refresh rather than
+    # skipping them behind fresh VIX (which once let OAS freeze 15 days). ~seconds vs ~80s full.
+    if not fred_only:
+        print("\n  VX Continuous Contracts")
+        refresh_vx()
 
-    print("\n  Yahoo Finance")
-    refresh_yahoo()
+        print("\n  Yahoo Finance")
+        refresh_yahoo()
 
     print("\n  FRED (gate conditions C4 + C5)")
     refresh_fred_gate()
@@ -128,4 +133,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    main(fred_only="--fred-only" in sys.argv)
