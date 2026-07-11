@@ -53,11 +53,16 @@ def build_gate_features(as_of: str = None) -> pd.DataFrame:
     vx2  = _load("vx_continuous/VX2.parquet", "settle",       target_index=idx)
     vx3  = _load("vx_continuous/VX3.parquet", "settle",       target_index=idx)
     vx4  = _load("vx_continuous/VX4.parquet", "settle",       target_index=idx)
-    stress = _load("fred_STLFSI4.parquet",    "STLFSI4",     ff_limit=90, target_index=idx)
+    # STLFSI4 is indexed by observation Friday. FRED publishes it ~1 week later (the following Friday).
+    # Shift 5 trading days so the value visible on date T is the one published that week,
+    # not the one whose observation period ends that week.
+    stress = _load("fred_STLFSI4.parquet", "STLFSI4", ff_limit=90, target_index=idx).shift(5)
 
     try:
-        hy_bb  = _load("fred_BAMLH0A1HYBB.parquet", "BAMLH0A1HYBB", ff_limit=45, target_index=idx)
-        hy_ccc = _load("fred_BAMLH0A3HYC.parquet",  "BAMLH0A3HYC",  ff_limit=45, target_index=idx)
+        # ICE BofA OAS publishes ~T+1 business day. Shift 1 trading day so date T sees only
+        # spreads observed through T-1 — mirrors the C5 STLFSI4 publication-lag handling above.
+        hy_bb  = _load("fred_BAMLH0A1HYBB.parquet", "BAMLH0A1HYBB", ff_limit=45, target_index=idx).shift(1)
+        hy_ccc = _load("fred_BAMLH0A3HYC.parquet",  "BAMLH0A3HYC",  ff_limit=45, target_index=idx).shift(1)
         credit_available = True
     except Exception:
         credit_available = False
@@ -79,12 +84,12 @@ def build_gate_features(as_of: str = None) -> pd.DataFrame:
     f["vvix"] = vvix
     f["c3_vvix_threshold"] = vvix_rolling_p85
 
-    # C4: Credit spreads not widening
+    # C4: Credit spreads not widening. Threshold .shift(1) so the current day is excluded from
+    # its own 63d quantile window (matches the C3 look-ahead-free convention).
     if credit_available:
         quality_spread = hy_ccc - hy_bb
-        f["credit_widening_regime"] = (
-            quality_spread > quality_spread.rolling(63).quantile(0.8)
-        ).astype(float)
+        thresh = quality_spread.rolling(63).quantile(0.8).shift(1)
+        f["credit_widening_regime"] = (quality_spread > thresh).astype(float)
     else:
         f["credit_widening_regime"] = 0.0
 
