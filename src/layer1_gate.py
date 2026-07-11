@@ -141,6 +141,58 @@ def evaluate_gate(f: pd.DataFrame) -> pd.Series:
     return (c1 & c2 & c3 & c4 & c5).rename("gate_open")
 
 
+def _vrp_rich_now(vix, vrp_window=252, vrp_cut=0.67):
+    """VRP-rich flag = today's variance-risk-premium (VIX − 21d realized vol, the C2 definition,
+    build_gate_features:76) in the top tercile of its trailing 252d. BT-VOLPEAK Test C
+    (2026-07-10): PEAK ∧ VRP-rich is the strongest cell — survive 96.6%, +2.28/trade (vs PEAK
+    alone 93.4% / +1.98), OOS-stable (fit 97.1% / val 96.1%). Returns (rich_bool, pctile) or
+    (None, None) if SPX/history unavailable."""
+    try:
+        spx = pd.read_parquet(os.path.join(DATA_DIR, "yahoo_GSPC.parquet"))["Close"].sort_index()
+        rv21 = spx.pct_change().rolling(21).std() * np.sqrt(252) * 100
+        vrp = (vix - rv21.reindex(vix.index, method="ffill", limit=5)).dropna()
+        w = vrp.tail(vrp_window)
+        if len(w) < 126:
+            return None, None
+        cur = float(w.iloc[-1])
+        prior = w.iloc[:-1]
+        p = float((prior < cur).sum() / len(prior))
+        return (p >= vrp_cut), round(p, 3)
+    except Exception:
+        return None, None
+
+
+def vol_regime_state(lookback=126, peak_cut=0.80, trough_cut=0.20, swan_vix=30.0):
+    """BT-VOLPEAK deployment-timing tilt (SSOT). Rank of today's VIX within its trailing
+    `lookback` days (incl. today) — the look-ahead-safe percentile validated 2026-07-10:
+    LONG-DTE (98-180d) put spreads sold at a local vol MAXIMUM survive better (88.9%→93.4%,
+    +0.46/trade, 20/22 yrs, paired-Δ 90%CI [+0.19,+0.76] excludes 0). A PEAK that is ALSO
+    VRP-rich is the strongest cell (96.6% / +2.28, Test C). At a TROUGH the lean-in window is
+    shut. Tilts WHEN the ES budget deploys, never its size. Returns {} on failure (never blocks)."""
+    try:
+        vix = pd.read_parquet(os.path.join(DATA_DIR, "yahoo_VIX.parquet"))["Close"].dropna()
+        w = vix.tail(lookback)
+        if len(w) < int(lookback * 0.6):
+            return {}
+        cur = float(w.iloc[-1])
+        prior = w.iloc[:-1]
+        pct = float((prior < cur).sum() / len(prior))
+        swan = cur >= swan_vix
+        vrp_rich, vrp_pct = _vrp_rich_now(vix)
+        if pct >= peak_cut:
+            state = "PEAK"
+            tilt = "SWAN-WATCH" if swan else ("LEAN-IN-STRONG" if vrp_rich else "LEAN-IN")
+        elif pct <= trough_cut:
+            state, tilt = "TROUGH", "HOLD-BACK"
+        else:
+            state, tilt = "NORMAL", "standard"
+        return {"vix": round(cur, 2), "pct_126d": round(pct, 3), "state": state,
+                "tilt": tilt, "swan": bool(swan), "vrp_rich": vrp_rich, "vrp_pct": vrp_pct,
+                "asof": str(vix.index[-1].date())}
+    except Exception:
+        return {}
+
+
 def print_current_status(f: pd.DataFrame, go: pd.Series):
     last = f.index[-1]
     row = f.loc[last]
