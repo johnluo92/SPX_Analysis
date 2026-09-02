@@ -90,7 +90,7 @@ class UnifiedDataFetcher:
 
     def fetch_fred(self,series_id,start_date=None,end_date=None,incremental=True):
         if not self.fred_api_key:self.logger.error(f"FRED:{series_id}: Cannot fetch - API key missing");return None
-        cache_path=self.cache_dir/f"fred_{series_id}.parquet";fetch_start=start_date
+        cache_path=self.cache_dir/f"fred_{series_id}.parquet";fetch_start=start_date;is_topup=False
         if incremental and cache_path.exists():
             last_date=self._get_last_date_from_cache(cache_path)
             if last_date:
@@ -99,7 +99,7 @@ class UnifiedDataFetcher:
                         cached_df=pd.read_parquet(cache_path)
                         if series_id in cached_df.columns:return cached_df[series_id]
                     except:pass
-                fetch_start=(pd.to_datetime(last_date)+timedelta(days=1)).strftime("%Y-%m-%d")
+                fetch_start=(pd.to_datetime(last_date)+timedelta(days=1)).strftime("%Y-%m-%d");is_topup=True
         try:
             params={"series_id":series_id,"api_key":self.fred_api_key,"file_type":"json","observation_start":fetch_start or"1990-01-01","observation_end":end_date or datetime.now().strftime("%Y-%m-%d")};response=requests.get(self.fred_base_url,params=params,timeout=10);response.raise_for_status();data=response.json()
             if"observations"not in data or not data["observations"]:
@@ -109,7 +109,7 @@ class UnifiedDataFetcher:
                         if series_id in cached_df.columns:return cached_df[series_id]
                     except:pass
                 return None
-            obs=data["observations"];df=pd.DataFrame(obs);df["date"]=pd.to_datetime(df["date"]);df=df[df["value"]!="."];df["value"]=pd.to_numeric(df["value"],errors="coerce");df=df.dropna(subset=["value"]);df=df.set_index("date")[["value"]];df.columns=[series_id];df=self._normalize_data(df,f"FRED:{series_id}")
+            obs=data["observations"];df=pd.DataFrame(obs);df["date"]=pd.to_datetime(df["date"]);df=df[df["value"]!="."];df["value"]=pd.to_numeric(df["value"],errors="coerce");df=df.dropna(subset=["value"]);df=df.set_index("date")[["value"]];df.columns=[series_id];df=self._normalize_data(df,f"FRED:{series_id}",min_rows=1 if is_topup else 10)
             if df is None:
                 if cache_path.exists():
                     try:

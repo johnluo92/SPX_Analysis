@@ -167,15 +167,21 @@ def _vrp_rich_now(vix, vrp_window=252, vrp_cut=0.67):
         return None, None
 
 
-def vol_regime_state(lookback=126, peak_cut=0.80, trough_cut=0.20, swan_vix=30.0):
+def vol_regime_state(lookback=126, peak_cut=0.80, trough_cut=0.20, swan_vix=30.0, as_of=None):
     """BT-VOLPEAK deployment-timing tilt (SSOT). Rank of today's VIX within its trailing
     `lookback` days (incl. today) — the look-ahead-safe percentile validated 2026-07-10:
     LONG-DTE (98-180d) put spreads sold at a local vol MAXIMUM survive better (88.9%→93.4%,
     +0.46/trade, 20/22 yrs, paired-Δ 90%CI [+0.19,+0.76] excludes 0). A PEAK that is ALSO
     VRP-rich is the strongest cell (96.6% / +2.28, Test C). At a TROUGH the lean-in window is
-    shut. Tilts WHEN the ES budget deploys, never its size. Returns {} on failure (never blocks)."""
+    shut. Tilts WHEN the ES budget deploys, never its size. Returns {} on failure (never blocks).
+
+    `as_of` (YYYY-MM-DD) truncates the VIX series to that date so a historical snapshot can be
+    reconstructed with the same code path as the live one — the percentile and the VRP flag both
+    inherit the truncation, so no future bar leaks in."""
     try:
         vix = pd.read_parquet(os.path.join(DATA_DIR, "yahoo_VIX.parquet"))["Close"].dropna()
+        if as_of:
+            vix = vix[vix.index <= as_of]
         w = vix.tail(lookback)
         if len(w) < int(lookback * 0.6):
             return {}

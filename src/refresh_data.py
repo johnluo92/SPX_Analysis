@@ -85,11 +85,15 @@ def refresh_fred_gate() -> None:
     fetcher = UnifiedDataFetcher()
     for series_id in FRED_GATE_SERIES:
         # STLFSI4 is weekly — incremental fetch has a gap-fill bug for low-frequency series
+        before = _last_date(fetcher.cache_dir / f"fred_{series_id}.parquet")
         result = fetcher.fetch_fred(series_id, incremental=(series_id != "STLFSI4"))
         if result is not None and not result.empty:
             last_dt = result.index[-1].strftime("%Y-%m-%d")
             val     = result.iloc[-1]
-            print(f"  {series_id:<18}   {last_dt}   {val:.4f}")
+            # fetch_fred falls back to the cached series on any failure, so an unchanged last-date
+            # is indistinguishable from a successful fetch unless we diff it. Say which happened.
+            moved = "" if before is None or result.index[-1] > before else "   [unchanged — cache, not a new print]"
+            print(f"  {series_id:<18}   {last_dt}   {val:.4f}{moved}")
         else:
             print(f"  {series_id:<18}   FAILED — check FRED_API_KEY or network")
 
