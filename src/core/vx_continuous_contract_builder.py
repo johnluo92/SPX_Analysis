@@ -4,9 +4,11 @@ from datetime import date,datetime,timedelta
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import pandas_market_calendars as mcal
 import requests
 import time
 warnings.filterwarnings("ignore")
+NYSE_HOLIDAYS={d.astype('datetime64[D]').item()for d in mcal.get_calendar('NYSE').holidays().holidays}
 
 class VXContinuousContractBuilder:
     # Hardcoded historical anchor: 2013-01 through 2026-08 (verified against CBOE records)
@@ -16,13 +18,18 @@ class VXContinuousContractBuilder:
     @classmethod
     def _compute_vx_expiry(cls,year,month):
         # VX contract for (year, month) settles on the Wednesday 30 days before
-        # the third Friday of the following calendar month.
+        # the third Friday of the following calendar month. CBOE holiday rules: a holiday Friday counts from the
+        # business day before it (Juneteenth 2027-06-18 → May 2027 settles Tue 2027-05-18); a holiday settlement day
+        # moves to the business day before. Reproduces every anchor date 2013-01..2026-08.
         next_month=month+1;next_year=year
         if next_month>12:next_month=1;next_year+=1
         cal=calendar.monthcalendar(next_year,next_month)
         fridays=[week[calendar.FRIDAY]for week in cal if week[calendar.FRIDAY]!=0]
         third_fri=date(next_year,next_month,fridays[2])
-        return third_fri-timedelta(days=30)
+        while third_fri in NYSE_HOLIDAYS:third_fri-=timedelta(days=1)
+        expiry=third_fri-timedelta(days=30)
+        while expiry in NYSE_HOLIDAYS or expiry.weekday()>=5:expiry-=timedelta(days=1)
+        return expiry
 
     @classmethod
     def _build_expiration_dates(cls,through_year=2028,through_month=12):
@@ -69,7 +76,8 @@ class VXContinuousContractBuilder:
         return(True,f'{bdays}d stale')if bdays>0 else(False,None)
 
     def _fetch_missing_cboe_data(self,date):
-        active=self.expiry_lookup[self.expiry_lookup['expiry_date']>date].head(6);missing=[]
+        # Every listed contract: CBOE lists ~9 monthlies and answers 403 past the last one, where the fetch stops.
+        active=self.expiry_lookup[self.expiry_lookup['expiry_date']>date].head(12);missing=[]
         for _,row in active.iterrows():
             fp=self.vx_dir/row['filename']
             if not fp.exists():missing.append(row['filename']);continue
@@ -81,7 +89,9 @@ class VXContinuousContractBuilder:
         for fn in missing:
             parts=fn.replace('.csv','').split('_');exp_date=parts[2];url=f"https://cdn.cboe.com/data/us/futures/market_statistics/historical_data/VX/VX_{exp_date}.csv";fp=self.vx_dir/fn
             try:
-                r=requests.get(url,timeout=15);r.raise_for_status()
+                r=requests.get(url,timeout=15)
+                if r.status_code in(403,404):break
+                r.raise_for_status()
                 if len(r.text)>100:fp.write_text(r.text);time.sleep(0.3)
             except requests.RequestException as e:
                 print(f"   ⚠ CBOE fetch failed for {fn}: {str(e)[:60]}")
