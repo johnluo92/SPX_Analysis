@@ -167,7 +167,7 @@ def _vrp_rich_now(vix, vrp_window=252, vrp_cut=0.67):
         return None, None
 
 
-def vol_regime_state(lookback=126, peak_cut=0.80, trough_cut=0.20, swan_vix=30.0, as_of=None):
+def vol_regime_state(lookback=126, peak_cut=0.80, trough_cut=0.20, swan_vix=30.0, as_of=None, live=None):
     """BT-VOLPEAK deployment-timing tilt (SSOT). Rank of today's VIX within its trailing
     `lookback` days (incl. today) — the look-ahead-safe percentile validated 2026-07-10:
     LONG-DTE (98-180d) put spreads sold at a local vol MAXIMUM survive better (88.9%→93.4%,
@@ -177,11 +177,18 @@ def vol_regime_state(lookback=126, peak_cut=0.80, trough_cut=0.20, swan_vix=30.0
 
     `as_of` (YYYY-MM-DD) truncates the VIX series to that date so a historical snapshot can be
     reconstructed with the same code path as the live one — the percentile and the VRP flag both
-    inherit the truncation, so no future bar leaks in."""
+    inherit the truncation, so no future bar leaks in.
+
+    `live` (a current VIX print) is appended as today's ET bar when the closes end before today: the same rule read
+    intraday (`intraday: True`); the test used closes, so it confirms at the close."""
     try:
         vix = pd.read_parquet(os.path.join(DATA_DIR, "yahoo_VIX.parquet"))["Close"].dropna()
         if as_of:
             vix = vix[vix.index <= as_of]
+        today = pd.Timestamp.now(tz="America/New_York").normalize().tz_localize(None)
+        intraday = bool(live) and not as_of and vix.index[-1] < today
+        if intraday:
+            vix = pd.concat([vix, pd.Series([float(live)], index=[today])])
         w = vix.tail(lookback)
         if len(w) < int(lookback * 0.6):
             return {}
@@ -199,7 +206,7 @@ def vol_regime_state(lookback=126, peak_cut=0.80, trough_cut=0.20, swan_vix=30.0
             state, tilt = "NORMAL", "standard"
         return {"vix": round(cur, 2), "pct_126d": round(pct, 3), "state": state,
                 "tilt": tilt, "swan": bool(swan), "vrp_rich": vrp_rich, "vrp_pct": vrp_pct,
-                "asof": str(vix.index[-1].date())}
+                "asof": str(vix.index[-1].date()), "intraday": intraday}
     except Exception:
         return {}
 
