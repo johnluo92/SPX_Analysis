@@ -1,6 +1,7 @@
 import json,logging,os,warnings
 from calendar import monthrange
-from datetime import datetime,timedelta
+from datetime import datetime,time,timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 import numpy as np,pandas as pd,requests,yfinance as yf
 from dotenv import load_dotenv
@@ -13,6 +14,18 @@ class DataFetchLogger:
     def warning(self,msg):self.logger.warning(msg)
     def error(self,msg):self.logger.error(msg)
     def debug(self,msg):self.logger.debug(msg)
+
+# A daily bar is final only after the session's last index print (VIX-family runs to 16:15 ET) plus margin.
+# Yahoo serves the in-progress session as a bar dated today; caching it froze a 10:01 ET SPX print as the 2026-11-05 close.
+_ET=ZoneInfo("America/New_York");SESSION_FINAL_ET=time(16,20)
+
+def _et_now():return datetime.now(_ET).replace(tzinfo=None)
+
+def _bar_final_at(bar_date):return datetime.combine(pd.Timestamp(bar_date).date(),SESSION_FINAL_ET)
+
+def _drop_unfinished_bars(df,now_et=None):
+    now_et=now_et or _et_now()
+    return df[[_bar_final_at(d)<=now_et for d in df.index]]
 
 class UnifiedDataFetcher:
     QUARTERLY_SERIES={"GDP","GDPC1"}
@@ -166,11 +179,12 @@ class UnifiedDataFetcher:
         if incremental and cache_path.exists():
             last_date=self._get_last_date_from_cache(cache_path)
             if last_date:
-                last_dt=pd.to_datetime(last_date);now=datetime.now()
-                business_days_diff=len(pd.bdate_range(last_dt,now))-1
-                cache_mtime=datetime.fromtimestamp(cache_path.stat().st_mtime)
+                last_dt=pd.to_datetime(last_date);now=_et_now()
+                business_days_diff=len(pd.bdate_range(last_dt,now.date()))-1
+                cache_mtime=datetime.fromtimestamp(cache_path.stat().st_mtime,_ET).replace(tzinfo=None)
                 hours_since_update=(now-cache_mtime).total_seconds()/3600
-                if business_days_diff==0 and hours_since_update<1:
+                if cache_mtime<_bar_final_at(last_dt):pass
+                elif business_days_diff==0 and hours_since_update<1:
                     try:
                         cached_df=pd.read_parquet(cache_path)
                         if not cached_df.empty:return cached_df
@@ -205,6 +219,7 @@ class UnifiedDataFetcher:
                     except:pass
                 return None
             if incremental and cache_path.exists():df=self._merge_with_cache(df,cache_path)
+            df=_drop_unfinished_bars(df)
             df.to_parquet(cache_path)
             if is_historical_request:
                 start_dt=pd.to_datetime(start_date)if start_date else df.index[0]
