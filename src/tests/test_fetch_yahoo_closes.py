@@ -108,3 +108,51 @@ def test_failed_refetch_serves_a_final_cache_whole(fetcher, monkeypatch):
     out = fetcher.fetch_yahoo("^GSPC")
     assert _Ticker.calls == 1
     assert out.index[-1] == pd.Timestamp("2026-11-04")
+
+
+def test_failed_refetch_removes_a_one_row_partial_cache(fetcher, monkeypatch):
+    monkeypatch.setattr(dfm.yf, "Ticker", _FailingTicker)
+    _seed(fetcher, {"2026-11-05": 7563.80}, datetime(2026, 11, 5, 10, 1))
+    assert fetcher.fetch_yahoo("^GSPC") is None
+    assert os.listdir(fetcher.cache_dir) == []
+
+
+# A reader holding the old file open (layer1_gate, dn_tactical, byz) keeps reading the whole old file: the cache is
+# replaced by a new inode, never truncated and rewritten in place. Covers the success path and the fallback rewrite.
+@pytest.mark.parametrize("ticker,written", [(_Ticker, datetime(2026, 11, 5, 9, 0)), (_FailingTicker, datetime(2026, 11, 5, 10, 1))],
+                         ids=["success", "fallback"])
+def test_cache_write_replaces_never_truncates(fetcher, monkeypatch, ticker, written):
+    monkeypatch.setattr(dfm.yf, "Ticker", ticker)
+    path = _seed(fetcher, {"2026-11-03": 7568.92, "2026-11-04": 7688.62, "2026-11-05": 7563.80}, written)
+    before = path.read_bytes()
+    with open(path, "rb") as reader:
+        fetcher.fetch_yahoo("^GSPC")
+        assert _Ticker.calls == 1
+        assert path.read_bytes() != before
+        assert reader.read() == before
+
+
+class _FredResponse:
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"observations": [{"date": "2026-11-04", "value": "3.10"}, {"date": "2026-11-05", "value": "3.20"}]}
+
+
+# The FRED success path (C4/C5's OAS and STLFSI) is replaced the same way: a top-up never truncates the live file.
+def test_fred_write_replaces_never_truncates(fetcher, monkeypatch):
+    fetcher.fred_api_key = "test-key"
+    gets = []
+    monkeypatch.setattr(dfm.requests, "get", lambda url, params, timeout: gets.append(params) or _FredResponse())
+    path = fetcher.cache_dir / "fred_BAMLH0A1HYBB.parquet"
+    pd.DataFrame({"BAMLH0A1HYBB": [3.00, 3.05]}, index=pd.DatetimeIndex(["2026-10-30", "2026-11-02"])).to_parquet(path)
+    before = path.read_bytes()
+    with open(path, "rb") as reader:
+        out = fetcher.fetch_fred("BAMLH0A1HYBB")
+        assert len(gets) == 1 and gets[0]["observation_start"] == "2026-11-03"
+        assert out.index[-1] == pd.Timestamp("2026-11-05") and out.iloc[-1] == 3.20
+        assert pd.read_parquet(path).index[-1] == pd.Timestamp("2026-11-05")
+        assert reader.read() == before
+    assert os.listdir(fetcher.cache_dir) == [path.name]
+

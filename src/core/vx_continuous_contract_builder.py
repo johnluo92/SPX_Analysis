@@ -7,6 +7,7 @@ import pandas as pd
 import pandas_market_calendars as mcal
 import requests
 import time
+from core.atomic_write import write_parquet_atomic
 warnings.filterwarnings("ignore")
 NYSE_HOLIDAYS={d.astype('datetime64[D]').item()for d in mcal.get_calendar('NYSE').holidays().holidays}
 
@@ -179,7 +180,7 @@ class VXContinuousContractBuilder:
                     check_date=last_cached+timedelta(days=i+1)
                     if check_date.weekday()<5:self._fetch_missing_cboe_data(check_date)
             df=self._build_continuous_incremental(pos,None if force_rebuild else last_cached)
-            if not df.empty:df.to_parquet(cache_file,index=True,compression='snappy')
+            if not df.empty:write_parquet_atomic(df,cache_file,index=True,compression='snappy')
         else:df=pd.read_parquet(cache_file)
         if start_date:df=df[df.index>=pd.Timestamp(start_date)]
         if end_date:df=df[df.index<=pd.Timestamp(end_date)]

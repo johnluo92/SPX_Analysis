@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 import numpy as np,pandas as pd,requests,yfinance as yf
 from dotenv import load_dotenv
+from core.atomic_write import write_parquet_atomic
 load_dotenv();warnings.filterwarnings("ignore")
 
 class DataFetchLogger:
@@ -103,7 +104,7 @@ class UnifiedDataFetcher:
             bar=df.index[-1].date();df=df.iloc[:-1]
             try:
                 if df.empty:cache_path.unlink()
-                else:tmp=cache_path.with_name(cache_path.name+".tmp");df.to_parquet(tmp);os.replace(tmp,cache_path)
+                else:write_parquet_atomic(df,cache_path)
                 kept="dropped it from the cache"
             except Exception as e:kept=f"could NOT rewrite the cache ({e}); the file still holds it"
             self.logger.error(f"Yahoo:{symbol}: fetch failed and the cached {bar} bar was written {written:%Y-%m-%d %H:%M} ET, before that session's final print; {kept}, closes through {df.index[-1].date() if not df.empty else 'none'}")
@@ -154,7 +155,7 @@ class UnifiedDataFetcher:
             ff_limit=self._get_forward_fill_limit(series_id)
             if series_id in self.QUARTERLY_SERIES or series_id in self.MONTHLY_SERIES or series_id in self.WEEKLY_SERIES:date_range=pd.date_range(df.index[0],df.index[-1],freq="D");df=df.reindex(date_range,method="ffill",limit=ff_limit);df.index=pd.DatetimeIndex(df.index.date)
             if incremental and cache_path.exists():df=self._merge_with_cache(df,cache_path)
-            df.to_parquet(cache_path);return df[series_id]if series_id in df.columns else None
+            write_parquet_atomic(df,cache_path);return df[series_id]if series_id in df.columns else None
         except Exception as e:
             if cache_path.exists():
                 try:
@@ -231,7 +232,7 @@ class UnifiedDataFetcher:
                 return self._cached_closes(cache_path,symbol) if cache_path.exists() else None
             if incremental and cache_path.exists():df=self._merge_with_cache(df,cache_path)
             df=_drop_unfinished_bars(df)
-            df.to_parquet(cache_path)
+            write_parquet_atomic(df,cache_path)
             if is_historical_request:
                 start_dt=pd.to_datetime(start_date)if start_date else df.index[0]
                 df=df[(df.index>=start_dt)&(df.index<=end_dt)]

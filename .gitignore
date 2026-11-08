@@ -15,3 +15,6 @@ earnings_results*.csv
 
 # OS
 .DS_Store
+
+# A cache write killed between its temp write and os.replace (core/atomic_write.write_parquet_atomic)
+.*.parquet.*.tmp
