@@ -17,6 +17,7 @@ class DataFetchLogger:
 
 # A daily bar is final only after the session's last index print (VIX-family runs to 16:15 ET) plus margin.
 # Yahoo serves the in-progress session as a bar dated today; caching it froze a 10:01 ET SPX print as the 2026-11-05 close.
+# Schwab_API cli._partial_session_bars repeats this cutoff (it does not import this module's load_dotenv/yfinance side effects).
 _ET=ZoneInfo("America/New_York");SESSION_FINAL_ET=time(16,20)
 
 def _et_now():return datetime.now(_ET).replace(tzinfo=None)
@@ -87,6 +88,19 @@ class UnifiedDataFetcher:
         data.index=pd.DatetimeIndex(data.index.date)
         if data.index.duplicated().any():data=data[~data.index.duplicated(keep="last")]
         return None if len(data)<min_rows else data
+
+    def _cached_closes(self,cache_path,symbol):
+        """The Yahoo cache as a failed-fetch fallback. A newest bar written before its session's final print (a partial
+        the failed refetch could not heal) is dropped from what is returned, so callers get the last close they can
+        trust; the file keeps it so the next refresh refetches it, and Schwab gate-refresh flags it in stale_inputs."""
+        try:df=pd.read_parquet(cache_path)
+        except Exception:return None
+        if df.empty:return None
+        written=datetime.fromtimestamp(cache_path.stat().st_mtime,_ET).replace(tzinfo=None)
+        if written<_bar_final_at(df.index[-1]):
+            self.logger.error(f"Yahoo:{symbol}: fetch failed and the cached {df.index[-1].date()} bar was written {written:%Y-%m-%d %H:%M} ET, before that session's final print; returning closes through {df.index[-2].date() if len(df)>1 else 'none'}")
+            df=df.iloc[:-1]
+        return df if not df.empty else None
 
     def _should_update_fred_series(self,series_id,last_date):
         last_dt=pd.to_datetime(last_date);now=datetime.now()
@@ -203,21 +217,11 @@ class UnifiedDataFetcher:
             else:fetch_end=(datetime.now()+timedelta(days=2)).strftime("%Y-%m-%d")
             df=ticker.history(start=fetch_start,end=fetch_end,auto_adjust=True)
             if df.empty:
-                if cache_path.exists():
-                    try:
-                        cached_df=pd.read_parquet(cache_path)
-                        if not cached_df.empty:return cached_df
-                    except:pass
-                return None
+                return self._cached_closes(cache_path,symbol) if cache_path.exists() else None
             min_rows=1 if is_incremental_fetch else 10
             df=self._normalize_data(df,f"Yahoo:{symbol}",min_rows=min_rows)
             if df is None:
-                if cache_path.exists():
-                    try:
-                        cached_df=pd.read_parquet(cache_path)
-                        return cached_df
-                    except:pass
-                return None
+                return self._cached_closes(cache_path,symbol) if cache_path.exists() else None
             if incremental and cache_path.exists():df=self._merge_with_cache(df,cache_path)
             df=_drop_unfinished_bars(df)
             df.to_parquet(cache_path)
@@ -227,14 +231,12 @@ class UnifiedDataFetcher:
             return df
         except Exception as e:
             if cache_path.exists():
-                try:
-                    cached_df=pd.read_parquet(cache_path)
-                    if not cached_df.empty:
-                        if is_historical_request:
-                            start_dt=pd.to_datetime(start_date)if start_date else cached_df.index[0]
-                            cached_df=cached_df[(cached_df.index>=start_dt)&(cached_df.index<=end_dt)]
-                        return cached_df
-                except:pass
+                cached_df=self._cached_closes(cache_path,symbol)
+                if cached_df is not None:
+                    if is_historical_request:
+                        start_dt=pd.to_datetime(start_date)if start_date else cached_df.index[0]
+                        cached_df=cached_df[(cached_df.index>=start_dt)&(cached_df.index<=end_dt)]
+                    return cached_df
             self.logger.error(f"Yahoo:{symbol}: Fetch failed with no cache available - {str(e)[:100]}");return None
 
     def fetch_vix_term(self,symbols=["^VIX","^VIX3M","^VIX6M"],start_date=None,end_date=None):

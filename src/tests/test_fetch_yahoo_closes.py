@@ -69,3 +69,36 @@ def test_post_close_bar_served_from_cache(fetcher):
     _seed(fetcher, {"2026-11-04": 7688.62, "2026-11-05": 7353.73}, datetime(2026, 11, 5, 17, 0))
     fetcher.fetch_yahoo("^GSPC")
     assert _Ticker.calls == 0
+
+
+class _FailingTicker(_Ticker):
+    def history(self, start, end, auto_adjust):
+        _Ticker.calls += 1
+        raise ConnectionError("yahoo down")
+
+
+class _EmptyTicker(_Ticker):
+    def history(self, start, end, auto_adjust):
+        _Ticker.calls += 1
+        return pd.DataFrame()
+
+
+@pytest.mark.parametrize("ticker", [_FailingTicker, _EmptyTicker])
+def test_failed_refetch_never_returns_the_partial_bar(fetcher, monkeypatch, ticker):
+    monkeypatch.setattr(dfm.yf, "Ticker", ticker)
+    logged = []
+    monkeypatch.setattr(fetcher.logger, "error", logged.append)
+    path = _seed(fetcher, {"2026-11-04": 7688.62, "2026-11-05": 7563.80}, datetime(2026, 11, 5, 10, 1))
+    out = fetcher.fetch_yahoo("^GSPC")
+    assert _Ticker.calls == 1
+    assert out.index[-1] == pd.Timestamp("2026-11-04")
+    assert pd.read_parquet(path).index[-1] == pd.Timestamp("2026-11-05")
+    assert len(logged) == 1 and "^GSPC" in logged[0] and "2026-11-05" in logged[0]
+
+
+def test_failed_refetch_serves_a_final_cache_whole(fetcher, monkeypatch):
+    monkeypatch.setattr(dfm.yf, "Ticker", _FailingTicker)
+    _seed(fetcher, {"2026-11-03": 7568.92, "2026-11-04": 7688.62}, datetime(2026, 11, 4, 17, 0))
+    out = fetcher.fetch_yahoo("^GSPC")
+    assert _Ticker.calls == 1
+    assert out.index[-1] == pd.Timestamp("2026-11-04")
