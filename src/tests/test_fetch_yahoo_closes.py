@@ -83,17 +83,23 @@ class _EmptyTicker(_Ticker):
         return pd.DataFrame()
 
 
-@pytest.mark.parametrize("ticker", [_FailingTicker, _EmptyTicker])
-def test_failed_refetch_never_returns_the_partial_bar(fetcher, monkeypatch, ticker):
+# Three failed-refetch paths: yfinance raises, returns an empty frame, or returns rows _normalize_data rejects
+# (a full fetch needs 10 rows; _Ticker serves 4).
+@pytest.mark.parametrize("ticker,kwargs", [(_FailingTicker, {}), (_EmptyTicker, {}), (_Ticker, {"incremental": False})],
+                         ids=["raises", "empty", "normalize-none"])
+def test_failed_refetch_drops_the_partial_bar_from_return_and_disk(fetcher, monkeypatch, ticker, kwargs):
     monkeypatch.setattr(dfm.yf, "Ticker", ticker)
     logged = []
     monkeypatch.setattr(fetcher.logger, "error", logged.append)
-    path = _seed(fetcher, {"2026-11-04": 7688.62, "2026-11-05": 7563.80}, datetime(2026, 11, 5, 10, 1))
-    out = fetcher.fetch_yahoo("^GSPC")
+    path = _seed(fetcher, {"2026-11-03": 7568.92, "2026-11-04": 7688.62, "2026-11-05": 7563.80}, datetime(2026, 11, 5, 10, 1))
+    out = fetcher.fetch_yahoo("^GSPC", **kwargs)
     assert _Ticker.calls == 1
     assert out.index[-1] == pd.Timestamp("2026-11-04")
-    assert pd.read_parquet(path).index[-1] == pd.Timestamp("2026-11-05")
-    assert len(logged) == 1 and "^GSPC" in logged[0] and "2026-11-05" in logged[0]
+    on_disk = pd.read_parquet(path)
+    assert list(on_disk.index) == [pd.Timestamp("2026-11-03"), pd.Timestamp("2026-11-04")]
+    assert on_disk.loc["2026-11-04", "Close"] == 7688.62
+    assert os.listdir(fetcher.cache_dir) == ["yahoo_GSPC.parquet"]
+    assert len(logged) == 1 and "^GSPC" in logged[0] and "2026-11-05" in logged[0] and "dropped it from the cache" in logged[0]
 
 
 def test_failed_refetch_serves_a_final_cache_whole(fetcher, monkeypatch):

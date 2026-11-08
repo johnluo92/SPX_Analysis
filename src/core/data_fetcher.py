@@ -17,7 +17,8 @@ class DataFetchLogger:
 
 # A daily bar is final only after the session's last index print (VIX-family runs to 16:15 ET) plus margin.
 # Yahoo serves the in-progress session as a bar dated today; caching it froze a 10:01 ET SPX print as the 2026-11-05 close.
-# Schwab_API cli._partial_session_bars repeats this cutoff (it does not import this module's load_dotenv/yfinance side effects).
+# Copies: Schwab_API cli.SESSION_FINAL_ET and byz_terminal trigger.CLOSE_ET (neither imports this module's load_dotenv/yfinance
+# side effects); Schwab_API test_modules reads all three with ast and fails on drift.
 _ET=ZoneInfo("America/New_York");SESSION_FINAL_ET=time(16,20)
 
 def _et_now():return datetime.now(_ET).replace(tzinfo=None)
@@ -91,15 +92,21 @@ class UnifiedDataFetcher:
 
     def _cached_closes(self,cache_path,symbol):
         """The Yahoo cache as a failed-fetch fallback. A newest bar written before its session's final print (a partial
-        the failed refetch could not heal) is dropped from what is returned, so callers get the last close they can
-        trust; the file keeps it so the next refresh refetches it, and Schwab gate-refresh flags it in stale_inputs."""
+        the failed refetch could not heal) is dropped from the returned frame and from the file, which is rewritten
+        atomically: the gate, dn_tactical and the Schwab/byz readers all read the parquet from disk, and the missing date
+        fails gate-refresh's date floor, so the next refresh refetches it."""
         try:df=pd.read_parquet(cache_path)
         except Exception:return None
         if df.empty:return None
         written=datetime.fromtimestamp(cache_path.stat().st_mtime,_ET).replace(tzinfo=None)
         if written<_bar_final_at(df.index[-1]):
-            self.logger.error(f"Yahoo:{symbol}: fetch failed and the cached {df.index[-1].date()} bar was written {written:%Y-%m-%d %H:%M} ET, before that session's final print; returning closes through {df.index[-2].date() if len(df)>1 else 'none'}")
-            df=df.iloc[:-1]
+            bar=df.index[-1].date();df=df.iloc[:-1]
+            try:
+                if df.empty:cache_path.unlink()
+                else:tmp=cache_path.with_name(cache_path.name+".tmp");df.to_parquet(tmp);os.replace(tmp,cache_path)
+                kept="dropped it from the cache"
+            except Exception as e:kept=f"could NOT rewrite the cache ({e}); the file still holds it"
+            self.logger.error(f"Yahoo:{symbol}: fetch failed and the cached {bar} bar was written {written:%Y-%m-%d %H:%M} ET, before that session's final print; {kept}, closes through {df.index[-1].date() if not df.empty else 'none'}")
         return df if not df.empty else None
 
     def _should_update_fred_series(self,series_id,last_date):
