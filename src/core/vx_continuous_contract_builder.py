@@ -7,7 +7,13 @@ import pandas as pd
 import pandas_market_calendars as mcal
 import requests
 import time
-from core.atomic_write import write_parquet_atomic
+try:
+    from core.atomic_write import write_parquet_atomic
+except ModuleNotFoundError:  # byz_terminal vx.py loads this file by path and keeps SPX src off sys.path
+    import importlib.util
+    _spec=importlib.util.spec_from_file_location("spx_atomic_write",Path(__file__).with_name("atomic_write.py"))
+    _atomic=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(_atomic)
+    write_parquet_atomic=_atomic.write_parquet_atomic
 warnings.filterwarnings("ignore")
 NYSE_HOLIDAYS={d.astype('datetime64[D]').item()for d in mcal.get_calendar('NYSE').holidays().holidays}
 

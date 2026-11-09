@@ -151,3 +151,34 @@ def test_vx_continuous_write_replaces_never_truncates(tmp_path, monkeypatch):
         assert pd.read_parquet(path).loc["2026-11-05", "settle"] == 21.5
         assert reader.read() == before
     assert os.listdir(cache_dir) == [path.name]
+
+
+def test_read_only_directory_raises_permission_error_at_once(tmp_path, monkeypatch):
+    path = tmp_path / "yahoo_GSPC.parquet"
+    aw.write_parquet_atomic(_frame(1.0), path)
+    opens = []
+    real_open = os.open
+    monkeypatch.setattr(aw.os, "open", lambda *a, **k: opens.append(a[0]) or real_open(*a, **k))
+    tmp_path.chmod(0o555)
+    try:
+        with pytest.raises(PermissionError):
+            aw.write_parquet_atomic(_frame(2.0), path)
+    finally:
+        tmp_path.chmod(0o755)
+    assert len(opens) == 1
+    assert sorted(p.name for p in tmp_path.iterdir()) == [path.name]
+    assert pd.read_parquet(path)["Close"].tolist() == [1.0]
+
+
+# byz_terminal vx.py loads the builder by file path with SPX src off sys.path (its own config.py must not be shadowed)
+def test_vx_builder_loads_by_path_without_src_on_sys_path():
+    import subprocess
+    builder = Path(__file__).resolve().parents[1] / "core" / "vx_continuous_contract_builder.py"
+    code = ("import importlib.util,sys\n"
+            f"assert not any(p.rstrip('/').endswith('src') for p in sys.path)\n"
+            f"s=importlib.util.spec_from_file_location('spx_vx_builder',{str(builder)!r})\n"
+            "m=importlib.util.module_from_spec(s);s.loader.exec_module(m)\n"
+            "print(m.write_parquet_atomic.__module__)")
+    out = subprocess.run([sys.executable, "-I", "-c", code], cwd="/", capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "spx_atomic_write"
